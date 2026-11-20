@@ -4,9 +4,10 @@ import { emptyBoard, fits, landing, rotate, SHAPES, spawnPiece } from '../src/en
 import { detectSpin, scoreClear } from '../src/engine/scoring'
 import { Player, NO_INPUT, type Action } from '../src/engine/player'
 import { Match } from '../src/engine/match'
-import { Garbage } from '../src/engine/garbage'
-import { DEFAULT_RULES, HEIGHT, HIDDEN, HZ, SETTINGS, WIDTH, type Rules } from '../src/engine/rules'
-import { automaticPadMap, conflict, defaultSlot, resolvePads } from '../src/input'
+import { Garbage, garbageProjection } from '../src/engine/garbage'
+import { Zone, zoneTitle } from '../src/engine/zone'
+import { DEFAULT_RULES, HEIGHT, HIDDEN, HZ, RANDOM_TARGET_TICKS, SETTINGS, WIDTH, type Rules } from '../src/engine/rules'
+import { automaticPadMap, conflict, defaultSlot, keyboardClashes, resolvePads } from '../src/input'
 
 const settings = (patch: Partial<Rules> = {}): Rules => ({...DEFAULT_RULES,gravity:0,progression:0,...patch})
 const press = (...pressed: Action[]) => ({held:new Set(pressed),pressed})
@@ -255,6 +256,45 @@ describe('Combate VS4', () => {
     expect(counter.players[0].garbage.total).toBe(2)
     expect(counter.players[1].stats.cancelled).toBe(3)
   })
+  it('retiene el objetivo aleatorio durante 10 s, cambia a otro e invalida objetivos eliminados', () => {
+    const match = new Match(settings({target:'random'}),'cadence')
+    const first = match.targets[0]
+    match.players[0].send(4)
+    match.tick()
+    expect(match.targets[0]).toBe(first)
+    expect(match.players[first].garbage.queue[0].source).toBe(0)
+    for (let i=1;i<RANDOM_TARGET_TICKS-1;i++) match.tick()
+    expect(match.targets[0]).toBe(first)
+    match.tick()
+    const next = match.targets[0]
+    expect(next).not.toBe(first)
+    match.players[next].eliminate()
+    match.tick()
+    expect(match.targets[0]).not.toBe(next)
+  })
+  it('proyecta la basura limitada por bloqueo, los huecos y la altura tras quitar filas de Zone', () => {
+    const board = emptyBoard()
+    board[HEIGHT-11][4] = 'I'
+    board.fill(Array(WIDTH).fill('zone'),HEIGHT-3)
+    const garbage = new Garbage()
+    garbage.push({lines:3,hole:1,ready:20,source:2})
+    garbage.push({lines:4,hole:5,ready:25,source:3})
+    const holes = garbage.preview(4)
+    expect(holes).toEqual([1,1,1,5])
+    expect(garbageProjection(board,3,holes)).toEqual({top:HEIGHT-12,height:12})
+    garbage.cancel(3)
+    expect(garbage.preview(4)).toEqual([5,5,5,5])
+  })
+  it('un Tetris de cuatro líneas aumenta en cuatro la altura proyectada del jugador atacado', () => {
+    const match = new Match(settings({attack:{...DEFAULT_RULES.attack,perfect:0}}),'tetris')
+    const [a,b] = match.players
+    fixture(a)
+    b.board[HEIGHT-8][0] = 'J'
+    match.tick([press('hard')])
+    const holes = b.garbage.preview(b.rules.garbageCap)
+    expect(holes).toHaveLength(4)
+    expect(garbageProjection(b.board,0,holes).height).toBe(12)
+  })
   it('resuelve empate si los cuatro pierden en el mismo tick', () => {
     const match = new Match(settings(),'tie')
     for (const p of match.players) bury(p)
@@ -283,21 +323,93 @@ describe('Combate VS4', () => {
     expect(match.ranking()).toEqual([[0],[2],[3],[1]])
     expect(a.events.some(event=>event.type==='victory')).toBe(true)
   })
+  it('respeta dos pulsaciones horizontales capturadas dentro del mismo tick', () => {
+    const p = player()
+    const start = p.active.x
+    p.tick(press('left','left'),1)
+    expect(p.active.x).toBe(start-2)
+  })
 })
 
 describe('Zone', () => {
+  it.each([[1,'Kirbtris'],[2,'Impossibilitris']] as const)('suma %i líneas por encima de las 20 visibles (%s)', (lines,title) => {
+    const p = player()
+    p.zone.energy = 100
+    p.tick(press('zone'),1)
+    p.zone.clear(20,0,p.rules)
+    for (let y=HIDDEN;y<HEIGHT;y++) p.board[y].fill('zone')
+    for (let y=HIDDEN-lines;y<HIDDEN;y++) {
+      p.board[y].fill('G')
+      p.board[y][4] = p.board[y][5] = null
+    }
+    p.hold = 'O'
+    expect(p.previewSpawn('O').y).toBe(2)
+    p.tick(press('hold'),2)
+    expect(p.zone.active).toBe(true)
+    p.tick(press('hard'),3)
+    expect(p.zone.lines).toBe(20+lines)
+    expect(zoneTitle(p.zone.lines)).toBe(title)
+    p.endZone()
+    expect(p.events.filter(e=>e.type==='zoneEnd').map(e=>e.detail)).toEqual([String(20+lines)])
+    expect(p.board.flat()).not.toContain('zone')
+    expect(p.dead).toBe(false)
+  })
   it('carga por líneas y puede desactivarse desde las reglas', () => {
     const p = player()
     fixture(p)
     p.tick(press('hard'),1)
-    expect(p.zone.energy).toBe(50)
+    expect(p.zone.energy).toBe(0)
     p.tick(press('zone'),2)
-    expect(p.zone.duration).toBe(6*HZ)
+    expect(p.zone.active).toBe(false)
+    fixture(p,2)
+    p.tick(press('hard'),3)
+    expect(p.zone.energy).toBe(25)
+    p.tick(press('zone'),4)
+    expect(p.zone.duration).toBe(3*HZ)
     const disabled = player({zone:false})
     fixture(disabled)
     disabled.tick(press('hard','zone'),1)
     expect(disabled.zone.energy).toBe(0)
     expect(disabled.zone.active).toBe(false)
+  })
+  it('necesita 24 líneas para llenar Zone, sin bonus por potencia ni recarga mientras está activa', () => {
+    const zone = new Zone()
+    zone.clear(23,99,DEFAULT_RULES)
+    expect(zone.energy).toBe(75)
+    zone.clear(1,0,DEFAULT_RULES)
+    expect(zone.energy).toBe(100)
+    expect(zone.activate(DEFAULT_RULES)).toBe(true)
+    zone.clear(6,20,DEFAULT_RULES)
+    expect(zone.energy).toBe(0)
+    expect(zone.regularLines).toBe(24)
+  })
+  it('guarda las líneas restantes al gastar Zone y descarta cuartos completos por encima de 100 %', () => {
+    const zone = new Zone()
+    zone.clear(33,0,DEFAULT_RULES)
+    expect(zone.energy).toBe(100)
+    zone.activate(DEFAULT_RULES)
+    zone.finish(DEFAULT_RULES)
+    zone.clear(2,0,DEFAULT_RULES)
+    expect(zone.energy).toBe(0)
+    zone.clear(1,0,DEFAULT_RULES)
+    expect(zone.energy).toBe(25)
+  })
+  it.each([[24,8],[60,10]])('al pasar %i líneas en un tablero, cobra %i por cuarto a todos', (milestone,cost) => {
+    const match = new Match(settings(),'fases Zone')
+    const [leader,recipient] = match.players
+    leader.zone.regularLines = milestone
+    for (let remaining=cost-1;remaining>0;) {
+      const lines = Math.min(4,remaining)
+      recipient.board = emptyBoard()
+      fixture(recipient,lines)
+      match.tick([NO_INPUT,press('hard')])
+      remaining -= lines
+    }
+    expect(recipient.zone.energy).toBe(0)
+    recipient.board = emptyBoard()
+    fixture(recipient,1)
+    match.tick([NO_INPUT,press('hard')])
+    expect(recipient.zone.energy).toBe(25)
   })
   it.each([2,4])('%s Zones simultáneas mantienen temporizadores y gravedad independientes', count => {
     const m = new Match(settings({gravity:60,zoneSeconds:2}),'simultaneous')
@@ -318,16 +430,49 @@ describe('Zone', () => {
     m.targets[2] = 0
     m.tick([press('zone','hard')])
     expect(a.zone.lines).toBe(4)
+    expect(a.board.slice(-4).every(row=>row.every(cell=>cell==='zone'))).toBe(true)
     expect(a.garbage.total).toBe(5)
     expect(a.stats.sent).toBe(0)
     m.tick([press('hard')])
     expect(a.stats.received).toBe(0)
     for (let i = 0; i < 14; i++) m.tick()
     expect(a.zone.active).toBe(false)
+    expect(a.board.flat()).not.toContain('zone')
     expect(a.garbage.total).toBe(0)
     expect(a.stats.cancelled).toBe(5)
     expect(b.garbage.total).toBe(15)
     expect(a.events.map(e=>e.type)).toEqual(expect.arrayContaining(['zoneEnd','zoneAttack']))
+  })
+  it('conserva las filas completadas como piso sólido y evita contarlas de nuevo', () => {
+    const p = player()
+    p.zone.energy = 100
+    fixture(p)
+    p.board[HEIGHT-5][0] = 'J'
+    p.tick(press('zone','hard'),1)
+    expect(p.board[HEIGHT-5][0]).toBe('J')
+    expect(landing(p.board,p.active)).toBe(HEIGHT-4-p.active.y-2)
+    p.tick(press('hard'),2)
+    expect(p.zone.lines).toBe(4)
+    expect(p.stats.lines).toBe(4)
+    expect(p.board.slice(-4).flat()).toEqual(Array(4*WIDTH).fill('zone'))
+  })
+  it.each([false,true])('cierra Zone al bloquearse la siguiente aparición y entrega el ataque una sola vez (derrota: %s)', fatal => {
+    const match = new Match(settings(),'zone topout')
+    const [a,b] = match.players
+    a.zone.energy = 100
+    fixture(a)
+    match.tick([press('zone','hard')])
+    const [x,y] = SHAPES[a.next[0]][0].find(([,y])=>y===1)!
+    a.board[HIDDEN-1+y][3+x] = 'G'
+    if (fatal) a.board[HIDDEN-1+y-4][3+x] = 'G'
+    a.active = {kind:'O',rotation:0,x:3,y:HEIGHT-8}
+    match.tick([press('hard')])
+    expect(a.zone.active).toBe(false)
+    expect(a.dead).toBe(fatal)
+    expect(a.board.flat()).not.toContain('zone')
+    expect(b.garbage.total).toBe(20)
+    match.tick()
+    expect(b.garbage.total).toBe(20)
   })
   it('mantiene ataques pendientes si Zone termina sin despejar líneas', () => {
     const p = player({zoneSeconds:1})
@@ -357,6 +502,27 @@ describe('Dispositivos', () => {
     expect(conflict(slots,0,'keys','left','KeyJ')).toMatch('J2')
     expect(conflict(slots,0,'keys','left','KeyG')).toBeNull()
   })
+  it('omite los mapas de teclado de mandos e IA y valida al volver a usar teclado', () => {
+    const slots = Array.from({length:4},(_,i)=>defaultSlot(i))
+    const humans = (i: number)=>i!==2
+    slots[1].device = {id:'Pad',index:0}
+    expect(conflict(slots,0,'keys','left','KeyK',humans)).toBeNull()
+    expect(conflict(slots,0,'keys','left','ArrowLeft',humans)).toBeNull()
+    expect(conflict(slots,0,'keys','left','Numpad4',humans)).toContain('J4')
+    expect(conflict(slots,0,'keys','left','KeyD',humans)).toContain('J1')
+    slots[0].keys.left = 'KeyK'
+    expect(keyboardClashes(slots,1,humans)).toContain('K → J1 · Mover izquierda')
+    slots[1].keys.soft = 'KeyY'
+    expect(keyboardClashes(slots,1,humans)).toEqual([])
+  })
+  it('libera el mando de una IA y no roba el mando a quien ya lo usa al volver a Persona', () => {
+    const slots = Array.from({length:4},(_,i)=>defaultSlot(i))
+    const pad = fakePad(0,'Pad')
+    slots[0].device = slots[1].device = {index:0,id:'Pad'}
+    const assigned = resolvePads(slots,[pad],[],i=>i!==0)
+    expect(assigned.slice(0,2)).toEqual([null,pad])
+    expect(resolvePads(slots,[pad],assigned).slice(0,2)).toEqual([null,pad])
+  })
   it('aplica mapas estándar y genéricos con entradas existentes y únicas', () => {
     const standard = {mapping:'standard' as const,buttons:[],axes:[]}
     expect(automaticPadMap(standard)).toEqual(defaultSlot(0).pad)
@@ -364,7 +530,7 @@ describe('Dispositivos', () => {
     const generic = {mapping:'' as const,buttons,axes:[0,0]}
     const mapping = automaticPadMap(generic)
     expect(mapping).toMatchObject({left:'A0-',right:'A0+',soft:'A1+',hard:'A1-'})
-    expect(new Set(Object.values(mapping)).size).toBe(12)
+    expect(new Set(Object.values(mapping).filter(Boolean)).size).toBe(12)
     expect(Object.values(mapping).filter(value=>value.startsWith('B')).every(value=>Number(value.slice(1))<8)).toBe(true)
   })
 })

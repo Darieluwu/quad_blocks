@@ -1,9 +1,25 @@
-import { WIDTH } from './rules'
+import { HEIGHT, WIDTH } from './rules'
+import type { Board } from './pieces'
 
-export type GarbagePacket = {lines: number; hole: number; ready: number}
+export type GarbagePacket = {lines: number; hole: number; ready: number; source?: number}
+
+export function garbageProjection(board: Board, banked: number, holes: readonly number[]) {
+  const top = board.findIndex((row,y)=>y<HEIGHT-banked && row.some(Boolean))
+  const projectedTop = (top<0 ? HEIGHT : top+banked)-holes.length
+  return {top:projectedTop,height:HEIGHT-projectedTop}
+}
 export class Garbage {
   readonly queue: GarbagePacket[] = []
   get total() { return this.queue.reduce((total, packet) => total + packet.lines, 0) }
+
+  preview(cap: number) {
+    const holes: number[] = []
+    for (const packet of this.queue) {
+      for (let i=0;i<packet.lines && holes.length<cap;i++) holes.push(packet.hole)
+      if (holes.length>=cap) break
+    }
+    return holes
+  }
 
   push(packet: GarbagePacket) {
     if (!Number.isSafeInteger(packet.lines) || packet.lines <= 0 ||

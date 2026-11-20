@@ -1,8 +1,8 @@
 import type { Kind } from './random'
-import { HEIGHT, HIDDEN, WIDTH } from './rules'
+import { HEIGHT, HIDDEN, VISIBLE, WIDTH } from './rules'
 export type Point = readonly [number, number]
 export type Piece = {kind: Kind; rotation: number; x: number; y: number}
-export type Cell = Kind | 'G' | null
+export type Cell = Kind | 'G' | 'zone' | null
 export type Board = Cell[][]
 export const emptyRow = (): Cell[] => Array<Cell>(WIDTH).fill(null)
 export const emptyBoard = (): Board => Array.from({length: HEIGHT}, emptyRow)
@@ -22,7 +22,10 @@ for (const kind of Object.keys(bases) as Kind[]) {
   }
   SHAPES[kind] = states
 }
-export const spawnPiece = (kind: Kind): Piece => ({kind, rotation:0, x:3, y:HIDDEN-1})
+export function spawnPiece(kind: Kind, banked = 0): Piece {
+  const y = banked>=VISIBLE ? HEIGHT-banked-1-Math.max(...SHAPES[kind][0].map(([,dy])=>dy)) : HIDDEN-1
+  return {kind,rotation:0,x:3,y}
+}
 export const occupied = (board: Board, x: number, y: number) =>
   x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT || board[y][x] !== null
 

@@ -2,14 +2,15 @@ import { emptyBoard, emptyRow, fits, landing, rotate, SHAPES, spawnPiece, type B
 import type { Kind } from './random'
 import { detectSpin, scoreClear, type Rotation } from './scoring'
 import { Garbage } from './garbage'
-import { Zone } from './zone'
+import { Zone, type ZoneResult } from './zone'
 import { HEIGHT, HIDDEN, HZ, NEXT, SETTINGS, VISIBLE, WIDTH, ticks, type Rules } from './rules'
 
-export const ACTIONS = ['left','right','soft','hard','cw','ccw','half','hold','zone','prev','next','pause'] as const
+export const ACTIONS = ['left','right','soft','hard','cw','ccw','half','hold','zone','prev','next','pause','stance'] as const
 export type Action = typeof ACTIONS[number]
 export type Input = {held: ReadonlySet<Action>; pressed: readonly Action[]}
 export const NO_INPUT: Input = {held:new Set(),pressed:[]}
-export type GameEvent = {type:string; detail?:string}
+export type GameEvent = {type:string; detail?:string; source?:number}
+export type CombatPlay = {kind:'lock'; qualifies:boolean; power:number; zoned:boolean} | {kind:'zoneEnd'}
 const clearNames = ['','single','double','triple','quad']
 export class Player {
   board: Board = emptyBoard()
@@ -20,9 +21,12 @@ export class Player {
   garbage = new Garbage()
   zone = new Zone()
   events: GameEvent[] = []
+  combat: CombatPlay[] = []
   stats = {pieces:0, lines:0, sent:0, received:0, cancelled:0}
   outbox = 0
+  finalZoneAttack = 0
   dead = false
+  zoneAllowed = true
   combo = -1
   chain = false
   danger = 0
@@ -38,15 +42,16 @@ export class Player {
   private softElapsed = 0
   private buffered: {action:Action; expires:number}[] = []
 
-  constructor(readonly rules: Rules, private source: () => Kind) {
+  constructor(readonly rules: Rules, private source: () => Kind, private recordCombat = false) {
     this.active = spawnPiece(source())
     for (let i = 0; i < NEXT; i++) this.next.push(source())
   }
 
-  event(type: string, detail?: string) { this.events.push({type,detail}) }
+  event(type: string, detail?: string, source?: number) { this.events.push({type,detail,source}) }
 
   eliminate() {
     if (this.dead) return
+    this.endZone()
     this.dead = true
     this.garbage.queue.length = 0
     this.outbox = 0
@@ -58,10 +63,18 @@ export class Player {
       kind = this.next.shift()!
       this.next.push(this.source())
     }
-    this.active = spawnPiece(kind)
+    this.active = this.previewSpawn(kind)
     this.lockTimer = this.lockResets = this.gravity = 0
     this.lastRotation = null
+    if (!fits(this.board,this.active) && this.zone.active) {
+      this.resolveZone(this.zone.finish(this.rules),false)
+      this.active = spawnPiece(kind)
+    }
     if (!fits(this.board,this.active)) this.eliminate()
+  }
+
+  previewSpawn(kind = this.next[0]) {
+    return spawnPiece(kind,this.zone.active ? this.zone.lines : 0)
   }
 
   private resetLock(grounded: boolean) {
@@ -98,13 +111,23 @@ export class Player {
   private horizontal(input: Input) {
     const left = input.held.has('left')
     const right = input.held.has('right')
-    const intent = input.pressed.findLast(action => action === 'left' || action === 'right')
-    const desired = intent ? intent === 'left' ? -1 : 1 :
-      left && right ? this.direction || 1 : left ? -1 : right ? 1 : 0
-    if (desired !== this.direction || intent) {
+    let tapped = false
+    const sweep = this.rules.das===0 && this.rules.arr===0
+    for (const action of input.pressed) {
+      if (action!=='left' && action!=='right') continue
+      this.direction = action==='left' ? -1 : 1
+      this.shift(this.direction,sweep)
+      tapped = true
+    }
+    if (tapped) {
+      this.dasElapsed = this.repeatElapsed = 0
+      return
+    }
+    const desired = left && right ? this.direction || 1 : left ? -1 : right ? 1 : 0
+    if (desired !== this.direction) {
       this.direction = desired
       this.dasElapsed = this.repeatElapsed = 0
-      if (desired) this.shift(desired, this.rules.das === 0 && this.rules.arr === 0)
+      if (desired) this.shift(desired,sweep)
     } else if (desired) {
       const das = ticks(this.rules.das)
       if (++this.dasElapsed < das) return
@@ -117,7 +140,7 @@ export class Player {
   }
 
   send(lines: number) {
-    if (!Number.isSafeInteger(lines) || lines <= 0 || this.dead) return
+    if (!Number.isSafeInteger(lines) || lines <= 0 || this.dead) return 0
     const surviving = this.garbage.cancel(lines)
     const cancelled = lines - surviving
     if (cancelled) {
@@ -125,23 +148,49 @@ export class Player {
       this.event('cancel',String(cancelled))
     }
     this.outbox += surviving
+    return surviving
   }
 
-  lock(now: number) {
+  private resolveZone(result: ZoneResult, carryPiece: boolean) {
+    if (result.lines) {
+      this.board = Array.from({length:result.lines},emptyRow).concat(this.board.slice(0,-result.lines))
+      if (carryPiece) this.active.y += result.lines
+      this.revision++
+    }
+    this.event('zoneEnd',String(result.lines))
+    if (this.recordCombat) this.combat.push({kind:'zoneEnd'})
+    if (result.attack) {
+      this.event('zoneAttack')
+      this.finalZoneAttack += this.send(result.attack)
+    }
+  }
+
+  endZone() {
+    if (this.zone.active) this.resolveZone(this.zone.finish(this.rules),!this.dead)
+  }
+
+  lock(now: number, quarterLines?: number) {
     const piece = this.active
     const spin = detectSpin(this.board,piece,this.lastRotation)
     const cells = SHAPES[piece.kind][piece.rotation]
     const hidden = cells.every(([,y]) => piece.y + y < HIDDEN)
     for (const [x,y] of cells) this.board[piece.y+y][piece.x+x] = piece.kind
-    const remaining = this.board.filter(row => row.some(cell => !cell))
-    const lines = HEIGHT - remaining.length
-    this.board = [...Array.from({length:lines},emptyRow), ...remaining]
+    const zoned = this.zone.active
+    const banked = zoned ? this.zone.lines : 0
+    const playable = this.board.slice(0,HEIGHT-banked)
+    const remaining = playable.filter(row => row.some(cell => !cell))
+    const lines = playable.length - remaining.length
+    if (lines) this.board = zoned ?
+      remaining.concat(Array.from({length:banked+lines},()=>emptyRow().fill('zone'))) :
+      Array.from({length:lines},emptyRow).concat(remaining)
     this.revision++
     this.stats.pieces++
     this.stats.lines += lines
     this.event('lock')
-    const perfect = lines > 0 && this.board.every(row => row.every(cell => !cell))
+    const perfect = lines > 0 && remaining.every(row => row.every(cell => !cell))
     const result = scoreClear(lines,spin,perfect,this.combo,this.chain,this.rules)
+    if (this.recordCombat) this.combat.push({kind:'lock', qualifies:lines===4 || (lines>0 && (spin==='T' || spin==='mini')),
+      power:result.attack+(zoned ? lines : 0), zoned})
     this.combo = result.combo
     this.chain = result.chain
     if (spin) this.event(spin === 'T' ? ['tZero','tSingle','tDouble','tTriple'][lines] ?? 'tTriple' :
@@ -150,10 +199,11 @@ export class Player {
     if (result.b2b) this.event('backToBack')
     if (this.combo > 0) this.event('combo',String(this.combo))
     if (perfect) this.event('perfect')
-    if (hidden && !lines) { this.eliminate(); return }
+    if (!zoned && hidden && !lines) { this.eliminate(); return }
 
-    this.send(this.zone.clear(lines,result.attack,this.rules))
-    if (!this.zone.active && !lines) {
+    this.send(this.zone.clear(lines,result.attack,this.rules,quarterLines))
+    if (zoned && hidden && !lines && banked<VISIBLE) this.resolveZone(this.zone.finish(this.rules),false)
+    if (!zoned && !lines) {
       const holes = this.garbage.take(now,this.rules.garbageCap)
       if (holes.length) {
         const displaced = this.board.splice(0,holes.length)
@@ -169,9 +219,9 @@ export class Player {
     this.spawn()
   }
 
-  private special(action: Action, now: number): boolean {
+  private special(action: Action, now: number, quarterLines?: number): boolean {
     if (action === 'zone') {
-      if (this.zone.activate(this.rules)) {
+      if (this.zoneAllowed && this.zone.activate(this.rules)) {
         this.event('zoneStart')
         this.event('zoneLoop')
       }
@@ -180,7 +230,7 @@ export class Player {
     if (action === 'hard') {
       this.gravityMove(landing(this.board,this.active))
       this.event('hard')
-      this.lock(now)
+      this.lock(now,quarterLines)
       return true
     }
     if (action === 'hold') {
@@ -206,10 +256,11 @@ export class Player {
   updateDanger(now: number) {
     const row = this.board.findIndex(line => line.some(Boolean))
     const height = row < 0 ? 0 : HEIGHT - row
-    const spawnThreat = height >= VISIBLE && !fits(this.board,spawnPiece(this.next[0]))
-    const effective = height + Math.min(this.garbage.total,this.rules.garbageCap)
-    const level = spawnThreat || height >= SETTINGS.critical || (height > 0 && effective >= VISIBLE) ? 2 :
-      height >= SETTINGS.early || (height > 0 && effective >= SETTINGS.critical) ? 1 : 0
+    const spawnThreat = height >= VISIBLE && !fits(this.board,this.previewSpawn())
+    const effective = Math.max(0,height-(this.zone.active ? this.zone.lines : 0)) +
+      Math.min(this.garbage.total,this.rules.garbageCap)
+    const level = spawnThreat || Math.max(height,effective) >= SETTINGS.critical ? 2 :
+      Math.max(height,effective) >= SETTINGS.early ? 1 : 0
     if (level && (level > this.danger || now >= this.warningAt)) {
       this.event(level === 2 ? 'critical' : 'danger')
       this.warningAt = now + SETTINGS.alarmTicks
@@ -217,25 +268,21 @@ export class Player {
     this.danger = level
   }
 
-  tick(input: Input, now: number) {
+  tick(input: Input, now: number, quarterLines?: number) {
     if (this.dead) return
     const zone = this.zone.step(this.rules)
     if (zone?.warning) this.event('zoneWarning')
-    else if (zone) {
-      this.event('zoneEnd',String(zone.lines))
-      if (zone.attack) this.event('zoneAttack')
-      this.send(zone.attack)
-    }
+    else if (zone) this.resolveZone(zone,true)
     this.horizontal(input)
     const previous = this.buffered
     this.buffered = []
     for (const entry of previous) {
       if (this.dead) return
-      if (entry.expires >= now && !this.special(entry.action,now)) this.buffered.push(entry)
+      if (entry.expires >= now && !this.special(entry.action,now,quarterLines)) this.buffered.push(entry)
     }
     for (const action of input.pressed) {
       if (this.dead) return
-      if (!this.special(action,now) && this.rules.buffer > 0 &&
+      if (!this.special(action,now,quarterLines) && this.rules.buffer > 0 &&
         !this.buffered.some(entry => entry.action === action)) {
         this.buffered.push({action,expires:now+ticks(this.rules.buffer)})
       }
@@ -259,6 +306,6 @@ export class Player {
         this.gravityMove(cells)
       }
     }
-    if (!fits(this.board,this.active,0,1) && ++this.lockTimer >= ticks(this.rules.lock)) this.lock(now)
+    if (!fits(this.board,this.active,0,1) && ++this.lockTimer >= ticks(this.rules.lock)) this.lock(now,quarterLines)
   }
 }

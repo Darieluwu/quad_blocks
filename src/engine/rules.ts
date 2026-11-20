@@ -1,10 +1,16 @@
 export const HZ = 60
+export const RANDOM_TARGET_TICKS = 10 * HZ
 export const WIDTH = 10
 export const VISIBLE = 20
 export const HIDDEN = 4
 export const HEIGHT = VISIBLE + HIDDEN
 export const NEXT = 5
 export const PLAYERS = 4
+export const ZONE_PHASES = [
+  {at:0,lines:6},
+  {at:24,lines:8},
+  {at:60,lines:10},
+] as const
 
 export const GENERATORS = ['bag7', 'random', 'history', 'bag14'] as const
 export const TARGETS = ['manual', 'random', 'counter'] as const
@@ -20,12 +26,12 @@ export const DEFAULT_RULES = {
   gravity: 1, progression: 0.15, das: 130, arr: 32, soft: 32, lock: 500,
   resets: 15, buffer: 100, floorKicks: true, target: 'manual' as TargetMode,
   garbageDelay: 650, garbageCap: 8, zone: true, zoneSeconds: 12,
-  charge: 12.5, zoneMinimum: 25, extraSpins: true, attack: ATTACK,
+  zoneQuarterLines: 0, zoneMinimum: 25, extraSpins: true, attack: ATTACK,
 }
 export type Rules = typeof DEFAULT_RULES
 export const CASUAL_RULES: Rules = {
   ...DEFAULT_RULES, gravity: 0.65, progression: 0.05, lock: 700,
-  garbageDelay: 950, garbageCap: 5, charge: 18, zoneSeconds: 15,
+  garbageDelay: 950, garbageCap: 5, zoneSeconds: 15,
 }
 export const SETTINGS = {early: 14, critical: 18, alarmTicks: 210, warningTicks: 120,
   axis: 0.58, countdown: 180, effectTicks: 100, gravityMax: 120, catchupTicks: 8}

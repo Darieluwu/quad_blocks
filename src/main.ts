@@ -1,22 +1,26 @@
 import './style.css'
-import { Match } from './engine/match'
-import { HZ, SETTINGS } from './engine/rules'
-import { ACTIONS, type Action } from './engine/player'
-import { Inputs, automaticPadMap, conflict, defaultMap, label, padBindings, pressedButtons } from './input'
+import { Match, teamForSlot, type Participant } from './engine/match'
+import { BlitzMatch } from './engine/blitz'
+import { HZ, PLAYERS, SETTINGS } from './engine/rules'
+import { ACTIONS, NO_INPUT, type Action } from './engine/player'
+import { botLevel } from './engine/bot'
+import { Inputs, automaticPadMap, conflict, defaultMap, keyboardClashes, label, padBindings, pressedButtons } from './input'
 import { Sound } from './audio'
 import { mountArena } from './render'
-import { ATTACK_LABELS, NUMBER_RULES, freshRules, loadSettings, saveSettings, type Mix, type Profile } from './settings'
-import { configuration, controls, credits, diagnostic, diagnosticsPage, escape, footer, header, home, icon, lobby, paintHome } from './menu'
+import { ATTACK_LABELS, BLITZ_NUMBERS, NUMBER_RULES, freshRules, loadSettings, saveSettings, type Mix, type Profile } from './settings'
+import { configuration, controls, credits, diagnostic, diagnosticsPage, escape, footer, header, home, icon, lobby, modeName, paintHome, teamName, type Mode } from './menu'
 
 type Page = 'home'|'lobby'|'settings'|'controls'|'diag'|'credits'|'game'
 const app = document.querySelector<HTMLElement>('#app')!
 const settings = loadSettings()
 const ready = settings.slots.map(() => false)
 let page: Page = 'home'
+let mode: Mode = 'versus'
 let returnPage: 'home'|'lobby' = 'home'
 let controlPlayer = 0
 let controlType: 'keys'|'pad' = 'keys'
 let status = ''
+let lobbyIssue = ''
 let match: Match | null = null
 let arena: ReturnType<typeof mountArena> | null = null
 let phase: 'countdown'|'live'|'paused'|'results' = 'countdown'
@@ -25,7 +29,8 @@ let resumePhase: 'live'|'countdown' = 'countdown'
 let pauseReason = ''
 let overlayState = ''
 const audio = new Sound(settings.audio)
-const inputs = new Inputs(settings.slots,() => page === 'game' && phase !== 'results')
+const isHuman = (i: number) => !settings.controllers[i].bot
+const inputs = new Inputs(settings.slots,() => page === 'game' && phase !== 'results',isHuman)
 inputs.onWake = () => audio.wake()
 inputs.onBlur = () => { if (page === 'game') pause('La ventana perdió el foco.') }
 document.addEventListener('pointerdown', () => audio.wake())
@@ -35,6 +40,29 @@ document.addEventListener('visibilitychange', () => {
 })
 
 const store = () => { saveSettings(settings) }
+function lobbyRoster(): Participant[] {
+  return ready.flatMap((included,slot) => {
+    if (!included) return []
+    const {bot,level} = settings.controllers[slot]
+    return [{slot,level:bot ? level : undefined,team:mode!=='versus' ? teamForSlot(slot) : undefined}]
+  })
+}
+const disconnected = (roster: readonly Participant[]) => inputs.missing.filter(slot =>
+  roster.some(p=>p.slot===slot && p.level===undefined))
+function canStart() {
+  const roster = lobbyRoster()
+  return roster.length >= (mode!=='versus' ? PLAYERS : 2) && !disconnected(roster).length &&
+    roster.every(({slot})=>!isHuman(slot) || settings.slots[slot].device || !keyboardClashes(settings.slots,slot,isHuman).length)
+}
+function keyboardIssue(i: number) {
+  const clashes = keyboardClashes(settings.slots,i,isHuman)
+  return clashes.length ? 'Reasigna estas teclas en Controles antes de usar el teclado en J'+(i+1)+': '+clashes.join(', ')+'.' : ''
+}
+function releaseBotReservation(device: Gamepad) {
+  settings.slots.forEach((slot,i) => {
+    if (settings.controllers[i].bot && slot.device?.id===device.id && slot.device.index===device.index) slot.device = null
+  })
+}
 function muteButton() {
   const button = app.querySelector<HTMLButtonElement>('.audio-toggle')
   if (!button) return
@@ -48,7 +76,7 @@ function muteButton() {
 
 function render() {
   app.classList.toggle('reduced',settings.reduced)
-  const body = page === 'home' ? home(settings.profile) : page === 'lobby' ? lobby(settings,inputs,ready) :
+  const body = page === 'home' ? home(settings.profile) : page === 'lobby' ? lobby(settings,inputs,ready,mode,canStart(),lobbyIssue) :
     page === 'settings' ? configuration(settings,returnPage) : page === 'controls' ?
       controls(settings,inputs,controlPlayer,controlType,status,returnPage) : page === 'diag' ?
       diagnosticsPage(diagnostic(inputs,settings),returnPage) : credits()
@@ -62,31 +90,35 @@ function go(next: Page) {
     if (page === 'lobby') returnPage = 'lobby'
     else if (page === 'home' || page === 'credits') returnPage = 'home'
   }
-  if (page === 'game') { match = null; arena = null; inputs.clear() }
+  if (page === 'game') { audio.stopMusic(); match = null; arena = null; inputs.clear() }
   page = next
   inputs.capture = null
   inputs.pairing = null
   status = ''
+  lobbyIssue = ''
   render()
 }
 
-function start() {
+function start(roster: readonly Participant[]) {
   audio.wake()
   const seed = settings.rules.seed.trim() ||
     Array.from(crypto.getRandomValues(new Uint32Array(2)),value => value.toString(36)).join('-')
-  match = new Match(structuredClone(settings.rules),seed)
+  const rules = structuredClone(settings.rules)
+  match = mode==='blitz' ? new BlitzMatch(rules,seed,roster,{...settings.blitz}) : new Match(rules,seed,roster)
+  if (mode==='blitz') audio.startBlitzMusic()
+  const format = mode==='blitz' ? 'BLITZ' : match.teams ? '2v2' : roster.length===PLAYERS ? 'VS4' : roster.map(()=>1).join('v')
   page = 'game'
   phase = 'countdown'
   countdown = SETTINGS.countdown
   overlayState = ''
   inputs.clear()
-  app.innerHTML = `<header class="bar game-bar"><div class="bar-inner">
+  app.innerHTML = `<header class="bar game-bar ${mode==='blitz'?'game-bar-blitz':''}"><div class="bar-inner">
     <button class="brand" data-do="pause" aria-label="Pausar partida"><span class="brand-icon">${icon('logo')}</span><span>QUAD<span>BLOCKS</span></span></button>
-    <div class="game-info"><strong>VS4</strong><span>TODOS CONTRA TODOS</span><output id="elapsed">00:00</output></div>
+    <div class="game-info"><strong>${format}</strong><span>${modeName(mode)}</span>${mode==='blitz'?'':'<output id="elapsed">00:00</output>'}</div>
     <div class="game-buttons"><button class="icon-button audio-toggle" data-do="mute"></button><button class="secondary" data-do="pause">${icon('pause')} Pausa</button></div>
-  </div></header><main class="game"><div id="arena"></div><div id="overlay" aria-live="polite"></div>
-    <div class="match-footer"><span>Semilla <b>${escape(seed)}</b></span><span id="metrics"></span><span>${escape(settings.profile)} · VS4</span></div></main>`
-  arena = mountArena(document.querySelector<HTMLElement>('#arena')!)
+  </div></header><main class="game ${mode==='blitz'?'game-blitz':''}"><div id="arena"></div><div id="overlay" aria-live="polite"></div>
+    <div class="match-footer"><span>Semilla <b>${escape(seed)}</b></span><span id="metrics"></span><span>${escape(settings.profile)} · ${modeName(mode)}</span></div></main>`
+  arena = mountArena(document.querySelector<HTMLElement>('#arena')!,roster,match instanceof BlitzMatch)
   arena.draw(match,settings.slots)
   muteButton()
   drawOverlay()
@@ -96,13 +128,15 @@ function pause(reason = '') {
   if (phase !== 'live' && phase !== 'countdown') return
   resumePhase = phase
   phase = 'paused'
+  audio.pauseMusic()
   pauseReason = reason
   inputs.clear()
   drawOverlay()
 }
 function resume() {
-  if (phase !== 'paused' || inputs.missing.length) return
+  if (phase !== 'paused' || !match || disconnected(match.roster).length) return
   phase = resumePhase
+  if (match instanceof BlitzMatch) audio.resumeMusic()
   inputs.clear()
   drawOverlay()
 }
@@ -110,7 +144,7 @@ function resume() {
 function drawOverlay() {
   if (!match) return
   const overlay = document.querySelector<HTMLElement>('#overlay')!
-  const missing = inputs.missing
+  const missing = disconnected(match.roster)
   const counter = Math.ceil(countdown/HZ)
   const key = [phase,phase==='countdown'?counter:'',missing.join(',')].join('|')
   if (key === overlayState) return
@@ -124,19 +158,28 @@ function drawOverlay() {
   }
   overlay.className = 'overlay'
   if (phase === 'paused') {
-    overlay.innerHTML = `<section class="modal"><div class="overline"><i></i> VS4</div><h2>Partida en pausa</h2>
-      <p>${missing.length ? 'Mando desconectado · '+missing.map(i=>escape(settings.slots[i].name)).join(', ')+'. Reconecta para continuar.' : escape(pauseReason || 'Los cuatro tableros están en pausa.')}</p>
+    overlay.innerHTML = `<section class="modal"><div class="overline"><i></i> ${modeName(mode)}</div><h2>Partida en pausa</h2>
+      <p>${missing.length ? 'Mando desconectado · '+missing.map(i=>escape(settings.slots[i].name)).join(', ')+'. Reconecta para continuar.' : escape(pauseReason || 'Los tableros están en pausa.')}</p>
       <div class="modal-actions"><button class="primary" data-do="resume" ${missing.length?'disabled':''}>Continuar</button><button class="secondary" data-do="rematch" ${missing.length?'disabled':''}>Reiniciar</button><button class="secondary" data-page="lobby">Volver a la sala</button></div></section>`
     return
   }
-  const winner = match.winner
+  const currentMatch = match
+  const winner = currentMatch.winner
+  const team = currentMatch.winningTeam
+  const title = team!==null ? teamName(team)+' gana' : winner===null ? 'Empate' :
+    escape(settings.slots[currentMatch.roster[winner].slot].name)+' gana'
   let rank = 1
-  const rows = match.ranking().flatMap(group => {
-    const current = rank
+  const rows = currentMatch.ranking().flatMap((group,index) => {
+    const current = currentMatch.teams ? index+1 : rank
     rank += group.length
-    return group.map(i => `<li><b>${current}</b><span>${escape(settings.slots[i].name)}</span><span>${match!.players[i].stats.lines} L · ${match!.players[i].stats.sent} enviadas</span></li>`)
+    return group.map(i => {
+      const {slot,level,team} = currentMatch.roster[i]
+      const {lines,sent} = currentMatch.players[i].stats
+      const type = [team===undefined ? '' : teamName(team),level===undefined ? '' : 'IA '+level].filter(Boolean)
+      return `<li><b>${current}</b><span>${escape(settings.slots[slot].name)}${type.length ? `<small>${type.join(' · ')}</small>` : ''}</span><span>${lines} L · ${sent} enviadas</span></li>`
+    })
   }).join('')
-  overlay.innerHTML = `<section class="modal"><div class="overline"><i></i> RESULTADOS VS4</div><h2>${winner===null?'Empate':escape(settings.slots[winner].name)+' gana'}</h2>
+  overlay.innerHTML = `<section class="modal"><div class="overline"><i></i> RESULTADOS · ${modeName(mode)}</div><h2>${title}</h2>
     <ol class="ranking">${rows}</ol><div class="modal-actions"><button class="primary" data-do="rematch" ${missing.length?'disabled':''}>Revancha</button><button class="secondary" data-page="lobby">Volver a la sala</button></div></section>`
 }
 
@@ -144,8 +187,18 @@ app.addEventListener('click',event => {
   const button = (event.target as HTMLElement).closest<HTMLButtonElement>('button')
   if (!button || button.disabled) return
   const {page:next,do:action,ready:index,controlPlayer:player,controlType:type,action:bind} = button.dataset
-  if (next) { go(next as Page); return }
-  if (index !== undefined) { ready[Number(index)] = !ready[Number(index)]; render(); return }
+  if (next) {
+    if (button.dataset.mode==='teams' || button.dataset.mode==='versus' || button.dataset.mode==='blitz') mode = button.dataset.mode
+    go(next as Page)
+    return
+  }
+  if (index !== undefined) {
+    const i = Number(index)
+    lobbyIssue = !ready[i] && isHuman(i) && !settings.slots[i].device ? keyboardIssue(i) : ''
+    if (!lobbyIssue) ready[i] = !ready[i]
+    render()
+    return
+  }
   if (player !== undefined || type) {
     if (player !== undefined) controlPlayer = Number(player)
     if (type) controlType = type as typeof controlType
@@ -164,7 +217,7 @@ app.addEventListener('click',event => {
     inputs.pairing = null
     status = mode === 'pad' ? 'Pulsa un botón o mueve un eje del mando.' : 'Pulsa la nueva tecla. Esc cancela.'
     inputs.capture = {player:i,type:mode,baseline:new Set(device ? padBindings(device) : []),done(value) {
-      const duplicate = conflict(settings.slots,i,mode,binding,value)
+      const duplicate = conflict(settings.slots,i,mode,binding,value,isHuman)
       if (duplicate) status = 'Conflicto: '+label(value)+' ya está asignado a '+duplicate+'.'
       else {
         settings.slots[i][mode][binding] = value
@@ -176,7 +229,7 @@ app.addEventListener('click',event => {
     render()
     return
   }
-  if (action === 'start' && ready.every(Boolean) && !inputs.missing.length) start()
+  if (action === 'start' && canStart()) start(lobbyRoster())
   if (action === 'pair') {
     const i = controlPlayer
     inputs.capture = null
@@ -188,6 +241,7 @@ app.addEventListener('click',event => {
         render()
         return false
       }
+      releaseBotReservation(device)
       settings.slots[i].device = {index:device.index,id:device.id}
       settings.slots[i].pad = automaticPadMap(device)
       inputs.assigned[i] = device
@@ -203,6 +257,8 @@ app.addEventListener('click',event => {
     render()
   }
   if (action === 'keyboard') {
+    const issue = keyboardIssue(controlPlayer)
+    if (issue) { controlType = 'keys'; status = issue; render(); return }
     settings.slots[controlPlayer].device = null
     inputs.assigned[controlPlayer] = null
     ready[controlPlayer] = false
@@ -220,7 +276,7 @@ app.addEventListener('click',event => {
     const copy = settings.slots.map((slot,i) => i === controlPlayer ? {...slot,[controlType]:defaults} : slot)
     const clashes = ACTIONS.flatMap(a => {
       if (!defaults[a]) return []
-      const clash = conflict(copy,controlPlayer,controlType,a,defaults[a])
+      const clash = conflict(copy,controlPlayer,controlType,a,defaults[a],isHuman)
       return clash ? [label(defaults[a])+' → '+clash] : []
     })
     if (clashes.length) status = 'Libera las teclas ocupadas para restaurar: '+clashes.join(', ')+'.'
@@ -235,7 +291,7 @@ app.addEventListener('click',event => {
   if (action === 'cancel') cancelCapture()
   if (action === 'pause') pause()
   if (action === 'resume') resume()
-  if (action === 'rematch' && !inputs.missing.length) start()
+  if (action === 'rematch' && match && !disconnected(match.roster).length) start(match.roster)
 })
 
 const storeResult = (success: string) => saveSettings(settings) ? success : 'Aplicado en esta sesión. El navegador no permitió guardar los cambios.'
@@ -267,7 +323,34 @@ app.addEventListener('input',event => {
 })
 app.addEventListener('change',event => {
   const el = event.target as HTMLInputElement | HTMLSelectElement
-  const {device,rule,view,attack} = el.dataset
+  const {device,rule,view,attack,controller,level} = el.dataset
+  const blitz = el.dataset.blitz
+  if (blitz && el instanceof HTMLInputElement) {
+    if (blitz==='zone' || blitz==='effects') settings.blitz[blitz] = el.checked
+    else if (blitz in BLITZ_NUMBERS) {
+      const key = blitz as keyof typeof BLITZ_NUMBERS
+      const [,min,max] = BLITZ_NUMBERS[key]
+      const value = Number.isFinite(el.valueAsNumber) ? Math.round(el.valueAsNumber) : settings.blitz[key]
+      settings.blitz[key] = Math.min(max,Math.max(min,value))
+      el.value = String(settings.blitz[key])
+    }
+    store()
+  }
+  if (controller!==undefined) {
+    const i = Number(controller)
+    const bot = el.value==='bot'
+    lobbyIssue = !bot && !settings.slots[i].device ? keyboardIssue(i) : ''
+    if (lobbyIssue) { render(); return }
+    settings.controllers[i].bot = bot
+    ready[i] = bot
+    inputs.poll()
+    store(); render()
+    app.querySelector<HTMLSelectElement>(`[data-controller="${i}"]`)?.focus()
+  }
+  if (level!==undefined) {
+    settings.controllers[Number(level)].level = botLevel(Number(el.value))
+    store()
+  }
   if (el.id === 'profile') {
     settings.profile = el.value as Profile
     if (settings.profile !== 'Personalizado') settings.rules = freshRules(settings.profile)
@@ -276,7 +359,12 @@ app.addEventListener('change',event => {
   if (device !== undefined && el.value !== 'missing') {
     const i = Number(device)
     const pad = inputs.devices.find(p => p.index === Number(el.value) && el.value !== '')
-    if (pad && settings.slots[i].device?.id !== pad.id) settings.slots[i].pad = automaticPadMap(pad)
+    lobbyIssue = !pad ? keyboardIssue(i) : ''
+    if (lobbyIssue) { render(); return }
+    if (pad) {
+      releaseBotReservation(pad)
+      if (settings.slots[i].device?.id !== pad.id) settings.slots[i].pad = automaticPadMap(pad)
+    }
     settings.slots[i].device = pad ? {index:pad.index,id:pad.id} : null
     ready[i] = false
     inputs.assigned[i] = null
@@ -297,7 +385,8 @@ app.addEventListener('change',event => {
     else if (rule === 'target') settings.rules.target = el.value as typeof settings.rules.target
     else if (rule === 'generator') settings.rules.generator = el.value as typeof settings.rules.generator
     settings.profile = 'Personalizado'
-    app.querySelector<HTMLSelectElement>('#profile')!.value = settings.profile
+    const profile = app.querySelector<HTMLSelectElement>('#profile')
+    if (profile) profile.value = settings.profile
     store()
   }
   if (attack && el instanceof HTMLInputElement && attack in ATTACK_LABELS) {
@@ -330,11 +419,12 @@ function frame(now: number) {
   previous = now
   frames++
   inputs.poll()
-  if (page === 'game' && inputs.missing.length) pause()
+  if (page === 'game' && match && disconnected(match.roster).length) pause()
   while (accumulator >= frameStep) {
     accumulator -= frameStep
-    const sample = inputs.consume()
+    const physical = inputs.consume()
     if (!match || page !== 'game' || phase === 'results') continue
+    const sample = match.roster.map(p=>p.level===undefined ? physical[p.slot] : NO_INPUT)
     if (sample.some(input => input.pressed.includes('pause'))) {
       if (phase === 'paused') resume()
       else pause()
@@ -346,25 +436,35 @@ function frame(now: number) {
       continue
     }
     match.tick(sample)
+    const activeMatch = match
+    const activeArena = arena
     steps++
     match.players.forEach((p,i) => {
       if (p.zone.active && p.zone.remaining % (HZ*2) === 0 && p.zone.remaining !== p.zone.duration) p.event('zoneLoop')
       for (const event of p.events) {
-        arena?.note(i,event.type,event.detail,match!.now)
-        audio.play(event,i)
+        activeArena?.note(i,event.type,event.detail,activeMatch.now)
+        if (activeArena && event.type==='incoming' && event.source!==undefined) {
+          activeArena.attack(event.source,i,() => {
+            if (match!==activeMatch || arena!==activeArena || p.dead) return
+            activeArena.note(i,'impact',undefined,activeMatch.now)
+            audio.play(event,activeMatch.roster[i].slot)
+          })
+        } else if (!(activeMatch instanceof BlitzMatch && event.type==='eliminated')) audio.play(event,activeMatch.roster[i].slot)
       }
       p.events.length = 0
     })
-    if (match.finished) phase = 'results'
+    if (match.finished) {
+      audio.stopMusic()
+      phase = 'results'
+    }
   }
   if (match && page === 'game') {
     arena?.draw(match,settings.slots)
     drawOverlay()
     const seconds = Math.floor(match.now/HZ)
     const time = String(Math.floor(seconds/60)).padStart(2,'0')+':'+String(seconds%60).padStart(2,'0')
-    if (time !== clockText || document.querySelector('#elapsed')!.textContent !== time) {
-      document.querySelector('#elapsed')!.textContent = clockText = time
-    }
+    const elapsed = document.querySelector('#elapsed')
+    if (elapsed && (time!==clockText || elapsed.textContent!==time)) elapsed.textContent = clockText = time
   }
   if (now-lastScan >= 250) {
     const elapsed = now-lastScan
@@ -375,7 +475,7 @@ function frame(now: number) {
       if (fingerprint !== connected && !(document.activeElement instanceof HTMLInputElement) &&
         !(document.activeElement instanceof HTMLSelectElement)) {
         fingerprint = connected
-        if (page === 'lobby') for (const i of inputs.missing) ready[i] = false
+        if (page === 'lobby') for (const i of disconnected(lobbyRoster())) ready[i] = false
         if (page === 'controls' && inputs.capture?.type === 'pad' && !inputs.assigned[controlPlayer]) {
           inputs.capture = null; status = 'Mando desconectado. Reconéctalo para continuar.'
         }

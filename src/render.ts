@@ -1,21 +1,30 @@
 import { SHAPES, landing } from './engine/pieces'
 import type { Cell } from './engine/pieces'
-import { HIDDEN, VISIBLE, WIDTH, HZ, SETTINGS } from './engine/rules'
+import { HEIGHT, HIDDEN, VISIBLE, WIDTH, HZ, SETTINGS } from './engine/rules'
+import { garbageProjection } from './engine/garbage'
 import type { Player } from './engine/player'
-import type { Match } from './engine/match'
+import type { Match, Participant } from './engine/match'
+import { BlitzMatch } from './engine/blitz'
+import { zoneTitle } from './engine/zone'
 import type { Slot } from './input'
 
 export const COLORS = ['#ff5266','#59aaff','#58e39a','#be86fa']
 const PIECES: Record<Exclude<Cell,null>,string> = {
   I:'#45d8ec',J:'#5783fc',L:'#ffad51',O:'#f5dc58',S:'#57da91',T:'#b27cfa',Z:'#f75d73',G:'#76869b',
+  zone:'#ffda78',
 }
 const WORDS: Record<string,string> = {
   single:'SINGLE',double:'DOUBLE',triple:'TRIPLE',quad:'TETRIS',mini:'T-SPIN MINI',tZero:'T-SPIN',
   tSingle:'T-SPIN SINGLE',tDouble:'T-SPIN DOUBLE',tTriple:'T-SPIN TRIPLE',
   spinL:'L-SPIN',spinJ:'J-SPIN',spinS:'S-SPIN',spinZ:'Z-SPIN',backToBack:'BACK-TO-BACK',
   perfect:'PERFECT CLEAR',zoneStart:'ZONE ACTIVADA',zoneEnd:'ZONE COMPLETADA',
+  blitzRevived:'¡COMPAÑERO REVIVIDO!',blitzDown:'JUGADOR CAÍDO',blitzProtected:'BASURA CANCELADA',
+  blitzGuard:'DEFENSA DE EQUIPO',blitzChallenge:'DESAFÍO COMPLETADO',
 }
 const PRIORITY: Record<string,number> = {perfect:5,zoneStart:6,zoneEnd:6,backToBack:1}
+const ANIMATIONS: Record<string,string> = {
+  zoneStart:'zone-in',zoneEnd:'zone-out',impact:'attack-in',receive:'attack-land',send:'attack-send',
+}
 const CELL = 26
 const by = <E extends HTMLElement>(root: ParentNode, selector: string) => root.querySelector<E>(selector)!
 
@@ -45,7 +54,7 @@ function preview(canvas: HTMLCanvasElement, kinds: Cell[]) {
   ctx.clearRect(0,0,canvas.width,canvas.height)
   const size = 12
   for (const [i,kind] of kinds.entries()) {
-    if (!kind || kind === 'G') continue
+    if (!kind || kind === 'G' || kind === 'zone') continue
     const shape = SHAPES[kind][0]
     const left = Math.min(...shape.map(([x]) => x))
     const right = Math.max(...shape.map(([x]) => x))
@@ -54,26 +63,58 @@ function preview(canvas: HTMLCanvasElement, kinds: Cell[]) {
   }
 }
 
-export function mountArena(root: HTMLElement) {
-  root.innerHTML = '<div class="arena-grid">'+COLORS.map((color,i) => `
-    <article class="player" data-player="${i}" style="--player:${color}">
-      <header class="player-head"><span class="player-tag">J${i+1}</span><h2></h2><span class="danger-label"></span></header>
+export function mountArena(root: HTMLElement, roster: readonly Participant[], blitz = false) {
+  const card = ({slot,level,team}:Participant) => `
+    <article class="player" data-player="${slot}" style="--player:${COLORS[slot]}">
+      <header class="player-head"><span class="player-tag">J${slot+1}</span><h2></h2>
+        ${team===undefined ? '' : `<span class="team-tag" data-team="${team}">Equipo ${team===0?'A':'B'}</span>`}
+        ${level===undefined ? '' : `<span class="bot-tag" title="Dificultad ${level}">IA ${level}</span>`}
+        <span class="zone-badge" hidden>ZONE</span>
+        ${blitz ? '<span class="blitz-state"></span>' : ''}
+        <span class="danger-label"></span></header>
+      <div class="combat-hud">
+        <div><span class="combat-label">ATACAS A</span><strong class="target"></strong></div>
+        <div><span class="combat-label">TE ATACAN</span><div class="attackers"></div></div>
+      </div>
       <div class="player-body">
         <div class="rail"><span>HOLD</span><canvas class="hold" width="58" height="38"></canvas><div class="garbage" aria-label="Basura pendiente"><div></div></div><strong class="incoming">0</strong></div>
-        <div class="well"><canvas width="${WIDTH*CELL}" height="${VISIBLE*CELL}" class="board" aria-label="Tablero del jugador ${i+1}"></canvas><div class="out">ELIMINADO</div></div>
-        <div class="rail"><span>NEXT</span><canvas class="next" width="58" height="180"></canvas><span class="target-label">OBJ.</span><strong class="target"></strong></div>
+        <div class="well">
+          <canvas width="${WIDTH*CELL}" height="${HEIGHT*CELL}" class="board" aria-label="Tablero del jugador ${slot+1}"></canvas>
+          <canvas width="${WIDTH*CELL}" height="${HEIGHT*CELL}" class="forecast" aria-hidden="true"></canvas>
+          <canvas width="${WIDTH*CELL}" height="${HEIGHT*CELL}" class="spawn-guide" aria-hidden="true"></canvas>
+          <div class="projection" hidden><strong></strong></div>
+          <div class="board-fx" aria-hidden="true"><span class="zone-burst"></span></div><span class="impact" hidden></span>
+          <div class="zone-result" hidden><small>ZONE COMPLETADA</small><strong></strong><span></span></div>
+          <div class="out">${blitz?'JUGADOR CAÍDO':'ELIMINADO'}</div></div>
+        <div class="rail"><span>NEXT</span><canvas class="next" width="58" height="180"></canvas><strong class="spawn-label" hidden></strong></div>
       </div>
       <div class="zone-label"><span>ZONE</span><strong></strong></div><div class="meter"><div></div></div>
       <div class="player-stats"><span class="lines"></span><span class="sent"></span></div>
       <div class="effect"></div>
-    </article>`).join('')+'</div>'
-  return new Arena(root)
+      ${blitz ? '<span class="reserve-sweat" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span class="blitz-entry" aria-hidden="true"></span>' : ''}
+    </article>`
+  const layout = blitz ? `<div class="blitz-clock" role="timer" aria-label="Segundos para el relevo"><strong></strong></div>
+    <div class="blitz-arena">${[0,1].map(team=>`<section class="blitz-team" data-side="${team}">
+      <header class="blitz-summary"><strong></strong><span></span><div class="blitz-rescue"></div></header>
+      <div class="blitz-stack">${roster.filter(p=>p.team===team).map(card).join('')}</div>
+    </section>`).join('')}</div>` :
+    '<div class="arena-grid" style="--boards:'+roster.length+'">'+roster.map(card).join('')+'</div>'
+  root.innerHTML = layout+'<div class="projectile-layer" aria-hidden="true"></div>'
+  return new Arena(root,roster)
 }
 
 class Arena {
   private views
-  constructor(root: HTMLElement) {
-    this.views = [...root.querySelectorAll<HTMLElement>('.player')].map(node => {
+  private layer: HTMLElement
+  private clock: HTMLElement|null
+  private teams: HTMLElement[]
+  private blitzKey = ''
+  constructor(root: HTMLElement, roster: readonly Participant[]) {
+    this.layer = by(root,'.projectile-layer')
+    this.clock = root.querySelector('.blitz-clock')
+    this.teams = [...root.querySelectorAll<HTMLElement>('.blitz-team')]
+    this.views = roster.map(({slot}) => {
+      const node = by(root,`[data-player="${slot}"]`)
       const canvas = by<HTMLCanvasElement>(node,'.board')
       const ctx = canvas.getContext('2d',{alpha:false})!
       const grid = document.createElement('canvas')
@@ -82,31 +123,104 @@ class Arena {
       const bg = grid.getContext('2d')!
       bg.fillStyle = '#0d121d'
       bg.fillRect(0,0,grid.width,grid.height)
+      bg.fillStyle = '#172339'
+      bg.fillRect(0,0,grid.width,HIDDEN*CELL)
       bg.strokeStyle = '#1c2637'
       bg.beginPath()
       for (let x = 1; x < WIDTH; x++) { bg.moveTo(x*CELL+0.5,0); bg.lineTo(x*CELL+0.5,grid.height) }
-      for (let y = 1; y < VISIBLE; y++) { bg.moveTo(0,y*CELL+0.5); bg.lineTo(grid.width,y*CELL+0.5) }
+      for (let y = 1; y < HEIGHT; y++) { bg.moveTo(0,y*CELL+0.5); bg.lineTo(grid.width,y*CELL+0.5) }
       bg.stroke()
+      bg.fillStyle = '#586b88'
+      bg.fillRect(0,HIDDEN*CELL,grid.width,1)
       const stack = document.createElement('canvas')
       stack.width = grid.width
       stack.height = grid.height
       return {node,ctx,grid,stack,stackCtx:stack.getContext('2d')!,revision:-1,signature:'',
         hold:by<HTMLCanvasElement>(node,'.hold'),next:by<HTMLCanvasElement>(node,'.next'),
-        heading:by(node,'h2'),warning:by(node,'.danger-label'),target:by(node,'.target'),
+        heading:by(node,'h2'),warning:by(node,'.danger-label'),target:by(node,'.target'),attackers:by(node,'.attackers'),
         incoming:by(node,'.incoming'),garbage:by(node,'.garbage div'),meter:by(node,'.meter div'),
         zone:by(node,'.zone-label strong'),lines:by(node,'.lines'),sent:by(node,'.sent'),effect:by(node,'.effect'),
+        forecast:by<HTMLCanvasElement>(node,'.forecast').getContext('2d')!,
+        marker:by(node,'.projection'),markerLabel:by(node,'.projection strong'),fx:by(node,'.board-fx'),
+        well:by(node,'.well'),zoneBadge:by(node,'.zone-badge'),
+        zoneResult:by(node,'.zone-result'),resultUntil:0,
+        guide:by<HTMLCanvasElement>(node,'.spawn-guide').getContext('2d')!,
+        guidance:by(node,'.spawn-label'),guideKey:'',player:null as Player|null,
+        impact:by(node,'.impact'),impactUntil:0,forecastKey:'',relationKey:'',
         flashUntil:0, priority:0, position:'', hud:''}
     })
   }
 
+  attack(from: number, to: number, arrive: () => void) {
+    if (this.layer.closest('.reduced') || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      arrive()
+      return
+    }
+    const origin = this.views[from]
+    const victim = this.views[to]
+    const bounds = this.layer.getBoundingClientRect()
+    const start = origin.well.getBoundingClientRect()
+    const end = victim.well.getBoundingClientRect()
+    const direction = Math.sign(end.left-start.left) || 1
+    const x = (direction>0 ? start.right : start.left)-bounds.left
+    const y = start.top+start.height*.30-bounds.top
+    const dx = (direction>0 ? end.left : end.right)-bounds.left-x
+    const dy = end.top+end.height*.42-bounds.top-y
+    const arc = Math.min(56,Math.abs(dx)*.17)
+    const projectile = document.createElement('span')
+    projectile.className = 'projectile'
+    projectile.dataset.from = origin.node.dataset.player
+    projectile.dataset.to = victim.node.dataset.player
+    projectile.style.left = x+'px'
+    projectile.style.top = y+'px'
+    projectile.style.setProperty('--shot',COLORS[Number(origin.node.dataset.player)])
+    projectile.style.setProperty('--bearing',Math.atan2(dy,dx)+'rad')
+    this.layer.append(projectile)
+    const flight = projectile.animate([
+      {transform:'translate(0,0) scale(.65)',opacity:.48},
+      {transform:`translate(${dx*.48}px,${dy*.48-arc}px)`,opacity:1,offset:.46},
+      {transform:`translate(${dx}px,${dy}px) scale(1.15)`,opacity:1},
+    ],{duration:Math.min(490,310+Math.abs(dx)*.12),easing:'ease-out'})
+    flight.onfinish = () => {
+      projectile.remove()
+      if (this.layer.isConnected) arrive()
+    }
+  }
+
   note(i: number, type: string, detail: string|undefined, now: number) {
-    if (!WORDS[type]) return
     const view = this.views[i]
+    const animation = ANIMATIONS[type]
+    if (animation) {
+      const group = animation.startsWith('zone') ? ['zone-in','zone-out'] : ['attack-in','attack-land','attack-send']
+      view.fx.classList.remove(...group)
+      requestAnimationFrame(() => {
+        view.fx.classList.remove(...group)
+        view.fx.classList.add(animation)
+      })
+    }
+    if (type==='impact' || type==='receive') {
+      view.well.classList.remove('hit')
+      requestAnimationFrame(() => view.well.classList.add('hit'))
+    }
+    if (type==='incoming' || type==='receive') {
+      view.impact.hidden = false
+      view.impact.textContent = type==='incoming' ? '+'+detail+' ENTRANTES' : '+'+detail+' INCORPORADAS'
+      view.impactUntil = now+SETTINGS.effectTicks
+    }
+    if (type==='zoneEnd') {
+      const lines = Number(detail)
+      view.zoneResult.hidden = false
+      by(view.zoneResult,'strong').textContent = zoneTitle(lines)
+      by(view.zoneResult,'span').textContent = lines+(lines===1?' línea':' líneas')
+      view.resultUntil = performance.now()+3000
+      return
+    }
+    if (!WORDS[type]) return
     const priority = PRIORITY[type] ?? 2
     if (now < view.flashUntil && priority < view.priority) return
     view.priority = priority
     view.flashUntil = now+SETTINGS.effectTicks
-    view.effect.textContent = type === 'zoneEnd' ? WORDS[type]+' · '+detail+' L' : WORDS[type]
+    view.effect.textContent = WORDS[type]
     view.effect.classList.remove('flash')
     requestAnimationFrame(() => { if (view.effect.textContent) view.effect.classList.add('flash') })
   }
@@ -119,8 +233,8 @@ class Arena {
     if (view.revision !== p.revision) {
       view.revision = p.revision
       view.stackCtx.drawImage(view.grid,0,0)
-      for (let y = 0; y < VISIBLE; y++) for (let x = 0; x < WIDTH; x++) {
-        const kind = p.board[y+HIDDEN][x]
+      for (let y = 0; y < HEIGHT; y++) for (let x = 0; x < WIDTH; x++) {
+        const kind = p.board[y][x]
         if (kind) square(view.stackCtx,x*CELL,y*CELL,CELL,PIECES[kind])
       }
     }
@@ -129,16 +243,169 @@ class Arena {
     const drop = landing(p.board,piece)
     for (const [x,y] of SHAPES[piece.kind][piece.rotation]) {
       const px = (piece.x+x)*CELL
-      const py = (piece.y+y-HIDDEN)*CELL
+      const py = (piece.y+y)*CELL
       if (drop) square(view.ctx,px,py+drop*CELL,CELL,PIECES[piece.kind],true)
       square(view.ctx,px,py,CELL,PIECES[piece.kind])
     }
   }
 
+  private drawProjection(view: Arena['views'][number], p: Player) {
+    const banked = p.zone.active ? p.zone.lines : 0
+    const holes = p.dead ? [] : p.garbage.preview(p.rules.garbageCap)
+    const key = holes.length ? [p.revision,banked,p.zone.active,...holes].join('|') : 'none'
+    if (view.forecastKey===key) return
+    view.forecastKey = key
+    const ctx = view.forecast
+    ctx.clearRect(0,0,ctx.canvas.width,ctx.canvas.height)
+    view.marker.hidden = !holes.length
+    if (!holes.length) return
+    const {top,height} = garbageProjection(p.board,banked,holes)
+    const row = Math.max(0,top)
+    view.marker.style.top = row/HEIGHT*100+'%'
+    view.marker.dataset.overflow = String(height>VISIBLE)
+    view.markerLabel.textContent = `+${holes.length} · ALTURA ${height}${p.zone.active?' AL SALIR':''}`
+    const color = height>=SETTINGS.critical ? '#ff5270' : '#ffb36b'
+    ctx.fillStyle = color
+    ctx.strokeStyle = color
+    for (let y=0;y<HEIGHT-banked;y++) {
+      const projected = y+banked-holes.length
+      if (projected<0 || projected>=HEIGHT) continue
+      ctx.globalAlpha = .46
+      for (let x=0;x<WIDTH;x++) {
+        if (p.board[y][x]) ctx.strokeRect(x*CELL+4,projected*CELL+4,CELL-8,CELL-8)
+      }
+    }
+    holes.forEach((hole,index) => {
+      const y = (HEIGHT-holes.length+index)*CELL
+      for (let x=0;x<WIDTH;x++) if (x!==hole) {
+        ctx.globalAlpha = .21
+        ctx.fillRect(x*CELL+1,y+1,CELL-2,CELL-2)
+        ctx.globalAlpha = .48
+        ctx.beginPath()
+        ctx.moveTo(x*CELL+5,y+CELL-5)
+        ctx.lineTo(x*CELL+CELL-5,y+5)
+        ctx.stroke()
+      }
+    })
+    ctx.globalAlpha = 1
+  }
+
+  private drawSpawnGuide(view: Arena['views'][number], p: Player) {
+    const kind = !p.dead && p.danger ? p.next[0] : undefined
+    const piece = kind ? p.previewSpawn(kind) : undefined
+    const key = piece ? [kind,p.revision,piece.y].join(':') : ''
+    if (view.guideKey===key) return
+    view.guideKey = key
+    const ctx = view.guide
+    ctx.clearRect(0,0,ctx.canvas.width,ctx.canvas.height)
+    view.guidance.hidden = !kind
+    if (!kind || !piece) return
+    view.guidance.textContent = 'APARICIÓN '+kind
+    view.guidance.title = 'Mantén libres las casillas marcadas para la siguiente pieza'
+    for (const [dx,dy] of SHAPES[kind][0]) {
+      const x = piece.x+dx
+      const y = piece.y+dy
+      const blocked = p.board[y]?.[x]!==null
+      ctx.strokeStyle = blocked ? '#ff526c' : '#ffec8c'
+      ctx.fillStyle = blocked ? '#ff003351' : '#ffe36c29'
+      ctx.lineWidth = 2
+      ctx.fillRect(x*CELL+2,y*CELL+2,CELL-4,CELL-4)
+      ctx.strokeRect(x*CELL+3,y*CELL+3,CELL-6,CELL-6)
+    }
+  }
+
+  private drawBlitz(match: BlitzMatch, slots: Slot[]) {
+    const clock = this.clock!
+    const seconds = Math.ceil(match.left/HZ)
+    const warning = match.canRotate && !match.transition && match.left<=match.warningTicks
+    const key = [seconds,warning,match.canRotate,!!match.transition,match.rotation,match.turn,...match.stances,
+      ...match.sides.flatMap(side=>[side.active,side.used,side.defended,match.now-side.revivedAt<3*HZ,
+        side.rescue?.stage,side.rescue?.done,
+        ...side.members.flatMap(i=>[match.players[i].dead,match.players[i].danger,match.players[i].garbage.total])])].join('|')
+    if (key===this.blitzKey) return
+    this.blitzKey = key
+    clock.hidden = !match.canRotate && !match.transition
+    clock.dataset.warning = String(warning)
+    clock.dataset.transition = match.transition ? match.rotation : ''
+    clock.dataset.effects = String(match.blitz.effects)
+    clock.dataset.beat = seconds%2 ? 'odd' : 'even'
+    clock.dataset.urgent = String(warning && seconds<=2)
+    clock.dataset.turn = String(match.turn)
+    by(clock,'strong').textContent = match.transition ? match.rotation==='emergency'?'¡RELEVO!':'¡CAMBIO!' :
+      match.canRotate ? String(seconds) : ''
+    for (const [team,side] of match.sides.entries()) {
+      const teamView = this.teams[team]
+      teamView.dataset.switch = String(!!match.transition && match.blitz.effects && side.swapped)
+      const status = by(teamView,'.blitz-summary')
+      const ally = side.members.find(i=>i!==side.active)!
+      const waiting = match.players[ally]
+      const revived = !waiting.dead && match.now-side.revivedAt<3*HZ
+      const name = slots[match.roster[ally].slot].name
+      const active = this.views[side.active]
+      const reserve = this.views[ally]
+      active.node.dataset.state = match.players[side.active].dead ? 'down' : 'active'
+      active.node.dataset.reserveDanger = 'false'
+      reserve.node.dataset.state = waiting.dead ? 'down' : revived ? 'revived' : 'reserve'
+      reserve.node.dataset.reserveDanger = String(!waiting.dead && waiting.danger>0)
+      teamView.dataset.reserveDanger = reserve.node.dataset.reserveDanger
+      by(active.node,'.blitz-state').textContent = match.players[side.active].dead ? 'CAÍDO' :
+        match.stances[side.active]==='defense' ? 'ACTIVO · DEFENSA' : 'ACTIVO · ATAQUE'
+      by(reserve.node,'.blitz-state').textContent = waiting.dead ? 'CAÍDO' : revived ? 'REVIVIDO' : 'EN ESPERA'
+      by(status,'strong').textContent = `Equipo ${team===0?'A':'B'} · ${match.blitz.revives-side.used} rescates`
+      status.children[1].textContent = name+(waiting.dead ? side.rescue?.stage===2 ? ' · REVIVIENDO' : ' · CAÍDO' :
+        revived?' · REVIVIDO':' · EN ESPERA')+
+        (waiting.danger && !waiting.dead ? ' · '+(waiting.danger===2?'ALARMA':'PELIGRO') : '')+
+        (waiting.garbage.total ? ' · +'+waiting.garbage.total+' pendientes' : '')
+      by(status,'.blitz-rescue').textContent = side.rescue && waiting.dead ?
+        `RESCATAR A ${name} · DESAFÍO ${side.rescue.stage}/2 · ${side.rescue.done}/${side.rescue.goal} ${side.rescue.stage===1?'TETRIS O T-SPIN':'LÍNEAS DE ATAQUE'} · REVIVE` :
+        revived ? '¡COMPAÑERO REVIVIDO! · Entra en el próximo relevo' :
+        waiting.dead ? 'ÚLTIMA OPORTUNIDAD · Rescates agotados' :
+        `Defensa del turno ${side.defended}/${match.blitz.defenseCap} · ${slots[match.roster[side.active].slot].name}`
+    }
+  }
+
+  private drawCombat(view: Arena['views'][number], i: number, match: Match, slots: Slot[]) {
+    const target = match.roster[match.targets[i]]?.slot
+    const aimed = match.targets.flatMap((to,from)=>to===i && !match.players[from].dead ? [from] : [])
+    const queued = new Map<number,number>()
+    for (const packet of match.players[i].garbage.queue) {
+      if (packet.source!==undefined) queued.set(packet.source,(queued.get(packet.source) ?? 0)+packet.lines)
+    }
+    const relation = [target,slots[target ?? -1]?.name,aimed.join(),JSON.stringify([...queued])].join('|')
+    if (view.relationKey===relation) return
+    view.relationKey = relation
+    view.target.textContent = target===undefined ? '—' : `J${target+1} · ${slots[target].name}`
+    view.target.style.color = target===undefined ? '' : COLORS[target]
+    view.target.title = target===undefined ? '' : slots[target].name
+    const attackers = [...new Set([...queued.keys(),...aimed])]
+    view.attackers.replaceChildren(...attackers.map(from=>{
+      const {slot} = match.roster[from]
+      const lines = queued.get(from) ?? 0
+      const chip = document.createElement('span')
+      chip.className = 'attacker'
+      chip.style.setProperty('--attacker',COLORS[slot])
+      chip.textContent = 'J'+(slot+1)+(lines ? ' +'+lines : '')
+      chip.title = slots[slot].name+(lines ? ' · '+lines+' líneas pendientes' : ' · te apunta')
+      chip.setAttribute('aria-label',chip.title)
+      return chip
+    }))
+    if (!attackers.length) view.attackers.textContent = '—'
+  }
+
   draw(match: Match, slots: Slot[]) {
+    if (match instanceof BlitzMatch) this.drawBlitz(match,slots)
     for (const [i,p] of match.players.entries()) {
       const view = this.views[i]
+      if (view.player!==p) {
+        view.player = p
+        view.position = view.forecastKey = view.guideKey = ''
+        view.revision = -1
+      }
       this.field(view,p)
+      this.drawProjection(view,p)
+      this.drawSpawnGuide(view,p)
+      this.drawCombat(view,i,match,slots)
+      if (!view.zoneResult.hidden && performance.now()>=view.resultUntil) view.zoneResult.hidden = true
       const signature = [p.hold,...p.next].join(',')
       if (view.signature !== signature) {
         view.signature = signature
@@ -146,20 +413,19 @@ class Arena {
         preview(view.next,p.next)
       }
       if (view.effect.textContent && match.now >= view.flashUntil) view.effect.textContent = ''
-      const target = match.targets[i]
+      if (!view.impact.hidden && (p.dead || match.now>=view.impactUntil)) view.impact.hidden = true
+      const slot = match.roster[i].slot
       const incoming = p.garbage.total
       const zoneProgress = p.zone.active ? p.zone.remaining/p.zone.duration*100 : p.zone.energy
-      const hud = [p.dead,p.danger,p.zone.active,zoneProgress,p.zone.lines,target,incoming,p.stats.lines,p.stats.sent,slots[i].name].join('|')
+      const hud = [p.dead,p.danger,p.zone.active,zoneProgress,p.zone.lines,incoming,p.stats.lines,p.stats.sent,slots[slot].name].join('|')
       if (view.hud === hud) continue
       view.hud = hud
-      view.heading.textContent = slots[i].name
+      view.heading.textContent = slots[slot].name
       view.node.classList.toggle('dead',p.dead)
       view.node.classList.toggle('zoned',p.zone.active && !p.dead)
+      view.zoneBadge.hidden = !p.zone.active || p.dead
       view.node.dataset.danger = String(p.dead ? 0 : p.danger)
-      view.warning.textContent = p.dead ? '' : p.danger === 2 ? 'CRÍTICO' : p.danger ? 'PELIGRO' : ''
-      view.target.textContent = target < 0 ? '—' : 'J'+(target+1)
-      view.target.style.color = COLORS[target] ?? ''
-      view.target.title = slots[target]?.name ?? ''
+      view.warning.textContent = p.dead ? '' : p.danger === 2 ? '¡ALARMA!' : p.danger ? 'PELIGRO' : ''
       view.incoming.textContent = String(incoming)
       view.garbage.style.height = Math.min(100,incoming*7)+'%'
       view.meter.style.width = zoneProgress+'%'
