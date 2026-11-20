@@ -117,7 +117,7 @@ export class Player {
   }
 
   send(lines: number) {
-    if (!lines || this.dead) return
+    if (!Number.isSafeInteger(lines) || lines <= 0 || this.dead) return
     const surviving = this.garbage.cancel(lines)
     const cancelled = lines - surviving
     if (cancelled) {
@@ -206,7 +206,7 @@ export class Player {
   updateDanger(now: number) {
     const row = this.board.findIndex(line => line.some(Boolean))
     const height = row < 0 ? 0 : HEIGHT - row
-    const spawnThreat = this.next.slice(0,1).some(kind => !fits(this.board,spawnPiece(kind)))
+    const spawnThreat = height >= VISIBLE && !fits(this.board,spawnPiece(this.next[0]))
     const effective = height + Math.min(this.garbage.total,this.rules.garbageCap)
     const level = spawnThreat || height >= SETTINGS.critical || (height > 0 && effective >= VISIBLE) ? 2 :
       height >= SETTINGS.early || (height > 0 && effective >= SETTINGS.critical) ? 1 : 0

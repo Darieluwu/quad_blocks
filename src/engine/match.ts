@@ -78,6 +78,7 @@ export class Match {
       p.outbox = 0
       if (p.dead || !lines) continue
       const to = this.targetFor(i,true)
+      if (to >= 0 && to !== this.targets[i]) p.event('target')
       this.targets[i] = to
       if (to < 0) continue
       deliveries.push({from:i,to,lines,hole:Math.floor(this.random()*WIDTH)})

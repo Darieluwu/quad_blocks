@@ -29,7 +29,8 @@ export class Zone {
   step(rules: Rules) {
     if (!this.active) return null
     this.remaining--
-    if (this.remaining === SETTINGS.warningTicks) return {warning:true as const}
+    const warningAt = Math.max(1, Math.min(SETTINGS.warningTicks, Math.floor(this.duration / 3)))
+    if (this.remaining === warningAt) return {warning:true as const}
     if (this.remaining) return null
     return {warning:false as const, lines:this.lines,
       attack:this.attack + (this.lines ? this.lines + rules.attack.zoneBonus : 0)}

@@ -27,6 +27,7 @@ export const defaultSlot = (i: number): Slot => ({
 })
 
 export function label(binding: string) {
+  if (!binding) return 'Sin asignar'
   return binding.replace(/^Key|^Digit/,'').replace(/^Numpad/,'Num ')
     .replace(/^ArrowLeft$/,'←').replace(/^ArrowRight$/,'→').replace(/^ArrowUp$/,'↑').replace(/^ArrowDown$/,'↓')
     .replace(/^Period$/,'.').replace(/^Comma$/,',').replace(/^Slash$/,'/').replace(/^Semicolon$/,';')
@@ -75,6 +76,26 @@ export function padBindings(device: Gamepad) {
   return bindings
 }
 
+export function automaticPadMap(device: Pick<Gamepad,'mapping'|'buttons'|'axes'>): MapFor {
+  if (device.mapping === 'standard') return makeMap(pad)
+  const directions = device.buttons.length >= 16 ? pad.slice(0,4) :
+    device.axes.length >= 2 ? ['A0-','A0+','A1+','A1-'] : pad.slice(0,4)
+  const preferred = [...directions,...pad.slice(4)]
+  const supported = (value: string) => value.startsWith('A') ||
+    Number(value.slice(1)) < device.buttons.length
+  const reserved = new Set(preferred.filter(supported))
+  const spare = device.buttons.map((_,i) => 'B'+i).filter(value => !reserved.has(value))
+  for (const i of [0,1,2,3,8,9,10,11,4,5,6,7]) {
+    if (!supported(preferred[i])) preferred[i] = spare.shift() ?? ''
+  }
+  return makeMap(preferred)
+}
+
+export function pressedButtons(devices: readonly Gamepad[]) {
+  return new Set(devices.flatMap(device => device.buttons.flatMap((button,i) =>
+    button.pressed || button.value > SETTINGS.axis ? [`${device.index}:${i}`] : [])))
+}
+
 export class Inputs {
   private down = new Set<string>()
   private held = Array.from({length:PLAYERS},() => new Set<Action>())
@@ -82,7 +103,7 @@ export class Inputs {
   devices: Gamepad[] = []
   assigned: (Gamepad|null)[] = Array(PLAYERS).fill(null)
   capture: {player:number; type:'keys'|'pad'; baseline:Set<string>; done:(value:string)=>void}|null = null
-  onActivity: () => void = () => {}
+  pairing: {baseline:Set<string>; accept:(device:Gamepad)=>boolean}|null = null
   onBlur: () => void = () => {}
   onWake: () => void = () => {}
 
@@ -106,7 +127,6 @@ export class Inputs {
       this.down.add(event.code)
       const action = ACTIONS.find(a => this.slots[player].keys[a] === event.code)!
       this.pending[player].push(action)
-      this.onActivity()
     })
     window.addEventListener('keyup',event => this.down.delete(event.code))
     window.addEventListener('blur',() => { this.clear(); this.onBlur() })
@@ -115,7 +135,7 @@ export class Inputs {
   clear() {
     this.down.clear()
     this.pending.forEach(queue => { queue.length = 0 })
-    this.held.forEach(set => set.clear())
+    this.held.forEach((set,i) => { if (!this.slots[i].device) set.clear() })
   }
 
   poll() {
@@ -125,6 +145,14 @@ export class Inputs {
       this.devices = []
     }
     this.assigned = resolvePads(this.slots,this.devices,this.assigned)
+    if (this.pairing) {
+      const {baseline,accept} = this.pairing
+      const current = pressedButtons(this.devices)
+      const edge = [...current].find(binding => !baseline.has(binding))
+      this.pairing.baseline = current
+      const device = edge && this.devices.find(p => p.index === Number(edge.split(':')[0]))
+      if (device && accept(device)) this.pairing = null
+    }
     this.slots.forEach((slot,i) => {
       const device = this.assigned[i]
       const bindings = device ? new Set(padBindings(device)) : new Set<string>()

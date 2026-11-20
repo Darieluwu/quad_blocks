@@ -1,10 +1,15 @@
+import { WIDTH } from './rules'
+
 export type GarbagePacket = {lines: number; hole: number; ready: number}
 export class Garbage {
   readonly queue: GarbagePacket[] = []
   get total() { return this.queue.reduce((total, packet) => total + packet.lines, 0) }
 
   push(packet: GarbagePacket) {
-    if (Number.isInteger(packet.lines) && packet.lines > 0) this.queue.push({...packet})
+    if (!Number.isSafeInteger(packet.lines) || packet.lines <= 0 ||
+      !Number.isInteger(packet.hole) || packet.hole < 0 || packet.hole >= WIDTH ||
+      !Number.isSafeInteger(packet.ready) || packet.ready < 0) return
+    this.queue.push({...packet})
   }
 
   cancel(lines: number) {

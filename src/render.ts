@@ -60,11 +60,12 @@ export function mountArena(root: HTMLElement) {
       <header class="player-head"><span class="player-tag">J${i+1}</span><h2></h2><span class="danger-label"></span></header>
       <div class="player-body">
         <div class="rail"><span>HOLD</span><canvas class="hold" width="58" height="38"></canvas><div class="garbage" aria-label="Basura pendiente"><div></div></div><strong class="incoming">0</strong></div>
-        <div class="well"><canvas width="${WIDTH*CELL}" height="${VISIBLE*CELL}" class="board" aria-label="Tablero del jugador ${i+1}"></canvas><div class="effect"></div><div class="out">ELIMINADO</div></div>
+        <div class="well"><canvas width="${WIDTH*CELL}" height="${VISIBLE*CELL}" class="board" aria-label="Tablero del jugador ${i+1}"></canvas><div class="out">ELIMINADO</div></div>
         <div class="rail"><span>NEXT</span><canvas class="next" width="58" height="180"></canvas><span class="target-label">OBJ.</span><strong class="target"></strong></div>
       </div>
       <div class="zone-label"><span>ZONE</span><strong></strong></div><div class="meter"><div></div></div>
       <div class="player-stats"><span class="lines"></span><span class="sent"></span></div>
+      <div class="effect"></div>
     </article>`).join('')+'</div>'
   return new Arena(root)
 }
