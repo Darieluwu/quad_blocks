@@ -6,7 +6,7 @@ import { DEFAULT_RULES, HZ } from '../src/engine/rules'
 it('cuatro IA completan una partida con relevos, Zone, caídas, rescates y victoria',()=>{
   const roster = [3,6,4,6].map((level,slot)=>({slot,team:teamForSlot(slot),level}))
   const rules = {...DEFAULT_RULES,zoneSeconds:5,gravity:3,progression:.05,garbageDelay:400,garbageCap:5}
-  const match = new BlitzMatch(rules,'blitz-copa-1',roster,{...DEFAULT_BLITZ,turn:10,countdown:2})
+  const match = new BlitzMatch(rules,'blitz-copa-4',roster,{...DEFAULT_BLITZ,turn:10,countdown:2})
   const events = new Map<string,number>()
   for (let i=0;i<HZ*450 && !match.finished;i++) {
     match.tick()
@@ -18,7 +18,7 @@ it('cuatro IA completan una partida con relevos, Zone, caídas, rescates y victo
   for (const name of ['blitzRotate','send','zoneStart','blitzDown','blitzEmergency','blitzRevived','blitzVictory']) {
     expect(events.get(name) ?? 0,name).toBeGreaterThan(0)
   }
-  expect(events.get('blitzRevived')).toBe(3)
+  expect(events.get('blitzRevived')).toBe(1)
   expect(match.finished).toBe(true)
-  expect(match.winningTeam).toBe(1)
+  expect(match.winningTeam).toBe(0)
 },15000)

@@ -141,7 +141,7 @@ dd { margin:0; overflow-wrap:anywhere }
 .board { display:block; width:100%; height:auto; aspect-ratio:5/12; image-rendering:pixelated }
 .forecast,.board-fx,.spawn-guide { position:absolute; inset:0; width:100%; height:100%; pointer-events:none }
 .spawn-label { max-width:100%; font-size:10px; color:#ffe484; text-align:center; overflow-wrap:anywhere }
-.zone-result { position:absolute; z-index:2; bottom:16%; right:4%; display:grid; gap:2px; padding:7px 8px; pointer-events:none; border-radius:5px; border:1px solid #ffdf85; background:#201509ed; color:#ffdf85; text-align:right }
+.zone-result { position:absolute; z-index:2; bottom:16%; right:4%; display:grid; gap:2px; padding:7px 8px; pointer-events:none; border-radius:5px; border:1px solid #ffdf85a0; background:#2015099c; color:#ffdf85; text-align:right; text-shadow:0 1px 3px #140d07 }
 .zone-result[hidden] { display:none }
 .zone-result small,.zone-result span { font:700 clamp(8px,.68vw,12px) Consolas,monospace }
 .zone-result strong { font:900 clamp(12px,1.15vw,21px) Consolas,monospace }
@@ -200,7 +200,38 @@ dd { margin:0; overflow-wrap:anywhere }
 .blitz-team[data-side="0"] .blitz-summary { inset-inline-start:0; inset-inline-end:auto }
 .blitz-team[data-reserve-danger="true"] .blitz-summary { border-color:#f2586d; color:#ffb6c0 }
 .blitz-summary strong { color:#e0eafb }
-.blitz-rescue { font:750 clamp(9px,.75vw,13px) Consolas,monospace; color:#ffd182 }
+.blitz-defense { font:750 clamp(9px,.75vw,13px) Consolas,monospace; color:#ffd182 }
+.blitz-defense:empty { display:none }
+.blitz-rescue { position:relative; display:grid; gap:6px; margin-top:5px; padding:8px; border:1px solid #ffc16c80; border-radius:5px; background:#2a2117; color:#ffd48d; font-family:Consolas,monospace }
+.blitz-rescue[hidden],.blitz-revived[hidden] { display:none }
+.rescue-step { font-weight:800; font-size:clamp(9px,.72vw,13px); text-transform:uppercase }
+.blitz-summary .rescue-title { color:#fff1cc; font-size:clamp(15px,1.23vw,23px); line-height:1.05 }
+.rescue-count { font-weight:900; font-size:clamp(18px,1.6vw,28px); line-height:1 }
+.rescue-meter { height:5px; background:#594224; border-radius:2px; overflow:hidden }
+.rescue-meter i { display:block; height:100%; background:#ffd990 }
+.rescue-break { position:absolute; inset:42px 0 0; pointer-events:none; z-index:2 }
+.rescue-break i { --dx:42px; --dy:-32px; --spin:55deg; position:absolute; top:45%; left:47%; width:22%; height:24px; opacity:0;
+  background:linear-gradient(145deg,#fff3c7 0 7%,#d29a58 8% 30%,#785132 31% 96%,#ab7340 97%);
+  clip-path:polygon(5% 4%,86% 0,100% 30%,84% 94%,18% 100%,0 72%);
+}
+.rescue-break i:nth-child(2n) { --dx:-56px; --dy:-18px; --spin:-95deg }
+.rescue-break i:nth-child(3n) { --dy:62px; --spin:103deg; left:34%; top:51% }
+.rescue-break i:nth-child(4n) { --dx:68px; --dy:47px; --spin:-144deg; left:39% }
+.rescue-break i:nth-child(n+5) { top:54%; width:15%; animation-delay:.035s }
+.rescue-break.burst i { animation-name:rescue-debris; animation-duration:.63s; animation-timing-function:ease-out }
+.rescue-break.burst::before { content:""; position:absolute; inset:0; border:2px solid #ffe4b3; animation:rescue-fracture .54s ease-out both }
+@keyframes rescue-debris { from { opacity:1; transform:scale(1.3) } 54% { opacity:.9 } to { opacity:0; transform:translate(var(--dx),var(--dy)) rotate(var(--spin)) scale(.58) } }
+@keyframes rescue-fracture { from { opacity:.86; box-shadow:inset 0 0 30px #ffba48bd } to { opacity:0; transform:scale(1.15) } }
+.blitz-revived { display:grid; gap:4px; padding:9px 5px; margin-top:5px; text-align:center; border:1px solid #75f4c7; border-radius:5px;
+  background:linear-gradient(120deg,#163b34,#10241f); color:#beffe9; pointer-events:none;
+}
+.blitz-summary .blitz-revived strong { color:#ccffeb; font:900 clamp(16px,1.4vw,27px)/1 system-ui,sans-serif; letter-spacing:-.035em }
+.blitz-revived.arrive { animation:revive-banner .68s cubic-bezier(.17,.81,.24,1) both }
+@keyframes revive-banner {
+  from { opacity:.25; transform:translateY(12px) skewX(-12deg) scale(.83) }
+  41% { opacity:1; transform:skewX(-4deg) scale(1.06); box-shadow:0 0 25px #67ffc990 }
+  to { opacity:1; transform:none }
+}
 .blitz-stack { display:grid; width:var(--blitz-card); min-width:0 }
 .blitz-stack .player { grid-area:1/1; position:relative; min-width:0; padding:8px }
 .blitz-stack .player-body { grid-template-columns:var(--blitz-rail) minmax(0,1fr) var(--blitz-rail) }
@@ -258,9 +289,9 @@ dd { margin:0; overflow-wrap:anywhere }
 .blitz-stack .player-head { min-height:27px; margin-bottom:4px; flex-wrap:wrap; column-gap:5px; row-gap:2px }
 .blitz-stack .player-head h2 { max-width:55% }
 .projection { position:absolute; left:0; right:0; border-top:2px dashed #ffc47e; pointer-events:none; z-index:1; line-height:1 }
-.projection strong { position:absolute; top:2px; right:2px; padding:4px 5px; border-radius:3px; background:#201410ed; color:#ffd2a2; font:850 clamp(9px,.65vw,13px) Consolas,monospace }
+.projection strong { position:absolute; top:2px; right:2px; padding:4px 5px; border-radius:3px; background:#201410a0; color:#ffd2a2; font:850 clamp(9px,.65vw,13px) Consolas,monospace; text-shadow:0 1px 3px #140d07 }
 .projection[data-overflow="true"] { border-color:#ff6980 }
-.projection[data-overflow="true"] strong { background:#451120; color:#fff0f2 }
+.projection[data-overflow="true"] strong { background:#451120a8; color:#fff0f2 }
 .impact { position:absolute; top:12%; left:50%; translate:-50% 0; pointer-events:none; width:max-content; max-width:100%; text-align:center; background:#501627ed; color:#fff2e6; border:1px solid #ff8194; border-radius:4px; padding:5px 6px; font:850 clamp(9px,.85vw,15px) Consolas,monospace; z-index:1 }
 .board-fx::before,.board-fx::after { content:""; position:absolute; inset:0 }
 .board-fx.zone-in::before { animation:zone-in .65s ease-out }
@@ -327,10 +358,75 @@ dd { margin:0; overflow-wrap:anywhere }
 .ranking li b { color:var(--accent) }
 .ranking li small { display:block; margin-top:3px; color:#adbad0 }
 .ranking li span:last-child { color:#adbad0; font-size:14px }
+.game.result-scene {
+  width:calc(100% - 32px); max-width:1820px; margin:auto; padding:14px 0 28px;
+  display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); align-items:center; gap:clamp(12px,2vw,36px)
+}
+.result-scene #arena { grid-column:2; min-width:0 }
+.result-scene .match-footer { grid-column:1/-1; position:static; margin:0 }
+.result-boards { display:flex; align-items:center; justify-content:center; gap:clamp(8px,1vw,20px) }
+.result-boards .player {
+  width:min(28vw,calc((100svh - 175px)*.59),435px);
+  border-color:var(--player); box-shadow:0 0 28px color-mix(in srgb,var(--player) 26%,transparent);
+}
+.result-boards:has(.player:nth-child(2)) .player { width:min(20vw,calc((100svh - 175px)*.54),315px) }
+.result-boards :is(.combat-hud,.blitz-state,.danger-label,.spawn-label,.forecast,.spawn-guide,.projection,.board-fx,.impact,.zone-result,.effect) { display:none }
+.result-scene.result-draw #arena { grid-column:2; grid-row:1 }
+.results-panel { grid-column:3; width:min(100%,510px); min-width:0; z-index:2 }
+.result-draw .results-panel { grid-column:1/-1; grid-row:1; justify-self:center }
+.result-card {
+  padding:clamp(11px,1.5vw,20px); border:1px solid #3b4a61; border-radius:12px;
+  background:linear-gradient(145deg,#152334,#111926); box-shadow:0 18px 42px #080c1563;
+  animation:result-reveal .58s .28s both ease-out;
+}
+@keyframes result-reveal { from { opacity:0; transform:translateY(14px) } to { opacity:1; transform:none } }
+.result-card .overline { display:flex; flex-wrap:wrap; font-size:clamp(10px,.82vw,14px) }
+.result-card .overline time { margin-left:auto; color:#bccde8; letter-spacing:0 }
+.result-card h2 { font-size:clamp(24px,3.7vw,60px); margin:8px 0 13px; line-height:.98; letter-spacing:-.06em; overflow-wrap:anywhere }
+.result-mvp {
+  display:flex; align-items:center; gap:8px; justify-content:space-between;
+  padding:10px; margin-bottom:13px; border:1px solid #e7ad5c88; border-radius:7px;
+  background:linear-gradient(105deg,#412f20,#25201d); color:#ffe0a5;
+}
+.result-mvp div { display:grid; min-width:0; gap:4px }
+.result-mvp small { font:800 11px Consolas,monospace }
+.result-mvp strong { overflow-wrap:anywhere; line-height:1.1 }
+.result-mvp span { text-align:right; font-size:clamp(9px,.7vw,13px) }
+.result-mvp b { display:block; font-size:20px; line-height:1 }
+.result-columns,.result-card .ranking li {
+  display:grid; grid-template-columns:14px minmax(52px,1.55fr) repeat(5,minmax(22px,.58fr)); gap:4px;
+  padding:6px; align-items:center;
+}
+.result-columns { color:#b8c9e1; font-size:clamp(8px,.64vw,12px); font-weight:700 }
+.result-columns span:nth-child(n+3),.result-card .ranking li span:nth-child(n+3) { text-align:center }
+.result-card .ranking { margin:2px 0 12px; gap:4px; font-size:clamp(10px,.77vw,14px) }
+.result-card .ranking li span { min-width:0; overflow-wrap:anywhere }
+.result-card .ranking li span:last-child { font-size:inherit }
+.result-card .ranking small { font-size:.74em }
+.final-fx { position:fixed; inset:0; overflow:hidden; pointer-events:none; z-index:5 }
+.board-fall {
+  position:absolute; display:block; border:2px solid #ff6e7c; border-radius:4px;
+  box-shadow:0 0 24px #ff5e5470; image-rendering:pixelated; transform-origin:50% 40%;
+}
+.final-burst {
+  position:absolute; width:var(--burst-size); aspect-ratio:1; translate:-50% -50%; z-index:1;
+}
+.final-burst::before,.final-burst::after { content:""; position:absolute; inset:18%; border-radius:50%; opacity:0 }
+.final-burst::before { background:radial-gradient(circle,#fff4d4 1%,#ffbf68bc 31%,#ff754c40 57%,transparent 70%); animation:result-flare .61s ease-out }
+.final-burst::after { border:3px solid #ffdbb1; box-shadow:inset 0 0 24px #ff783ca6,0 0 22px #ff783cab; animation:result-wave .72s ease-out }
+.final-burst i { position:absolute; width:var(--shard-size); aspect-ratio:1; left:50%; top:50%; opacity:0;
+  box-shadow:0 0 9px #ffad87ab; border:1px solid #fff2d0a6; animation:result-shard .75s ease-out both;
+}
+@keyframes result-flare { 0% { transform:scale(.13); opacity:.95 } 35% { opacity:.86 } 100% { transform:scale(1.8); opacity:0 } }
+@keyframes result-wave { 0% { transform:scale(.18); opacity:1 } 100% { transform:scale(1.65); opacity:0 } }
+@keyframes result-shard { 0% { opacity:1; transform:scale(.45) } 65% { opacity:.85 } 100% { opacity:0; transform:translate(var(--shard-x),var(--shard-y)) rotate(var(--shard-turn)) scale(.68) } }
 .reduced .flash,.reduced .well.hit { animation:none }
 .reduced .blitz-clock::before,.reduced .blitz-clock::after,
 .reduced :is(.blitz-clock strong,.blitz-stack .player,.blitz-entry,.blitz-stack .player-tag) { animation:none !important }
 .reduced .reserve-sweat { visibility:hidden }
+.reduced .rescue-break { display:none }
+.reduced .blitz-revived.arrive { animation:none }
+.reduced .result-card { animation:none }
 .reduced .board-fx,.reduced .projectile-layer { display:none }
 .reduced .zoned,.reduced .zoned .well,.reduced [data-danger="2"] .well { box-shadow:none }
 .reduced .overlay { backdrop-filter:none }
@@ -339,6 +435,9 @@ dd { margin:0; overflow-wrap:anywhere }
   .blitz-clock::before,.blitz-clock::after,:is(.blitz-clock strong,.blitz-stack .player,.blitz-entry,.blitz-stack .player-tag) { animation:none !important }
   .board-fx,.projectile-layer { display:none }
   .reserve-sweat { visibility:hidden }
+  .rescue-break { display:none }
+  .blitz-revived.arrive { animation:none }
+  .result-card { animation:none }
 }
 @media (min-width:1200px) and (max-height:950px) {
   .game { width:min(100% - 40px,calc((100svh - 175px)*2.82)) }
@@ -355,6 +454,14 @@ dd { margin:0; overflow-wrap:anywhere }
   .game.game-blitz { --blitz-card:min(calc((100svh - 295px)*5/12 + 2*var(--blitz-rail) + 24px),80%) }
   .blitz-summary { position:static; width:100%; min-height:63px; margin-bottom:5px; padding:4px }
   .blitz-clock { top:56% }
+}
+@media (max-width:970px) {
+  .game.result-scene { grid-template-columns:minmax(0,1fr); margin:0 auto }
+  .result-scene #arena,.result-scene.result-draw #arena { grid-column:1; grid-row:1 }
+  .result-boards .player { width:min(67vw,330px) }
+  .result-boards:has(.player:nth-child(2)) .player { width:min(42vw,300px) }
+  .results-panel,.result-draw .results-panel { grid-column:1; width:min(100%,520px); justify-self:center }
+  .result-draw .results-panel { grid-row:2 }
 }
 @media (max-width:750px) {
   .bar-inner { flex-wrap:wrap; gap:9px; padding:9px 0 }

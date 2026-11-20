@@ -18,8 +18,7 @@ const WORDS: Record<string,string> = {
   tSingle:'T-SPIN SINGLE',tDouble:'T-SPIN DOUBLE',tTriple:'T-SPIN TRIPLE',
   spinL:'L-SPIN',spinJ:'J-SPIN',spinS:'S-SPIN',spinZ:'Z-SPIN',backToBack:'BACK-TO-BACK',
   perfect:'PERFECT CLEAR',zoneStart:'ZONE ACTIVADA',zoneEnd:'ZONE COMPLETADA',
-  blitzRevived:'¡COMPAÑERO REVIVIDO!',blitzDown:'JUGADOR CAÍDO',blitzProtected:'BASURA CANCELADA',
-  blitzGuard:'DEFENSA DE EQUIPO',blitzChallenge:'DESAFÍO COMPLETADO',
+  blitzDown:'JUGADOR CAÍDO',blitzProtected:'BASURA CANCELADA',blitzGuard:'DEFENSA DE EQUIPO',
 }
 const PRIORITY: Record<string,number> = {perfect:5,zoneStart:6,zoneEnd:6,backToBack:1}
 const ANIMATIONS: Record<string,string> = {
@@ -49,17 +48,16 @@ function square(ctx: CanvasRenderingContext2D, x: number, y: number, size: numbe
   ctx.fillRect(x+size-4,y+4,2,size-8)
 }
 
-function preview(canvas: HTMLCanvasElement, kinds: Cell[]) {
+function preview(canvas: HTMLCanvasElement, kinds: Cell[], size = 12) {
   const ctx = canvas.getContext('2d')!
   ctx.clearRect(0,0,canvas.width,canvas.height)
-  const size = 12
   for (const [i,kind] of kinds.entries()) {
     if (!kind || kind === 'G' || kind === 'zone') continue
     const shape = SHAPES[kind][0]
     const left = Math.min(...shape.map(([x]) => x))
     const right = Math.max(...shape.map(([x]) => x))
     const offset = (canvas.width - (right-left+1)*size)/2
-    for (const [x,y] of shape) square(ctx,offset+(x-left)*size,8+i*36+y*size,size,PIECES[kind])
+    for (const [x,y] of shape) square(ctx,offset+(x-left)*size,8+i*(size*2+10)+y*size,size,PIECES[kind])
   }
 }
 
@@ -86,7 +84,7 @@ export function mountArena(root: HTMLElement, roster: readonly Participant[], bl
           <div class="board-fx" aria-hidden="true"><span class="zone-burst"></span></div><span class="impact" hidden></span>
           <div class="zone-result" hidden><small>ZONE COMPLETADA</small><strong></strong><span></span></div>
           <div class="out">${blitz?'JUGADOR CAÍDO':'ELIMINADO'}</div></div>
-        <div class="rail"><span>NEXT</span><canvas class="next" width="58" height="180"></canvas><strong class="spawn-label" hidden></strong></div>
+        <div class="rail"><span>NEXT</span><canvas class="next" width="64" height="210"></canvas><strong class="spawn-label" hidden></strong></div>
       </div>
       <div class="zone-label"><span>ZONE</span><strong></strong></div><div class="meter"><div></div></div>
       <div class="player-stats"><span class="lines"></span><span class="sent"></span></div>
@@ -95,7 +93,15 @@ export function mountArena(root: HTMLElement, roster: readonly Participant[], bl
     </article>`
   const layout = blitz ? `<div class="blitz-clock" role="timer" aria-label="Segundos para el relevo"><strong></strong></div>
     <div class="blitz-arena">${[0,1].map(team=>`<section class="blitz-team" data-side="${team}">
-      <header class="blitz-summary"><strong></strong><span></span><div class="blitz-rescue"></div></header>
+      <aside class="blitz-summary">
+        <strong class="blitz-team-name"></strong><span class="blitz-partner"></span><div class="blitz-defense"></div>
+        <div class="blitz-rescue" hidden>
+          <div class="rescue-step"></div><strong class="rescue-title"></strong>
+          <div class="rescue-count"></div><div class="rescue-meter"><i></i></div>
+        </div>
+        <div class="rescue-break" aria-hidden="true">${'<i></i>'.repeat(8)}</div>
+        <div class="blitz-revived" role="status" hidden><strong>¡REVIVIDO!</strong><span></span></div>
+      </aside>
       <div class="blitz-stack">${roster.filter(p=>p.team===team).map(card).join('')}</div>
     </section>`).join('')}</div>` :
     '<div class="arena-grid" style="--boards:'+roster.length+'">'+roster.map(card).join('')+'</div>'
@@ -108,12 +114,14 @@ class Arena {
   private layer: HTMLElement
   private clock: HTMLElement|null
   private teams: HTMLElement[]
+  private reviveUntil = [0,0]
   private blitzKey = ''
-  constructor(root: HTMLElement, roster: readonly Participant[]) {
+  private finished = false
+  constructor(private root: HTMLElement, roster: readonly Participant[]) {
     this.layer = by(root,'.projectile-layer')
     this.clock = root.querySelector('.blitz-clock')
     this.teams = [...root.querySelectorAll<HTMLElement>('.blitz-team')]
-    this.views = roster.map(({slot}) => {
+    this.views = roster.map(({slot,team}) => {
       const node = by(root,`[data-player="${slot}"]`)
       const canvas = by<HTMLCanvasElement>(node,'.board')
       const ctx = canvas.getContext('2d',{alpha:false})!
@@ -135,7 +143,7 @@ class Arena {
       const stack = document.createElement('canvas')
       stack.width = grid.width
       stack.height = grid.height
-      return {node,ctx,grid,stack,stackCtx:stack.getContext('2d')!,revision:-1,signature:'',
+      return {node,team,ctx,grid,stack,stackCtx:stack.getContext('2d')!,revision:-1,signature:'',
         hold:by<HTMLCanvasElement>(node,'.hold'),next:by<HTMLCanvasElement>(node,'.next'),
         heading:by(node,'h2'),warning:by(node,'.danger-label'),target:by(node,'.target'),attackers:by(node,'.attackers'),
         incoming:by(node,'.incoming'),garbage:by(node,'.garbage div'),meter:by(node,'.meter div'),
@@ -149,6 +157,80 @@ class Arena {
         impact:by(node,'.impact'),impactUntil:0,forecastKey:'',relationKey:'',
         flashUntil:0, priority:0, position:'', hud:''}
     })
+  }
+
+  finish(match: Match, fallen: readonly number[]) {
+    if (this.finished) return
+    this.finished = true
+    const effects = !this.root.closest('.reduced') && !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    const winners = match.winnerBoards().map(index=>{
+      const node = this.views[index].node
+      return {node,from:node.getBoundingClientRect()}
+    })
+    const boards = document.createElement('div')
+    boards.className = 'result-boards'
+
+    // Keep the last painted frame, including the exact arrangement of every locked piece.
+    const shots = effects ? fallen.map(index=>{
+      const view = this.views[index]
+      const box = view.well.getBoundingClientRect()
+      const source = view.ctx.canvas
+      const canvas = document.createElement('canvas')
+      canvas.width = source.width
+      canvas.height = source.height
+      canvas.getContext('2d')!.drawImage(source,0,0)
+      canvas.className = 'board-fall'
+      canvas.dataset.player = view.node.dataset.player
+      Object.assign(canvas.style,{left:box.x+'px',top:box.y+'px',width:box.width+'px',height:box.height+'px'})
+      const colors = match.players[index].board.flat().flatMap(cell=>cell ? [PIECES[cell]] : [])
+      return {canvas,box,colors}
+    }) : []
+    for (const {node} of winners) boards.append(node)
+    this.root.replaceChildren(boards)
+    return () => {
+      if (!effects) return
+      for (const {node,from} of winners) {
+        const to = node.getBoundingClientRect()
+        node.animate([
+          {transform:`translate(${from.x+from.width/2-to.x-to.width/2}px,${from.y+from.height/2-to.y-to.height/2}px) scale(${from.width/to.width})`},
+          {transform:'none'},
+        ],{duration:730,easing:'cubic-bezier(.2,.72,.25,1)'})
+      }
+      if (!shots.length) return
+      const layer = document.createElement('div')
+      layer.className = 'final-fx'
+      layer.setAttribute('aria-hidden','true')
+      this.root.append(layer)
+      const animations: Animation[] = []
+      for (const {canvas,box,colors} of shots) {
+        layer.append(canvas)
+        animations.push(canvas.animate([
+          {transform:'translate(0,0) rotate(0deg)',opacity:1},
+          {offset:.13,transform:'translate(-9px,-13px) rotate(-2deg)',opacity:1},
+          {offset:.37,transform:'translate(10px,28px) rotate(3deg)',opacity:1},
+          {transform:`translate(40px,${window.innerHeight+box.height*.25}px) rotate(9deg)`,opacity:0},
+        ],{duration:970,easing:'cubic-bezier(.45,.06,.62,1)',fill:'forwards'}))
+
+        const burst = document.createElement('div')
+        burst.className = 'final-burst'
+        burst.style.left = box.x+box.width*.5+'px'
+        burst.style.top = box.y+box.height*.43+'px'
+        burst.style.setProperty('--burst-size',Math.min(box.width*1.75,570)+'px')
+        layer.append(burst)
+        for (let n=0;n<14;n++) {
+          const shard = document.createElement('i')
+          const angle = n*2*Math.PI/14
+          const distance = box.width*(.32+(n%4)*.14)
+          shard.style.background = colors.length ? colors[n*7%colors.length] : '#ffd695'
+          shard.style.setProperty('--shard-x',Math.cos(angle)*distance+'px')
+          shard.style.setProperty('--shard-y',Math.sin(angle)*distance+'px')
+          shard.style.setProperty('--shard-turn',((n%2 ? -1 : 1)*(65+15*n))+'deg')
+          shard.style.setProperty('--shard-size',(8+(n%4)*4)+'px')
+          burst.append(shard)
+        }
+      }
+      void Promise.allSettled(animations.map(animation=>animation.finished)).then(()=>layer.remove())
+    }
   }
 
   attack(from: number, to: number, arrive: () => void) {
@@ -189,6 +271,22 @@ class Arena {
 
   note(i: number, type: string, detail: string|undefined, now: number) {
     const view = this.views[i]
+    const teamView = view.team===undefined ? undefined : this.teams[view.team]
+    if (teamView && type==='blitzChallenge') {
+      const debris = by(teamView,'.rescue-break')
+      debris.classList.remove('burst')
+      requestAnimationFrame(()=>debris.classList.add('burst'))
+      return
+    }
+    if (teamView && type==='blitzRevived') {
+      const notice = by(teamView,'.blitz-revived')
+      by(notice,'span').textContent = view.heading.textContent
+      notice.hidden = false
+      notice.classList.remove('arrive')
+      requestAnimationFrame(()=>notice.classList.add('arrive'))
+      this.reviveUntil[view.team!] = performance.now()+3000
+      return
+    }
     const animation = ANIMATIONS[type]
     if (animation) {
       const group = animation.startsWith('zone') ? ['zone-in','zone-out'] : ['attack-in','attack-land','attack-send']
@@ -351,15 +449,21 @@ class Arena {
       by(active.node,'.blitz-state').textContent = match.players[side.active].dead ? 'CAÍDO' :
         match.stances[side.active]==='defense' ? 'ACTIVO · DEFENSA' : 'ACTIVO · ATAQUE'
       by(reserve.node,'.blitz-state').textContent = waiting.dead ? 'CAÍDO' : revived ? 'REVIVIDO' : 'EN ESPERA'
-      by(status,'strong').textContent = `Equipo ${team===0?'A':'B'} · ${match.blitz.revives-side.used} rescates`
-      status.children[1].textContent = name+(waiting.dead ? side.rescue?.stage===2 ? ' · REVIVIENDO' : ' · CAÍDO' :
+      by(status,'.blitz-team-name').textContent = `Equipo ${team===0?'A':'B'} · ${match.blitz.revives-side.used} rescates`
+      by(status,'.blitz-partner').textContent = name+(waiting.dead ? side.rescue?.stage===2 ? ' · REVIVIENDO' : ' · CAÍDO' :
         revived?' · REVIVIDO':' · EN ESPERA')+
         (waiting.danger && !waiting.dead ? ' · '+(waiting.danger===2?'ALARMA':'PELIGRO') : '')+
         (waiting.garbage.total ? ' · +'+waiting.garbage.total+' pendientes' : '')
-      by(status,'.blitz-rescue').textContent = side.rescue && waiting.dead ?
-        `RESCATAR A ${name} · DESAFÍO ${side.rescue.stage}/2 · ${side.rescue.done}/${side.rescue.goal} ${side.rescue.stage===1?'TETRIS O T-SPIN':'LÍNEAS DE ATAQUE'} · REVIVE` :
-        revived ? '¡COMPAÑERO REVIVIDO! · Entra en el próximo relevo' :
-        waiting.dead ? 'ÚLTIMA OPORTUNIDAD · Rescates agotados' :
+      const rescue = waiting.dead ? side.rescue : null
+      const mission = by(status,'.blitz-rescue')
+      mission.hidden = !rescue
+      if (rescue) {
+        by(mission,'.rescue-step').textContent = `RESCATAR A ${name} · ${rescue.stage}/2`
+        by(mission,'.rescue-title').textContent = rescue.stage===1 ? 'Tetris o T-Spin' : 'Líneas de ataque'
+        by(mission,'.rescue-count').textContent = `${rescue.done} / ${rescue.goal}`
+        by(mission,'.rescue-meter i').style.width = (100*rescue.done/rescue.goal)+'%'
+      }
+      by(status,'.blitz-defense').textContent = waiting.dead ? rescue ? '' : 'ÚLTIMA OPORTUNIDAD · Rescates agotados' :
         `Defensa del turno ${side.defended}/${match.blitz.defenseCap} · ${slots[match.roster[side.active].slot].name}`
     }
   }
@@ -393,7 +497,16 @@ class Arena {
   }
 
   draw(match: Match, slots: Slot[]) {
-    if (match instanceof BlitzMatch) this.drawBlitz(match,slots)
+    if (this.finished) return
+    if (match instanceof BlitzMatch) {
+      this.drawBlitz(match,slots)
+      this.reviveUntil.forEach((until,team)=>{
+        if (until && performance.now()>=until) {
+          by(this.teams[team],'.blitz-revived').hidden = true
+          this.reviveUntil[team] = 0
+        }
+      })
+    }
     for (const [i,p] of match.players.entries()) {
       const view = this.views[i]
       if (view.player!==p) {
@@ -410,7 +523,7 @@ class Arena {
       if (view.signature !== signature) {
         view.signature = signature
         preview(view.hold,[p.hold])
-        preview(view.next,p.next)
+        preview(view.next,p.next,16)
       }
       if (view.effect.textContent && match.now >= view.flashUntil) view.effect.textContent = ''
       if (!view.impact.hidden && (p.dead || match.now>=view.impactUntil)) view.impact.hidden = true

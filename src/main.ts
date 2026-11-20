@@ -28,6 +28,7 @@ let countdown: number = SETTINGS.countdown
 let resumePhase: 'live'|'countdown' = 'countdown'
 let pauseReason = ''
 let overlayState = ''
+let finalFallen: number[] = []
 const audio = new Sound(settings.audio)
 const isHuman = (i: number) => !settings.controllers[i].bot
 const inputs = new Inputs(settings.slots,() => page === 'game' && phase !== 'results',isHuman)
@@ -111,6 +112,7 @@ function start(roster: readonly Participant[]) {
   phase = 'countdown'
   countdown = SETTINGS.countdown
   overlayState = ''
+  finalFallen = []
   inputs.clear()
   app.innerHTML = `<header class="bar game-bar ${mode==='blitz'?'game-bar-blitz':''}"><div class="bar-inner">
     <button class="brand" data-do="pause" aria-label="Pausar partida"><span class="brand-icon">${icon('logo')}</span><span>QUAD<span>BLOCKS</span></span></button>
@@ -164,23 +166,35 @@ function drawOverlay() {
     return
   }
   const currentMatch = match
+  const animate = arena?.finish(currentMatch,finalFallen)
+  const game = overlay.closest('.game')!
+  game.classList.add('result-scene')
+  game.classList.toggle('result-draw',currentMatch.winnerBoards().length===0)
+  overlay.className = 'results-panel'
   const winner = currentMatch.winner
   const team = currentMatch.winningTeam
   const title = team!==null ? teamName(team)+' gana' : winner===null ? 'Empate' :
     escape(settings.slots[currentMatch.roster[winner].slot].name)+' gana'
+  const mvps = currentMatch.mvps()
+  const mvpNames = mvps.map(i=>escape(settings.slots[currentMatch.roster[i].slot].name)).join(' · ')
+  const bestSent = currentMatch.statsFor(mvps[0]).sent
   let rank = 1
   const rows = currentMatch.ranking().flatMap((group,index) => {
     const current = currentMatch.teams ? index+1 : rank
     rank += group.length
     return group.map(i => {
       const {slot,level,team} = currentMatch.roster[i]
-      const {lines,sent} = currentMatch.players[i].stats
+      const {lines,sent,received,cancelled,pieces} = currentMatch.statsFor(i)
       const type = [team===undefined ? '' : teamName(team),level===undefined ? '' : 'IA '+level].filter(Boolean)
-      return `<li><b>${current}</b><span>${escape(settings.slots[slot].name)}${type.length ? `<small>${type.join(' · ')}</small>` : ''}</span><span>${lines} L · ${sent} enviadas</span></li>`
+      return `<li><b>${current}</b><span>${escape(settings.slots[slot].name)}${type.length ? `<small>${type.join(' · ')}</small>` : ''}</span><span>${lines}</span><span>${sent}</span><span>${received}</span><span>${cancelled}</span><span>${pieces}</span></li>`
     })
   }).join('')
-  overlay.innerHTML = `<section class="modal"><div class="overline"><i></i> RESULTADOS · ${modeName(mode)}</div><h2>${title}</h2>
+  overlay.innerHTML = `<section class="result-card"><div class="overline"><i></i> RESULTADOS · ${modeName(mode)} <time>${formatTime(currentMatch.now)}</time></div><h2>${title}</h2>
+    <div class="result-mvp"><div><small>${mvps.length>1?'MVP COMPARTIDO':'MVP'}</small><strong>${mvpNames}</strong></div>
+      <span><b>${bestSent}</b> líneas enviadas</span></div>
+    <div class="result-columns"><span>#</span><span>Jugador</span><span title="Líneas limpiadas">Limp.</span><span title="Líneas enviadas">Env.</span><span title="Líneas recibidas">Rec.</span><span title="Líneas canceladas">Canc.</span><span title="Piezas colocadas">Piezas</span></div>
     <ol class="ranking">${rows}</ol><div class="modal-actions"><button class="primary" data-do="rematch" ${missing.length?'disabled':''}>Revancha</button><button class="secondary" data-page="lobby">Volver a la sala</button></div></section>`
+  animate?.()
 }
 
 app.addEventListener('click',event => {
@@ -414,6 +428,10 @@ let fingerprint = ''
 let frames = 0
 let steps = 0
 let clockText = ''
+function formatTime(ticks: number) {
+  const seconds = Math.floor(ticks/HZ)
+  return String(Math.floor(seconds/60)).padStart(2,'0')+':'+String(seconds%60).padStart(2,'0')
+}
 function frame(now: number) {
   accumulator += Math.min(Math.max(0,now-previous),frameStep*SETTINGS.catchupTicks)
   previous = now
@@ -435,6 +453,7 @@ function frame(now: number) {
       if (--countdown <= 0) phase = 'live'
       continue
     }
+    const alive = match.players.map(p=>!p.dead)
     match.tick(sample)
     const activeMatch = match
     const activeArena = arena
@@ -454,6 +473,7 @@ function frame(now: number) {
       p.events.length = 0
     })
     if (match.finished) {
+      finalFallen = match.players.flatMap((p,i)=>p.dead && alive[i] ? [i] : [])
       audio.stopMusic()
       phase = 'results'
     }
@@ -461,8 +481,7 @@ function frame(now: number) {
   if (match && page === 'game') {
     arena?.draw(match,settings.slots)
     drawOverlay()
-    const seconds = Math.floor(match.now/HZ)
-    const time = String(Math.floor(seconds/60)).padStart(2,'0')+':'+String(seconds%60).padStart(2,'0')
+    const time = formatTime(match.now)
     const elapsed = document.querySelector('#elapsed')
     if (elapsed && (time!==clockText || elapsed.textContent!==time)) elapsed.textContent = clockText = time
   }

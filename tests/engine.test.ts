@@ -302,6 +302,17 @@ describe('Combate VS4', () => {
     expect(match.finished).toBe(true)
     expect(match.winner).toBeNull()
     expect(match.ranking()).toEqual([[0,1,2,3]])
+    expect(match.winnerBoards()).toEqual([])
+  })
+  it('el MVP usa líneas entregadas y admite empate aunque los MVP hayan perdido', () => {
+    const match = new Match(settings(),'mvp')
+    match.players[1].send(5)
+    match.players[3].send(5)
+    match.tick()
+    for (const i of [1,2,3]) match.players[i].eliminate()
+    match.tick()
+    expect(match.winnerBoards()).toEqual([0])
+    expect(match.mvps()).toEqual([1,3])
   })
   it('simula una partida completa con movimiento independiente, ataque, eliminaciones y victoria', () => {
     const match = new Match(settings({garbageDelay:0}),'integration')

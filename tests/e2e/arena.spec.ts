@@ -267,7 +267,20 @@ test('carga Zone jugando, sintetiza sonidos y entrega su ataque al terminar', as
   await expect(j1.locator('.zone-result')).toBeHidden({timeout:4200})
 })
 
-test('muestra clasificación y permite revancha al finalizar una partida de cuatro', async ({page}) => {
+async function pauseFinalFall(page: Page) {
+  await page.emulateMedia({reducedMotion:'no-preference'})
+  await page.addInitScript(()=>{
+    const animate = Element.prototype.animate
+    Element.prototype.animate = function(keyframes,options) {
+      const animation = animate.call(this,keyframes,options)
+      if (this.classList.contains('board-fall')) animation.pause()
+      return animation
+    }
+  })
+}
+
+test('el tablero final cae intacto en VS4 y deja al ganador, estadísticas y revancha', async ({page},info) => {
+  await pauseFinalFall(page)
   await page.goto('/')
   await page.getByRole('button',{name:'Configuración'}).click()
   await page.getByLabel('Gravedad inicial (celdas/s)').fill('0')
@@ -283,6 +296,20 @@ test('muestra clasificación y permite revancha al finalizar una partida de cuat
   await expect(page.getByRole('heading',{name:'Jugador 1 gana'})).toBeVisible()
   await expect(page.locator('.ranking li')).toHaveCount(4)
   await expect(page.locator('.ranking li').nth(1)).toContainText('Jugador 4')
+  await expect(page.locator('.result-boards .player')).toHaveAttribute('data-player','0')
+  await expect(page.locator('.result-mvp')).toContainText('MVP')
+  const falling = page.locator('.board-fall[data-player="3"]')
+  await expect(falling).toBeVisible()
+  expect(await falling.evaluate((canvas:HTMLCanvasElement)=>{
+    const pixels = canvas.getContext('2d')!.getImageData(0,0,canvas.width,canvas.height).data
+    return pixels.some((value,index)=>index%4===0 && Math.max(value,pixels[index+1],pixels[index+2])>140)
+  })).toBe(true)
+  await expect(page.locator('.final-burst i')).toHaveCount(14)
+  await falling.evaluate(canvas=>canvas.getAnimations().forEach(animation=>animation.play()))
+  await expect(falling).toHaveCount(0)
+  const winner = await page.locator('.result-boards .player').boundingBox()
+  expect(winner!.x+winner!.width/2).toBeCloseTo(960,0)
+  await page.screenshot({path:info.outputPath('final-vs4.png')})
   await page.getByRole('button',{name:'Revancha'}).click()
   await expect(page.getByText('PREPÁRATE')).toBeVisible()
   await expect(page.locator('.player.dead')).toHaveCount(0)
@@ -391,6 +418,7 @@ test('Equipos 2v2 admite personas e IA, jugar y volver a cargar las dificultades
 })
 
 test('el resultado de un 2v2 incluye al compañero eliminado en el equipo ganador', async ({page}) => {
+  await page.emulateMedia({reducedMotion:'reduce'})
   await page.goto('/')
   await page.getByRole('button',{name:'Configuración'}).click()
   await page.getByLabel('Gravedad inicial (celdas/s)').fill('0')
@@ -399,11 +427,13 @@ test('el resultado de un 2v2 incluye al compañero eliminado en el equipo ganado
   await start(page)
   for (const [slot,key] of [[1,'KeyI'],[2,'ArrowUp'],[3,'Numpad8']] as const) {
     for (let i=0;i<14;i++) await page.keyboard.press(key,{delay:19})
-    await expect(page.locator(`[data-player="${slot}"]`)).toHaveClass(/dead/)
+    if (slot!==3) await expect(page.locator(`.player[data-player="${slot}"]`)).toHaveClass(/dead/)
   }
   await expect(page.getByRole('heading',{name:'Equipo A gana'})).toBeVisible()
   await expect(page.locator('.ranking li b')).toHaveText(['1','1','2','2'])
   await expect(page.locator('.ranking li').nth(1)).toContainText('Jugador 2')
+  await expect(page.locator('.result-boards .player')).toHaveAttribute('data-player','0')
+  await expect(page.locator('.final-fx')).toHaveCount(0)
 })
 
 test('Blitz reutiliza mandos y teclado, intercambia dos tableros y conserva la reserva', async ({page},info) => {
@@ -552,4 +582,48 @@ test('la música de Blitz hace bucle, conserva el nivel con efectos y sigue las 
   await page.getByRole('button',{name:'Pausa',exact:true}).click()
   await page.getByRole('button',{name:'Volver a la sala'}).click()
   expect(await state()).toMatchObject({paused:true,time:0})
+})
+
+test('Blitz oculta el contador en el duelo final y muestra misiones al costado',async ({page},info)=>{
+  await pauseFinalFall(page)
+  await page.goto('/')
+  await page.getByRole('button',{name:'Configuración'}).click()
+  await page.getByLabel('Gravedad inicial (celdas/s)').fill('0')
+  await page.getByLabel('Semilla').fill('alerta')
+  await page.getByRole('button',{name:'Volver'}).click()
+  await page.getByRole('button',{name:/2v2 Blitz/}).click()
+  await page.getByText('Reglas de Blitz',{exact:true}).click()
+  await page.getByLabel('Turno (segundos)',{exact:true}).fill('3')
+  await start(page)
+  const front = page.locator('.blitz-stack [data-state="active"]')
+  const first = await front.evaluateAll(nodes=>nodes.map(el=>Number((el as HTMLElement).dataset.player)))
+  for (const slot of first) {
+    for (let i=0;i<14;i++) await page.keyboard.press(['KeyW','KeyI','ArrowUp','Numpad8'][slot],{delay:21})
+    await expect(page.locator(`[data-player="${slot}"]`)).toHaveAttribute('data-state','down')
+    await expect(page.locator('.blitz-clock')).toHaveAttribute('data-transition','')
+  }
+  await expect(page.locator('.blitz-stack [data-state="down"]')).toHaveCount(2)
+  await expect(front).toHaveCount(2)
+  await expect(page.getByRole('timer',{name:'Segundos para el relevo'})).toBeHidden()
+  await expect(page.locator('.blitz-rescue:visible .rescue-title')).toHaveText(['Tetris o T-Spin','Tetris o T-Spin'])
+  const geometry = await page.locator('.blitz-team').evaluateAll(teams=>teams.map((team,i)=>{
+    const mission = team.querySelector('.blitz-rescue')!.getBoundingClientRect()
+    const well = team.querySelector('[data-state="active"] .well')!.getBoundingClientRect()
+    return i===0 ? mission.right<well.left : mission.left>well.right
+  }))
+  expect(geometry).toEqual([true,true])
+  await expect(front.first().locator('canvas.next')).toHaveAttribute('width','64')
+  await page.screenshot({path:info.outputPath('blitz-duelo.png')})
+  const finalRival = Number(await front.nth(1).getAttribute('data-player'))
+  const finalWinner = await front.first().getAttribute('data-player')
+  for (let i=0;i<14;i++) await page.keyboard.press(['KeyW','KeyI','ArrowUp','Numpad8'][finalRival],{delay:21})
+  await expect(page.getByRole('heading',{name:'Equipo A gana'})).toBeVisible()
+  await expect(page.locator('.result-boards .player')).toHaveAttribute('data-player',finalWinner!)
+  await expect(page.locator('.result-mvp')).toBeVisible()
+  await expect(page.locator('.ranking li')).toHaveCount(4)
+  const falling = page.locator(`.board-fall[data-player="${finalRival}"]`)
+  await expect(falling).toBeVisible()
+  await falling.evaluate(canvas=>canvas.getAnimations().forEach(animation=>animation.play()))
+  await expect(falling).toHaveCount(0)
+  await page.screenshot({path:info.outputPath('final-blitz.png')})
 })

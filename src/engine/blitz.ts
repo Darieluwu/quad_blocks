@@ -96,6 +96,7 @@ export class BlitzMatch extends Match {
     side.revivedAt = this.now
     const {slot,level} = this.roster[index]
     const seed = this.seed+':revive:'+slot+':'+side.used
+    this.archiveStats(index)
     this.players[index] = new Player(this.rules,pieceSource(this.rules.generator,seedOf(seed)),true)
     this.bots[index] = level===undefined ? null : new Bot(level,seed)
     this.clocks[index] = 0
@@ -133,6 +134,10 @@ export class BlitzMatch extends Match {
     this.winningTeam = living[0] ?? null
     if (living.length) this.players[this.sides[living[0]].active].event('blitzVictory')
     return true
+  }
+
+  override winnerBoards() {
+    return this.finished && this.winningTeam!==null ? [this.sides[this.winningTeam].active] : []
   }
 
   private rotate(emergency: boolean) {

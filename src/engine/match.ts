@@ -1,4 +1,4 @@
-import { Player, NO_INPUT, type Input } from './player'
+import { Player, NO_INPUT, type Input, type PlayerStats } from './player'
 import { pieceSource, randomFrom, seedOf } from './random'
 import { PLAYERS, RANDOM_TARGET_TICKS, WIDTH, ZONE_PHASES, ticks, type Rules } from './rules'
 import { Bot } from './bot'
@@ -23,6 +23,7 @@ export class Match {
   private targetRandom: () => number
   protected bots: (Bot|null)[]
   private zonePhase = 0
+  private pastStats: (PlayerStats|undefined)[] = []
 
   constructor(readonly rules: Rules, readonly seed: string, readonly roster: readonly Participant[] = defaultRoster(),
     trackCombat = false) {
@@ -150,5 +151,26 @@ export class Match {
     }
     const survivors = this.players.flatMap((p,i) => p.dead ? [] : [i])
     return [...(survivors.length ? [survivors] : []), ...this.eliminated.slice().reverse()]
+  }
+
+  statsFor(index: number): PlayerStats {
+    const total = {...this.players[index].stats}
+    const past = this.pastStats[index]
+    if (past) for (const field of Object.keys(total) as (keyof PlayerStats)[]) total[field] += past[field]
+    return total
+  }
+
+  protected archiveStats(index: number) { this.pastStats[index] = this.statsFor(index) }
+
+  mvps() {
+    const sent = this.players.map((_,i)=>this.statsFor(i).sent)
+    const best = Math.max(...sent)
+    return sent.flatMap((lines,i)=>lines===best ? [i] : [])
+  }
+
+  winnerBoards() {
+    if (!this.finished) return []
+    return this.teams ? this.players.flatMap((p,i)=>!p.dead && this.roster[i].team===this.winningTeam ? [i] : []) :
+      this.winner===null ? [] : [this.winner]
   }
 }

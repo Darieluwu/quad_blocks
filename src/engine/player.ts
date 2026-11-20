@@ -10,6 +10,7 @@ export type Action = typeof ACTIONS[number]
 export type Input = {held: ReadonlySet<Action>; pressed: readonly Action[]}
 export const NO_INPUT: Input = {held:new Set(),pressed:[]}
 export type GameEvent = {type:string; detail?:string; source?:number}
+export type PlayerStats = {pieces:number; lines:number; sent:number; received:number; cancelled:number}
 export type CombatPlay = {kind:'lock'; qualifies:boolean; power:number; zoned:boolean} | {kind:'zoneEnd'}
 const clearNames = ['','single','double','triple','quad']
 export class Player {
@@ -22,7 +23,7 @@ export class Player {
   zone = new Zone()
   events: GameEvent[] = []
   combat: CombatPlay[] = []
-  stats = {pieces:0, lines:0, sent:0, received:0, cancelled:0}
+  stats: PlayerStats = {pieces:0, lines:0, sent:0, received:0, cancelled:0}
   outbox = 0
   finalZoneAttack = 0
   dead = false

@@ -241,6 +241,7 @@ describe('2v2 Blitz', () => {
 
   it('completa ambas resurrecciones en orden, revive en reserva sin modificar al rescatador y agota los usos', () => {
     const {m,side,fallen} = reviveSetup()
+    m.players[fallen].stats.sent = 55
     const rescuer = m.players[side.active]
     rescuer.zone.energy = 64
     const play = (lines=4)=>{ well(rescuer,lines); m.tick(inputs(side.active,'hard')) }
@@ -258,6 +259,9 @@ describe('2v2 Blitz', () => {
     expect(m.players[fallen]).toMatchObject({dead:false,hold:null,danger:0,zone:{energy:0},next:expect.arrayContaining([expect.any(String)])})
     expect(m.players[fallen].board.flat().every(cell=>cell===null)).toBe(true)
     expect(m.players[fallen].garbage.total).toBe(0)
+    expect(m.players[fallen].stats.sent).toBe(0)
+    expect(m.statsFor(fallen).sent).toBe(55)
+    m.players[fallen].stats.sent = 4
     m.players[fallen].eliminate()
     play()
     expect(side.rescue).toMatchObject({stage:1,done:1,goal:2})
@@ -265,6 +269,8 @@ describe('2v2 Blitz', () => {
     expect(side.rescue).toMatchObject({stage:2,done:0,goal:10})
     play(); play(); play()
     expect(side.used).toBe(2)
+    expect(m.statsFor(fallen).sent).toBe(59)
+    expect(m.mvps()).toEqual([fallen])
     m.players[fallen].eliminate()
     play()
     expect(side.rescue).toBeNull()
@@ -272,6 +278,7 @@ describe('2v2 Blitz', () => {
     m.tick()
     expect(m.finished).toBe(true)
     expect(m.winningTeam).toBe(1)
+    expect(m.winnerBoards()).toEqual([m.sides[1].active])
   })
 
   it('solo acredita al segundo desafío las jugadas posteriores y limita el aporte de cada Zone', () => {
