@@ -12,6 +12,9 @@ import { configuration, controls, credits, diagnostic, diagnosticsPage, escape, 
 import { RoomClient, inviteCode } from './online/client'
 import { onlineMenu } from './online/menu'
 import { OnlineMatch, randomId, type LobbyState, type ServerMessage } from './online/protocol'
+import { CHARACTERS, chooseCharacter, isCharacterId, uniqueCharacters, type CharacterId, type CharacterOptions, type VoiceEvent } from './characters/catalog'
+import { japaneseVoice, subtitleFor } from './characters/assets'
+import { isAttackVoice } from './characters/presentation'
 
 type Page = 'home'|'lobby'|'settings'|'controls'|'diag'|'credits'|'game'|'online'
 const app = document.querySelector<HTMLElement>('#app')!
@@ -32,6 +35,11 @@ let resumePhase: 'live'|'countdown' = 'countdown'
 let pauseReason = ''
 let overlayState = ''
 let finalFallen: number[] = []
+let matchCharacters = [...settings.characters]
+let lobbyPadPrior: (ReadonlySet<Action>|undefined)[] = []
+const voiceCooldown = new Map<string,number>()
+const selectionCaptions = new Map<number,{id:CharacterId;text:string}>()
+let onlineConfirm = false
 let online: RoomClient|null = null
 let onlineLobby: LobbyState|null = null
 let onlineSeat = -1
@@ -44,8 +52,11 @@ let onlineName = settings.slots[0].name
 if (onlineLink) page = 'online'
 const audio = new Sound(settings.audio)
 const isHuman = (i: number) => !settings.controllers[i].bot
-const inputs = new Inputs(settings.slots,() => page === 'game' && phase !== 'results',i=>online && page==='game' ? i===0 : isHuman(i))
+const inputs = new Inputs(settings.slots,() => page === 'game' && phase !== 'results',i=>online && (page==='game' || page==='online') ? i===0 : isHuman(i))
 inputs.onWake = () => audio.wake()
+app.addEventListener('error',event=>{
+  if (event.target instanceof HTMLImageElement && event.target.closest('.character-preview')) event.target.hidden = true
+},true)
 inputs.onBlur = () => { if (online) online.input(NO_INPUT); else if (page === 'game') pause('La ventana perdió el foco.') }
 document.addEventListener('pointerdown', () => audio.wake())
 document.addEventListener('keydown', () => audio.wake())
@@ -91,6 +102,7 @@ function muteButton() {
 }
 
 function render() {
+  const characterFocus = (document.activeElement as HTMLElement|null)?.dataset.character
   app.classList.toggle('reduced',settings.reduced)
   const body = page === 'home' ? home(settings.profile) : page === 'lobby' ? lobby(settings,inputs,ready,mode,canStart(),lobbyIssue) :
     page === 'online' ? onlineMenu(onlineLobby,onlineSeat,onlineLink,onlineName,onlineNotice,onlineWaiting,onlineRetry) :
@@ -98,6 +110,14 @@ function render() {
       controls(settings,inputs,controlPlayer,controlType,status,returnPage) : page === 'diag' ?
       diagnosticsPage(diagnostic(inputs,settings),returnPage) : credits()
   app.innerHTML = header(page,settings.audio.mute)+body+footer
+  if (page==='lobby' || page==='online') {
+    const lineup = page==='online' ? onlineLineup() : settings.characters
+    for (const [slot,caption] of selectionCaptions) {
+      if (lineup[slot]===caption.id) showSelectionCaption(slot,caption.text)
+      else selectionCaptions.delete(slot)
+    }
+  }
+  if (characterFocus!==undefined) app.querySelector<HTMLSelectElement>(`[data-character="${characterFocus}"]`)?.focus()
   if (page === 'home') paintHome()
 }
 
@@ -107,13 +127,17 @@ function go(next: Page) {
     online.close()
     online = null; onlineLobby = null; onlineNames = null; onlineSeat = -1
     onlineLink = onlineNotice = ''; onlineWaiting = onlineRetry = false
+    onlineConfirm = false
     roomUrl('')
   }
   if (next === 'settings' || next === 'controls' || next === 'diag') {
     if (page === 'lobby') returnPage = 'lobby'
     else if (page === 'home' || page === 'credits') returnPage = 'home'
   }
+  audio.stopCharacterVoices()
+  selectionCaptions.clear()
   if (page === 'game') { audio.stopMusic(); match = null; arena = null; inputs.clear() }
+  lobbyPadPrior = []
   page = next
   inputs.capture = null
   inputs.pairing = null
@@ -128,16 +152,20 @@ function start(roster: readonly Participant[]) {
     Array.from(crypto.getRandomValues(new Uint32Array(2)),value => value.toString(36)).join('-')
   const rules = structuredClone(settings.rules)
   match = mode==='blitz' ? new BlitzMatch(rules,seed,roster,{...settings.blitz}) : new Match(rules,seed,roster)
+  matchCharacters = [...settings.characters]
   mountGame(match)
 }
 
 function mountGame(current: Match, initialCountdown: number = SETTINGS.countdown) {
   const {seed,roster} = current
+  if (page==='game') audio.stopCharacterVoices()
   if (mode==='blitz') audio.startBlitzMusic()
   const format = mode==='blitz' ? 'BLITZ' : current.teams ? '2v2' : roster.length===PLAYERS ? 'VS4' : roster.map(()=>1).join('v')
   page = 'game'
   phase = initialCountdown ? 'countdown' : 'live'
   countdown = initialCountdown
+  selectionCaptions.clear()
+  voiceCooldown.clear()
   overlayState = ''
   finalFallen = []
   inputs.clear()
@@ -147,7 +175,7 @@ function mountGame(current: Match, initialCountdown: number = SETTINGS.countdown
     <div class="game-buttons"><button class="icon-button audio-toggle" data-do="mute"></button>${online?`<span class="online-player">ONLINE · J${onlineSeat+1}</span><button class="secondary" data-page="home">Salir</button>`:`<button class="secondary" data-do="pause">${icon('pause')} Pausa</button>`}</div>
   </div></header><main class="game ${mode==='blitz'?'game-blitz':''}"><div id="arena"></div><div id="overlay" aria-live="polite"></div>
     <div class="match-footer"><span>${online?'Sala privada':`Semilla <b>${escape(seed)}</b>`}</span><span id="metrics"></span><span>${online?'Reglas competitivas':escape(settings.profile)} · ${modeName(mode)}</span></div></main>`
-  arena = mountArena(document.querySelector<HTMLElement>('#arena')!,roster,current instanceof BlitzMatch)
+  arena = mountArena(document.querySelector<HTMLElement>('#arena')!,roster,current instanceof BlitzMatch,matchCharacters,settings.characterOptions.attackAnimations)
   arena.draw(current,displaySlots())
   muteButton()
   drawOverlay()
@@ -219,7 +247,7 @@ function drawOverlay() {
       const {slot,level,team} = currentMatch.roster[i]
       const {lines,sent,received,cancelled,pieces} = currentMatch.statsFor(i)
       const type = [team===undefined ? '' : teamName(team),level===undefined ? '' : 'IA '+level].filter(Boolean)
-      return `<li><b>${current}</b><span>${escape(slots[slot].name)}${type.length ? `<small>${type.join(' · ')}</small>` : ''}</span><span>${lines}</span><span>${sent}</span><span>${received}</span><span>${cancelled}</span><span>${pieces}</span></li>`
+      return `<li><b>${current}</b><div class="result-player" data-result-player="${slot}">${escape(slots[slot].name)}${type.length ? `<small>${type.join(' · ')}</small>` : ''}</div><span>${lines}</span><span>${sent}</span><span>${received}</span><span>${cancelled}</span><span>${pieces}</span></li>`
     })
   }).join('')
   overlay.innerHTML = `<section class="result-card"><div class="overline"><i></i> RESULTADOS · ${modeName(mode)} <time>${formatTime(currentMatch.now)}</time></div><h2>${title}</h2>
@@ -227,6 +255,7 @@ function drawOverlay() {
       <span><b>${bestSent}</b> líneas enviadas</span></div>
     <div class="result-columns"><span>#</span><span>Jugador</span><span title="Líneas limpiadas">Limp.</span><span title="Líneas enviadas">Env.</span><span title="Líneas recibidas">Rec.</span><span title="Líneas canceladas">Canc.</span><span title="Piezas colocadas">Piezas</span></div>
     <ol class="ranking">${rows}</ol><div class="modal-actions">${online ? `${onlineLobby?.host===onlineSeat?'<button class="primary" data-online="lobby">Volver todos a la sala</button>':''}<button class="secondary" data-page="home">Salir</button>` : `<button class="primary" data-do="rematch" ${missing.length?'disabled':''}>Revancha</button><button class="secondary" data-page="lobby">Volver a la sala</button>`}</div></section>`
+  arena?.placeResultCaptions(overlay)
   animate?.()
 }
 
@@ -250,14 +279,19 @@ function receiveOnline(message: ServerMessage) {
       onlineWaiting = onlineRetry = false
       onlineLink = roomUrl(online!.code)
       break
-    case 'lobby':
+    case 'lobby': {
       onlineLobby = message.lobby
       if (message.lobby.phase==='lobby') {
+        if (page==='game') { audio.stopCharacterVoices(); lobbyPadPrior = [] }
         audio.stopMusic()
         match = arena = null
         onlineNames = null
         page = 'online'
         render()
+        if (onlineConfirm && message.lobby.seats[onlineSeat]?.ready) {
+          onlineConfirm = false
+          showSelection(onlineLineup()[onlineSeat],onlineSeat)
+        }
       } else if (message.lobby.phase==='paused' && page==='game') {
         phase = 'paused'
         onlineNotice = `Esperando que vuelva ${message.lobby.missing.join(', ')}.`
@@ -269,12 +303,14 @@ function receiveOnline(message: ServerMessage) {
         audio.resumeMusic()
       }
       break
+    }
     case 'start':
       mode = 'blitz'
       onlineNames = message.names
       if (match instanceof OnlineMatch && match.seed===message.seed) {
         countdown = message.countdown
       } else {
+        matchCharacters = uniqueCharacters(message.characters)
         match = new OnlineMatch(message)
         mountGame(match,message.countdown)
       }
@@ -345,7 +381,10 @@ app.addEventListener('click',event => {
     switch (button.dataset.online) {
       case 'start': online.send({type:'start'}); break
       case 'lobby': online.send({type:'lobby'}); break
-      case 'ready': online.send({type:'ready',value:!onlineLobby?.seats[onlineSeat]?.ready}); break
+      case 'ready':
+        onlineConfirm = !onlineLobby?.seats[onlineSeat]?.ready
+        online.send({type:'ready',value:onlineConfirm})
+        break
       case 'copy': {
         const field = document.querySelector<HTMLInputElement>('#online-link')!
         field.select()
@@ -368,6 +407,7 @@ app.addEventListener('click',event => {
     lobbyIssue = !ready[i] && isHuman(i) && !settings.slots[i].device ? keyboardIssue(i) : ''
     if (!lobbyIssue) ready[i] = !ready[i]
     render()
+    if (ready[i] && !lobbyIssue && isHuman(i)) showSelection(settings.characters[i],i)
     return
   }
   if (player !== undefined || type) {
@@ -494,6 +534,17 @@ app.addEventListener('input',event => {
 })
 app.addEventListener('change',event => {
   const el = event.target as HTMLInputElement | HTMLSelectElement
+  const characterSlot = el.dataset.character
+  if (characterSlot!==undefined && isCharacterId(el.value)) {
+    selectCharacter(Number(characterSlot),el.value)
+    return
+  }
+  const option = el.dataset.characterOption
+  if (option && option in settings.characterOptions && el instanceof HTMLInputElement) {
+    settings.characterOptions[option as keyof CharacterOptions] = el.checked
+    store()
+    return
+  }
   const {device,rule,view,attack,controller,level} = el.dataset
   const blitz = el.dataset.blitz
   if (blitz && el instanceof HTMLInputElement) {
@@ -590,9 +641,125 @@ function formatTime(ticks: number) {
   return String(Math.floor(seconds/60)).padStart(2,'0')+':'+String(seconds%60).padStart(2,'0')
 }
 
+function onlineLineup() { return uniqueCharacters(onlineLobby?.seats.map(seat=>seat.character)) }
+
+function selectCharacter(slot:number,id:CharacterId) {
+  if (page==='online' && online) {
+    online.send({type:'character',slot,id})
+    return
+  }
+  if (page!=='lobby') return
+  const next = chooseCharacter(settings.characters,slot,id,ready)
+  if (!next) lobbyIssue = 'Ese personaje ya está confirmado por otro participante.'
+  else {
+    if (settings.characters[slot]!==id && isHuman(slot)) ready[slot] = false
+    settings.characters = next
+    lobbyIssue = ''
+    store()
+  }
+  render()
+}
+
+const selectionActions = ['left','right','cw'] as const
+type SelectionAction = typeof selectionActions[number]
+const characterSeats = () => page==='lobby' ? settings.slots.flatMap((_,i)=>isHuman(i)?[i]:[]) :
+  page==='online' && onlineLobby && onlineSeat>=0 ? [onlineSeat] : []
+
+function characterInput(slot:number,action:SelectionAction) {
+  const selection = app.querySelector<HTMLSelectElement>(`[data-character="${slot}"]`)
+  if (!selection) return
+  if (action==='cw') {
+    const confirmed = page==='online' ? onlineLobby?.seats[slot]?.ready : ready[slot]
+    if (!confirmed) app.querySelector<HTMLButtonElement>(page==='online'?'[data-online="ready"]':`[data-ready="${slot}"]`)?.click()
+    return
+  }
+  const options = [...selection.options].filter(option=>!option.disabled)
+  const current = options.findIndex(option=>option.value===selection.value)
+  const direction = action==='right' ? 1 : -1
+  const next = options[(current+direction+options.length)%options.length]?.value
+  if (isCharacterId(next)) { selection.focus(); selectCharacter(slot,next) }
+}
+
+window.addEventListener('keydown',event=>{
+  if (event.repeat || event.altKey || event.ctrlKey || event.metaKey || event.defaultPrevented) return
+  const target = event.target
+  if (!(target instanceof HTMLElement)) return
+  const focused = target.dataset.character
+  if (focused===undefined && target.closest('input,select,textarea,button,a,[contenteditable]')) return
+  for (const slot of characterSeats()) {
+    if (focused!==undefined && focused!==String(slot)) continue
+    const config = settings.slots[page==='online' ? 0 : slot]
+    if (config.device) continue
+    const action = selectionActions.find(action=>config.keys[action]===event.code)
+    if (!action) continue
+    event.preventDefault()
+    characterInput(slot,action)
+    break
+  }
+})
+
+function pollCharacterPads() {
+  for (const slot of characterSeats()) {
+    const local = page==='online' ? 0 : slot
+    const pad = inputs.assigned[local]
+    const bindings = pad ? padBindings(pad) : []
+    const map = settings.slots[local].pad
+    const held = new Set<Action>(selectionActions.filter(action=>bindings.includes(map[action])))
+    const previous = lobbyPadPrior[slot]
+    lobbyPadPrior[slot] = held
+    if (!previous) continue
+    const action = selectionActions.find(action=>held.has(action) && !previous.has(action))
+    if (action) characterInput(slot,action)
+  }
+}
+
+function speak(id:CharacterId,event:VoiceEvent,seat:number,caption:(text:string,duration?:number)=>void) {
+  const clip = settings.characterOptions.attackVoices || !isAttackVoice(event) ? japaneseVoice(id,event) : undefined
+  const text = settings.characterOptions.subtitles ? subtitleFor(id,event) : undefined
+  if (!clip && !text) return
+  const now = performance.now(), key = `${seat}:${event}`
+  if (event!=='selection' && now-(voiceCooldown.get(key) ?? -Infinity)<2800) return
+  voiceCooldown.set(key,now)
+  const show = (duration?:number) => { if (text) caption(text,duration) }
+  if (clip) { audio.wake(); audio.playCharacterVoice(clip,seat,show) }
+  else show()
+}
+
+function showSelectionCaption(seat:number,text:string) {
+  const caption = app.querySelector(`[data-selection-caption="${seat}"]`)
+  if (caption) caption.textContent = text
+}
+
+function showSelection(id:CharacterId,seat:number) {
+  speak(id,'selection',seat,(text,duration)=>{
+    if (page!=='lobby' && page!=='online') return
+    if ((page==='online' ? onlineLineup() : settings.characters)[seat]!==id) return
+    const caption = {id,text:`${CHARACTERS[id].name} · ${text}`}
+    selectionCaptions.set(seat,caption)
+    showSelectionCaption(seat,caption.text)
+    setTimeout(()=>{
+      if (selectionCaptions.get(seat)!==caption) return
+      selectionCaptions.delete(seat)
+      showSelectionCaption(seat,'')
+    },duration ?? 3500)
+  })
+}
+
+function presentCharacter(index:number,event:Match['players'][number]['events'][number],current:Match) {
+  const cue = arena?.characterEvent(index,event)
+  if (!cue?.voice) return
+  const seat = current.roster[index].slot
+  speak(matchCharacters[seat],cue.voice,seat,(text,duration)=>arena?.subtitle(index,text,cue.priority,duration))
+}
+
 function playEvent(activeMatch: Match, i: number, event: Match['players'][number]['events'][number]) {
   const activeArena = arena
   const player = activeMatch.players[i]
+  presentCharacter(i,event,activeMatch)
+  if (activeMatch instanceof BlitzMatch && (event.type==='eliminated' || event.type==='blitzRevived')) {
+    const teammate = activeMatch.roster.findIndex((p,j)=>j!==i && p.team===activeMatch.roster[i].team && !activeMatch.players[j].dead)
+    if (teammate>=0) presentCharacter(teammate,{type:event.type==='eliminated'?'teammateDown':'teammateRevived'},activeMatch)
+  }
   activeArena?.note(i,event.type,event.detail,activeMatch.now)
   if (activeArena && event.type==='incoming' && event.source!==undefined) {
     activeArena.attack(event.source,i,() => {
@@ -608,6 +775,7 @@ function frame(now: number) {
   previous = now
   frames++
   inputs.poll()
+  pollCharacterPads()
   if (!online && page === 'game' && match && disconnected(match.roster).length) pause()
   while (accumulator >= frameStep) {
     accumulator -= frameStep

@@ -6,6 +6,8 @@ import { COLORS, heroArt } from './render'
 import { BOT_LEVELS } from './engine/bot'
 import { teamForSlot } from './engine/match'
 
+import { characterPicker } from './characters/picker'
+
 export type Mode = 'versus'|'teams'|'blitz'
 export const teamName = (team: number) => team===0 ? 'Equipo A' : 'Equipo B'
 export const modeName = (mode: Mode) => mode==='blitz' ? '2v2 Blitz' : mode==='teams' ? 'Equipos 2v2' : 'Versus Zone'
@@ -86,12 +88,14 @@ export function lobby(settings: Settings, inputs: Inputs, ready: boolean[], mode
       ${slot.device && !assigned ? `<option value="missing" selected>${escape(slot.device.id)} · desconectado</option>` : ''}
       ${deviceOptions.map(pad => `<option value="${pad.index}" ${selected(pad.index,current)}>${escape(pad.id)} [${pad.index}]</option>`).join('')}</select></label>
       ${assigned && assigned.mapping !== 'standard' ? '<p class="hint">Perfil genérico. Puedes comprobarlo y ajustarlo en Controles.</p>' : ''}`}
+      ${characterPicker(i,settings.characters,ready,true)}
       <button class="secondary ready ${ready[i]?'is-ready':''}" data-ready="${i}" aria-pressed="${ready[i]}" ${!controller.bot&&slot.device&&!assigned?'disabled':''}>${ready[i]?'Listo ✓':'Marcar listo'}</button></section>`
   }).join('')}</div>
   <div class="panel-actions"><button class="secondary" data-page="settings">${icon('settings')} Reglas de partida</button><button class="secondary" data-page="controls">${icon('controls')} Controles</button>
   ${mode==='blitz' ? '' : `<label class="lobby-target">Objetivos<select data-rule="target">${targetOptions(settings.rules.target)}</select></label>`}
   <span class="lobby-count" role="status">${ready.filter(Boolean).length} de 4 plazas listas</span>
   <button class="primary" data-do="start" ${canStart?'':'disabled'}>${icon('play')} Iniciar partida</button></div>
+  <p class="hint">Usa los controles asignados de izquierda, derecha y giro horario para elegir y confirmar.</p>
   ${issue ? `<p class="lobby-issue" role="alert">${escape(issue)}</p>` : ''}
   ${mode==='blitz' ? blitzSettings(settings) : ''}</main>`
 }
@@ -131,6 +135,9 @@ export function configuration(settings: Settings, back: string) {
         <div class="form-grid">
           <label class="check"><input type="checkbox" data-view="mute" ${checked(settings.audio.mute)}> Silenciar</label>
           <label class="check"><input type="checkbox" data-view="reduced" ${checked(settings.reduced)}> Reducir efectos</label>
+          <label class="check"><input type="checkbox" data-character-option="attackAnimations" ${checked(settings.characterOptions.attackAnimations)}> Animaciones de ataques</label>
+          <label class="check"><input type="checkbox" data-character-option="attackVoices" ${checked(settings.characterOptions.attackVoices)}> Voces de ataques</label>
+          <label class="check"><input type="checkbox" data-character-option="subtitles" ${checked(settings.characterOptions.subtitles)}> Subtítulos de personajes</label>
           <label class="check"><input type="checkbox" data-view="metrics" ${checked(settings.metrics)}> Métricas</label>
         </div></section>
       <details class="settings-card attack-settings"><summary>Tabla de ataques</summary><div class="form-grid">

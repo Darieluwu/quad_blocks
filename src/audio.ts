@@ -38,14 +38,21 @@ const PATCHES: Record<string,Patch> = {
   danger:['alert','triangle',[330,330],0.105,4], critical:['alert','square',[587,392,587,392],0.15,7],
 }
 const VOICES = 20
+const SIGNAL_VOICES = 40
+const CHARACTER_LEVEL = .42
 type Voice = {osc:OscillatorNode; gain:GainNode; priority:number}
+type Line = {src:string; caption:(duration?:number)=>void}
+type Dialogue = {queue:Line[]; active?:{src:string;gain:GainNode;stop:()=>void}}
 export class Sound {
   private context?: AudioContext
   private master?: GainNode
   private buses = new Map<Bus,GainNode>()
   private voices = new Set<Voice>()
+  private signals = new Set<Voice>()
   private last = new Map<string,number>()
   private music?: {track:HTMLAudioElement; gain:GainNode}
+  private dialogue = new Map<number,Dialogue>()
+  private dialogueBus?: GainNode
 
   constructor(private mix: Mix) {}
 
@@ -56,11 +63,25 @@ export class Sound {
         const limiter = this.context.createDynamicsCompressor()
         limiter.threshold.value = -10
         limiter.ratio.value = 12
+        const output = this.context.createDynamicsCompressor()
+        output.threshold.value = -2
+        output.knee.value = 0
+        output.ratio.value = 20
+        output.attack.value = .003
+        output.release.value = .12
         this.master = this.context.createGain()
-        limiter.connect(this.master).connect(this.context.destination)
+        limiter.connect(this.master).connect(output).connect(this.context.destination)
+        const dialogueLimiter = this.context.createDynamicsCompressor()
+        dialogueLimiter.threshold.value = -14
+        dialogueLimiter.knee.value = 8
+        dialogueLimiter.ratio.value = 12
+        dialogueLimiter.attack.value = .004
+        dialogueLimiter.release.value = .15
+        this.dialogueBus = this.context.createGain()
+        this.dialogueBus.connect(dialogueLimiter).connect(this.master)
         for (const key of ['move','play','attack','alert','zone'] as const) {
           const bus = this.context.createGain()
-          bus.connect(limiter)
+          bus.connect(key==='alert' || key==='zone' ? this.master : limiter)
           this.buses.set(key,bus)
         }
         this.update()
@@ -75,6 +96,7 @@ export class Sound {
     this.master.gain.setTargetAtTime(this.mix.mute ? 0 : this.mix.master,now,0.018)
     for (const [key,bus] of this.buses) bus.gain.setTargetAtTime(this.mix[key],now,0.018)
     this.music?.gain.gain.setTargetAtTime(this.mix.music,now,0.032)
+    this.dialogueBus?.gain.setTargetAtTime(this.mix.play,now,.018)
   }
 
   startBlitzMusic() {
@@ -103,22 +125,88 @@ export class Sound {
     this.music.track.currentTime = 0
   }
 
+  playCharacterVoice(src:string,player:number,caption:Line['caption']) {
+    if (!this.context || !this.dialogueBus || this.mix.mute || !Number.isInteger(player) || player<0 || player>3) {
+      caption()
+      return
+    }
+    let seat = this.dialogue.get(player)
+    if (!seat) { seat = {queue:[]}; this.dialogue.set(player,seat) }
+    if (seat.active?.src===src || seat.queue.some(line=>line.src===src)) return
+    seat.queue.push({src,caption})
+    if (!seat.active) this.nextLine(player,seat)
+  }
+
+  private nextLine(player:number,seat:Dialogue) {
+    const context = this.context
+    const bus = this.dialogueBus
+    const line = seat.queue.shift()
+    if (!context || !bus || !line) { this.dialogue.delete(player); this.levelDialogue(); return }
+    const clip = new Audio(line.src)
+    const source = context.createMediaElementSource(clip)
+    const gain = context.createGain()
+    const pan = context.createStereoPanner()
+    pan.pan.value = (player-1.5)*.25
+    gain.gain.value = 0
+    source.connect(gain).connect(pan).connect(bus)
+    let announced = false
+    const stop = () => {
+      if (seat.active?.stop!==stop) return
+      seat.active = undefined
+      clip.pause()
+      clip.removeAttribute('src')
+      source.disconnect()
+      gain.disconnect()
+      pan.disconnect()
+    }
+    const finish = () => {
+      if (seat.active?.stop!==stop) return
+      stop()
+      if (!announced) line.caption()
+      this.nextLine(player,seat)
+    }
+    seat.active = {src:line.src,gain,stop}
+    this.levelDialogue()
+    clip.addEventListener('playing',()=>{
+      if (seat.active?.stop!==stop) return
+      announced = true
+      line.caption(Number.isFinite(clip.duration) && clip.duration>0 ? clip.duration*1000 : undefined)
+    },{once:true})
+    clip.addEventListener('ended',finish,{once:true})
+    clip.addEventListener('error',finish,{once:true})
+    void clip.play().catch(finish)
+  }
+
+  private levelDialogue() {
+    const active = [...this.dialogue.values()].flatMap(seat=>seat.active ? [seat.active] : [])
+    const level = CHARACTER_LEVEL/Math.sqrt(Math.max(1,active.length))
+    for (const line of active) line.gain.gain.setTargetAtTime(level,this.context!.currentTime,.024)
+  }
+
+  stopCharacterVoices() {
+    for (const seat of this.dialogue.values()) seat.active?.stop()
+    this.dialogue.clear()
+  }
+
   play(event: GameEvent, player: number) {
     const context = this.context
     const patch = PATCHES[event.type]
     if (!context || context.state !== 'running' || this.mix.mute || !patch) return
     const [bus,type,notes,length,priority] = patch
+    const isSignal = bus==='alert' || bus==='zone'
+    const pool = isSignal ? this.signals : this.voices
+    const limit = isSignal ? SIGNAL_VOICES : VOICES
     const now = context.currentTime
     const key = player+event.type
     if ((this.last.get(key) ?? -1) + (bus === 'move' ? 0.055 : 0.09) > now) return
     this.last.set(key,now)
     notes.forEach((frequency,i) => {
-      if (this.voices.size >= VOICES) {
-        const candidate = [...this.voices].find(voice => voice.priority < priority)
+      if (pool.size >= limit) {
+        const candidate = [...pool].find(voice => voice.priority < priority)
         if (!candidate) return
         candidate.gain.disconnect()
         candidate.osc.stop(now)
-        this.voices.delete(candidate)
+        pool.delete(candidate)
       }
       const start = now + i*length*0.64
       const osc = context.createOscillator()
@@ -133,12 +221,12 @@ export class Sound {
       gain.gain.exponentialRampToValueAtTime(0.0001,start+length)
       osc.connect(gain).connect(pan).connect(this.buses.get(bus)!)
       const voice = {osc,gain,priority}
-      this.voices.add(voice)
+      pool.add(voice)
       osc.onended = () => {
         osc.disconnect()
         gain.disconnect()
         pan.disconnect()
-        this.voices.delete(voice)
+        pool.delete(voice)
       }
       osc.start(start)
       osc.stop(start+length+0.006)

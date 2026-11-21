@@ -2,11 +2,12 @@ import { CASUAL_RULES, DEFAULT_RULES, GENERATORS, TARGETS, type Rules } from './
 import { conflict, defaultSlot, type Slot } from './input'
 import { botLevel } from './engine/bot'
 import { DEFAULT_BLITZ, type BlitzRules } from './engine/blitz'
+import { CHARACTER_OPTIONS, uniqueCharacters, type CharacterId, type CharacterOptions } from './characters/catalog'
 export const MIX = {master:0.72,move:0.52,play:0.8,attack:0.64,alert:0.55,zone:0.75,music:0.10}
 export type Mix = typeof MIX & {mute:boolean}
 export type Profile = 'Competitivo'|'Casual'|'Personalizado'
 export type Settings = {rules:Rules; profile:Profile; reduced:boolean; metrics:boolean; audio:Mix; slots:Slot[];
-  controllers: {bot:boolean; level:number}[]; blitz:BlitzRules}
+  controllers: {bot:boolean; level:number}[]; blitz:BlitzRules; characters:CharacterId[]; characterOptions:CharacterOptions}
 type StoredSettings = Partial<Omit<Settings,'rules'>> & {rules?:Partial<Rules> & {charge?:number}}
 const STORAGE = 'quad-blocks-v1'
 export const NUMBER_RULES = {
@@ -32,7 +33,8 @@ export const freshRules = (profile: Profile = 'Competitivo') => structuredClone(
 export function loadSettings(): Settings {
   const defaults: Settings = {rules:freshRules(),profile:'Competitivo',reduced:false,metrics:false,
     audio:{...MIX,mute:false},slots:Array.from({length:4},(_,i) => defaultSlot(i)),
-    controllers:Array.from({length:4},()=>({bot:false,level:5})),blitz:{...DEFAULT_BLITZ}}
+    controllers:Array.from({length:4},()=>({bot:false,level:5})),blitz:{...DEFAULT_BLITZ},
+    characters:uniqueCharacters(null),characterOptions:{...CHARACTER_OPTIONS}}
   try {
     const value = JSON.parse(localStorage.getItem(STORAGE) ?? 'null') as StoredSettings|null
     if (!value) return defaults
@@ -64,7 +66,13 @@ export function loadSettings(): Settings {
       const field = key as keyof typeof BLITZ_NUMBERS
       blitz[field] = Number.isFinite(blitz[field]) ? Math.min(max,Math.max(min,Math.round(blitz[field]))) : DEFAULT_BLITZ[field]
     }
-    return {...defaults,...value,rules,audio:{...defaults.audio,...value.audio},controllers,slots,blitz}
+    const characterOptions = {...CHARACTER_OPTIONS}
+    for (const key of Object.keys(characterOptions) as (keyof CharacterOptions)[]) {
+      const option = value.characterOptions?.[key]
+      if (typeof option==='boolean') characterOptions[key] = option
+    }
+    return {...defaults,...value,rules,audio:{...defaults.audio,...value.audio},controllers,slots,blitz,
+      characters:uniqueCharacters(value.characters),characterOptions}
   } catch { return defaults }
 }
 export function saveSettings(settings: Settings) {

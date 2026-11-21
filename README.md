@@ -71,6 +71,7 @@ Vitest cubre las reglas, la puntuación, los ataques por equipo, Zone simultáne
 ## Código y reglas
 
 - [Reglas de partida](docs/reglas.md)
+- [Selección y recursos de personajes](docs/recursos-personajes.md)
 - `src/engine/` contiene reglas, piezas, rotaciones, generación, Spins, basura, Zone, IA y coordinación de partidas.
 - `src/input.ts`, `src/audio.ts` y `src/render.ts` gestionan entrada, audio y dibujo respectivamente.
 - `src/main.ts`, `src/menu.ts` y `src/settings.ts` integran la partida, los menús y la persistencia.

@@ -308,6 +308,7 @@ test('el tablero final cae intacto en VS4 y deja al ganador, estadísticas y rev
   await expect(page.getByRole('heading',{name:'Jugador 1 gana'})).toBeVisible()
   await expect(page.locator('.ranking li')).toHaveCount(4)
   await expect(page.locator('.ranking li').nth(1)).toContainText('Jugador 4')
+  await expect(page.locator('[data-result-player="3"] .character-caption')).toContainText('ASTRA')
   await expect(page.locator('.result-boards .player')).toHaveAttribute('data-player','0')
   await expect(page.locator('.result-mvp')).toContainText('MVP')
   const falling = page.locator('.board-fall[data-player="3"]')
@@ -376,6 +377,7 @@ test('la pila crítica activa el marco rojo y la alarma sintetizada', async ({pa
   await page.getByRole('button',{name:'Configuración'}).click()
   await page.getByLabel('Gravedad inicial (celdas/s)').fill('0')
   await page.getByLabel('Semilla').fill('alerta')
+  await page.getByLabel('Voces de ataques').uncheck()
   await page.getByRole('button',{name:'Volver'}).click()
   await lobby(page)
   await start(page)
@@ -384,6 +386,11 @@ test('la pila crítica activa el marco rojo y la alarma sintetizada', async ({pa
     await page.keyboard.press('KeyW',{delay:25})
   }
   await expect(player.locator('.danger-label')).toHaveText('¡ALARMA!')
+  const caption = player.locator('.character-caption')
+  await expect(caption).toContainText('VOLT · Tch... ¡Esto se complica!')
+  const captionBox = await caption.boundingBox()
+  const wellBox = await player.locator('.well').boundingBox()
+  expect(captionBox!.y).toBeGreaterThanOrEqual(wellBox!.y+wellBox!.height)
   await expect(player.locator('.spawn-label')).toContainText('APARICIÓN')
   const guide = await player.locator('canvas.spawn-guide').evaluate(el=>{
     const canvas = el as HTMLCanvasElement
@@ -553,8 +560,9 @@ test('la música de Blitz hace bucle, conserva el nivel con efectos y sigue las 
     const music:{track?:HTMLMediaElement; gain?:AudioParam; targets:number[]} = {targets:[]}
     Object.defineProperty(window,'testMusic',{value:music})
     AudioContext.prototype.createMediaElementSource = function(track) {
-      music.track = track
       const source = create.call(this,track)
+      if (!new URL(track.src).pathname.endsWith('.mp3')) return source
+      music.track = track
       const connect = source.connect.bind(source)
       source.connect = ((destination:GainNode)=>{
         music.gain = destination.gain

@@ -119,7 +119,7 @@ dd { margin:0; overflow-wrap:anywhere }
 #arena { position:relative }
 .projectile-layer { position:absolute; inset:0; z-index:2; pointer-events:none; overflow:hidden }
 .projectile { --shot:#ffba6b; position:absolute; width:1px; height:1px; filter:drop-shadow(0 0 9px var(--shot)) }
-.projectile::before { content:""; position:absolute; width:52px; height:9px; left:-49px; top:-4px; border-radius:50% 8px 8px 50%; background:linear-gradient(90deg,transparent,var(--shot) 62%,#fff9ec 94%); transform:rotate(var(--bearing)); transform-origin:49px 4px }
+.projectile::before { content:""; position:absolute; width:52px; height:9px; left:-49px; top:-4px; border-radius:50% 8px 8px 50%; background:linear-gradient(90deg,transparent,var(--shot) 62%,var(--shot-accent,#fff9ec) 94%); transform:rotate(var(--bearing)); transform-origin:49px 4px }
 .projectile::after { content:""; position:absolute; inset:-7px; border-radius:50%; background:#fffbeb; box-shadow:0 0 8px 3px var(--shot) }
 .game-info,.game-buttons { display:flex; gap:10px; align-items:center }
 .game-info { color:#a9b6ce; font:700 14px Consolas,monospace }
@@ -141,6 +141,38 @@ dd { margin:0; overflow-wrap:anywhere }
 .player { min-width:0; padding:10px; background:#121825; border:1px solid #293347; border-top:2px solid var(--player); border-radius:10px }
 .player-head { display:flex; align-items:center; min-height:34px; gap:8px; margin-bottom:10px }
 .player-head h2 { margin:0; font-size:clamp(12px,1.1vw,20px); overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.character-picker { display:grid; grid-template-columns:auto minmax(0,1fr); gap:9px; align-items:start; margin-block:3px }
+.character-picker label { display:grid; min-width:0; gap:3px }
+.character-picker select { min-width:0; width:100% }
+.character-picker p { margin:5px 0 0; color:#aebed9; font-size:12px; line-height:1.35 }
+.character-identity { display:inline-flex; flex:none; align-items:center; gap:4px; color:#d3def1; font:800 clamp(8px,.69vw,13px) Consolas,monospace }
+.character-portrait { display:inline-grid; place-items:center; position:relative; isolation:isolate; overflow:hidden; contain:paint;
+  inline-size:clamp(18px,1.65vw,32px); aspect-ratio:1; border:1px solid color-mix(in srgb,var(--character-color),#27344a 52%); border-radius:6px;
+  color:var(--character-color); background:radial-gradient(ellipse at 18% 100%,color-mix(in srgb,var(--character-color) 22%,#151e31),#111827 72%);
+  font:850 clamp(8px,.65vw,12px) Consolas,monospace; letter-spacing:.03em }
+.character-preview { inline-size:clamp(36px,3.2vw,62px); aspect-ratio:3/4 }
+.character-portrait :is(span,img) { grid-area:1/1; position:relative }
+.character-portrait img { width:100%; height:100%; object-fit:cover }
+.character-preview img { object-fit:contain; object-position:center bottom }
+.character-portrait img[hidden] { display:none }
+.character-portrait:has(img:not([hidden])) > span { visibility:hidden }
+.character-portrait::before { content:""; position:absolute; inset:0; background:var(--character-zone-art,none) center/cover; opacity:.63 }
+.character-portrait:is([data-portrait="attack"],[data-portrait="zone"])::after { content:""; position:absolute; inset:0;
+  background:var(--character-cue-art,linear-gradient(135deg,transparent 20%,var(--character-light) 50%,transparent 76%)) center/cover;
+  opacity:0; pointer-events:none; animation:portrait-flare .65s ease-out }
+.character-portrait[data-portrait="neutral"] :is(span,img) { animation:portrait-idle 4.3s ease-in-out infinite }
+.character-portrait[data-portrait="blink"]:has(img[hidden]) span { transform:scaleY(.28) }
+.character-portrait:is([data-portrait="damage"],[data-portrait="attack"],[data-portrait="support"],[data-portrait="victory"],[data-portrait="defeat"],[data-portrait="zone"]) :is(span,img) { animation:portrait-react .42s ease-out }
+.character-portrait[data-portrait="danger"] { border-color:#ff7689 }
+.character-caption,.selection-caption { color:#ffe9c4; font-size:clamp(10px,.8vw,14px); line-height:1.28; margin:4px 0 0; text-align:center; overflow-wrap:anywhere }
+.character-picker .selection-caption { color:#ffe9c4; text-align:left }
+.selection-caption:empty,.character-caption[hidden] { display:none }
+.no-attack-animation :is(.board-fx.attack-in,.board-fx.attack-land,.board-fx.attack-send)::after,.no-attack-animation .well.hit { animation:none }
+.reduced .character-portrait *,.reduced .character-portrait::after { animation:none !important }
+@media (prefers-reduced-motion:reduce) { .character-portrait *,.character-portrait::after { animation:none !important } }
+@keyframes portrait-idle { 50% { transform:translateY(-2%) scale(1.035) } }
+@keyframes portrait-react { from { transform:translateY(8%) scale(.83) } 42% { transform:scale(1.12) } to { transform:none } }
+@keyframes portrait-flare { 22% { opacity:.58 } to { opacity:0; transform:translateX(18%) } }
 .zone-badge { flex:none; color:#332011; background:linear-gradient(110deg,#ffd064,#fff1ae,#ffb54b); padding:4px 7px; border:1px solid #fff0b5; border-radius:4px; font:900 clamp(9px,.78vw,14px) Consolas,monospace; letter-spacing:.08em; box-shadow:0 0 14px #ffbc4e88 }
 .combat-hud { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:9px; margin-bottom:9px; padding:7px 8px; border:1px solid #34435c; border-radius:6px; background:#0c1321 }
 .combat-hud > div { min-width:0; display:grid; grid-template-rows:auto 24px; align-items:center; gap:4px }
@@ -441,6 +473,8 @@ dd { margin:0; overflow-wrap:anywhere }
 .result-columns span:nth-child(n+3),.result-card .ranking li span:nth-child(n+3) { text-align:center }
 .result-card .ranking { margin:2px 0 12px; gap:4px; font-size:clamp(10px,.77vw,14px) }
 .result-card .ranking li span { min-width:0; overflow-wrap:anywhere }
+.result-player { min-width:0; overflow-wrap:anywhere }
+.result-player .character-caption { text-align:left; font-size:inherit }
 .result-card .ranking li span:last-child { font-size:inherit }
 .result-card .ranking small { font-size:.74em }
 .final-fx { position:fixed; inset:0; overflow:hidden; pointer-events:none; z-index:5 }
@@ -508,6 +542,8 @@ dd { margin:0; overflow-wrap:anywhere }
   .result-draw .results-panel { grid-row:2 }
 }
 @media (max-width:750px) {
+  .character-identity > span:not(.character-portrait) { display:none }
+  .character-picker { gap:5px }
   .bar-inner { flex-wrap:wrap; gap:9px; padding:9px 0 }
   nav { order:3; width:100%; overflow-x:auto; padding-bottom:3px }
   nav button { flex:none }

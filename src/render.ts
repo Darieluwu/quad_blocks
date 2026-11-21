@@ -7,6 +7,9 @@ import type { Match, Participant } from './engine/match'
 import { BlitzMatch } from './engine/blitz'
 import { zoneTitle } from './engine/zone'
 import type { Slot } from './input'
+import { CHARACTERS, uniqueCharacters, type CharacterId } from './characters/catalog'
+import { Portrait, cueFor, portraitMarkup } from './characters/presentation'
+import type { GameEvent } from './engine/player'
 
 export const COLORS = ['#ff5266','#59aaff','#58e39a','#be86fa']
 const PIECES: Record<Exclude<Cell,null>,string> = {
@@ -61,10 +64,11 @@ function preview(canvas: HTMLCanvasElement, kinds: Cell[], size = 12) {
   }
 }
 
-export function mountArena(root: HTMLElement, roster: readonly Participant[], blitz = false) {
+export function mountArena(root: HTMLElement, roster: readonly Participant[], blitz = false, characters = uniqueCharacters(null), attackAnimations = true) {
   const card = ({slot,level,team}:Participant) => `
     <article class="player${blitz?' blitz-player':''}" data-player="${slot}" style="--player:${COLORS[slot]}">
       <header class="player-head"><span class="player-tag">J${slot+1}</span><h2></h2>
+        <span class="character-identity" title="${CHARACTERS[characters[slot]].name}">${portraitMarkup(characters[slot])}<span>${CHARACTERS[characters[slot]].name}</span></span>
         ${team===undefined ? '' : `<span class="team-tag" data-team="${team}">Equipo ${team===0?'A':'B'}</span>`}
         ${level===undefined ? '' : `<span class="bot-tag" title="Dificultad ${level}">IA ${level}</span>`}
         <span class="zone-badge" hidden>ZONE</span>
@@ -90,6 +94,7 @@ export function mountArena(root: HTMLElement, roster: readonly Participant[], bl
       ${blitz ? '<div class="blitz-stance" aria-label="Postura"><span>ATAQUE</span><b aria-hidden="true"></b><span>DEFENSA</span></div>' : '<div class="zone-label"><span>ZONE</span><strong></strong></div><div class="meter"><div></div></div>'}
       <div class="player-stats"><span class="lines"></span><span class="sent"></span></div>
       <div class="board-notices"><div class="effect"></div><div class="zone-result" hidden><small>ZONE COMPLETADA</small><strong></strong><span></span></div></div>
+      <p class="character-caption" hidden></p>
       ${blitz ? '<span class="reserve-sweat" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span class="blitz-entry" aria-hidden="true"></span>' : ''}
     </article>`
   const missionRow = (step: number,title: string) => `<div class="rescue-mission" data-step="${step}">
@@ -109,7 +114,8 @@ export function mountArena(root: HTMLElement, roster: readonly Participant[], bl
     </section>`).join('')}</div>` :
     '<div class="arena-grid" style="--boards:'+roster.length+'">'+roster.map(card).join('')+'</div>'
   root.innerHTML = layout+'<div class="projectile-layer" aria-hidden="true"></div>'
-  return new Arena(root,roster)
+  root.classList.toggle('no-attack-animation',!attackAnimations)
+  return new Arena(root,roster,characters,attackAnimations)
 }
 
 class Arena {
@@ -121,7 +127,8 @@ class Arena {
   private rescueClearAt = [0,0]
   private blitzKey = ''
   private finished = false
-  constructor(private root: HTMLElement, roster: readonly Participant[]) {
+  private reduced = matchMedia('(prefers-reduced-motion: reduce)')
+  constructor(private root: HTMLElement, roster: readonly Participant[], characters:readonly CharacterId[],private attackAnimations:boolean) {
     this.layer = by(root,'.projectile-layer')
     this.clock = root.querySelector('.blitz-clock')
     this.teams = [...root.querySelectorAll<HTMLElement>('.blitz-team')]
@@ -148,6 +155,7 @@ class Arena {
       stack.width = grid.width
       stack.height = grid.height
       return {node,team,ctx,grid,stack,stackCtx:stack.getContext('2d')!,revision:-1,signature:'',
+        portrait:new Portrait(characters[slot],by(node,'.character-portrait'),slot),caption:by(node,'.character-caption'),captionUntil:0,captionPriority:0,
         hold:by<HTMLCanvasElement>(node,'.hold'),next:by<HTMLCanvasElement>(node,'.next'),
         heading:by(node,'h2'),warning:by(node,'.danger-label'),target:node.querySelector<HTMLElement>('.target'),attackers:node.querySelector<HTMLElement>('.attackers'),
         incoming:by(node,'.incoming'),garbage:by(node,'.garbage div'),meter:by(node,'.meter div'),
@@ -238,7 +246,7 @@ class Arena {
   }
 
   attack(from: number, to: number, arrive: () => void) {
-    if (this.layer.closest('.reduced') || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    if (!this.attackAnimations || this.layer.closest('.reduced') || this.reduced.matches) {
       arrive()
       return
     }
@@ -249,10 +257,9 @@ class Arena {
     const end = victim.well.getBoundingClientRect()
     const direction = Math.sign(end.left-start.left) || 1
     const x = (direction>0 ? start.right : start.left)-bounds.left
-    const y = start.top+start.height*.30-bounds.top
+    const y = Math.max(18,Math.min(start.top,end.top)-bounds.top-12)
     const dx = (direction>0 ? end.left : end.right)-bounds.left-x
-    const dy = end.top+end.height*.42-bounds.top-y
-    const arc = Math.min(56,Math.abs(dx)*.17)
+    const arc = Math.min(16,Math.abs(dx)*.10,y-8)
     const projectile = document.createElement('span')
     projectile.className = 'projectile'
     projectile.dataset.from = origin.node.dataset.player
@@ -260,16 +267,40 @@ class Arena {
     projectile.style.left = x+'px'
     projectile.style.top = y+'px'
     projectile.style.setProperty('--shot',COLORS[Number(origin.node.dataset.player)])
-    projectile.style.setProperty('--bearing',Math.atan2(dy,dx)+'rad')
+    projectile.style.setProperty('--shot-accent',CHARACTERS[origin.portrait.id].colors[1])
+    projectile.style.setProperty('--bearing',Math.atan2(0,dx)+'rad')
     this.layer.append(projectile)
     const flight = projectile.animate([
       {transform:'translate(0,0) scale(.65)',opacity:.48},
-      {transform:`translate(${dx*.48}px,${dy*.48-arc}px)`,opacity:1,offset:.46},
-      {transform:`translate(${dx}px,${dy}px) scale(1.15)`,opacity:1},
+      {transform:`translate(${dx*.48}px,${-arc}px)`,opacity:1,offset:.46},
+      {transform:`translate(${dx}px,0) scale(1.15)`,opacity:1},
     ],{duration:Math.min(490,310+Math.abs(dx)*.12),easing:'ease-out'})
     flight.onfinish = () => {
       projectile.remove()
       if (this.layer.isConnected) arrive()
+    }
+  }
+
+  characterEvent(i:number,event:GameEvent) {
+    const cue = cueFor(event)
+    if (cue) this.views[i].portrait.react(cue,performance.now(),this.attackAnimations)
+    return cue
+  }
+
+  subtitle(i:number,text:string,priority:number,duration?:number) {
+    const view = this.views[i]
+    const now = performance.now()
+    const displayPriority = duration===undefined ? priority : Infinity
+    if (now<view.captionUntil && view.captionPriority>displayPriority) return
+    view.caption.textContent = `${CHARACTERS[view.portrait.id].name} · ${text}`
+    view.caption.hidden = false
+    view.captionPriority = displayPriority
+    view.captionUntil = now+(duration ?? Math.min(5000,Math.max(2200,text.length*55)))
+  }
+
+  placeResultCaptions(overlay:HTMLElement) {
+    for (const view of this.views) {
+      if (!view.node.isConnected) overlay.querySelector(`[data-result-player="${view.node.dataset.player}"]`)?.append(view.caption)
     }
   }
 
@@ -520,7 +551,11 @@ class Arena {
   }
 
   draw(match: Match, slots: Slot[]) {
+    const now = performance.now()
+    for (const view of this.views) if (!view.caption.hidden && now>=view.captionUntil) view.caption.hidden = true
     if (this.finished) return
+    const reduced = this.reduced.matches || !!this.root.closest('.reduced')
+    const winners = match.finished ? match.winnerBoards() : []
     if (match instanceof BlitzMatch) {
       this.drawBlitz(match,slots)
       this.rescueClearAt.forEach((until,team)=>{
@@ -540,6 +575,7 @@ class Arena {
     }
     for (const [i,p] of match.players.entries()) {
       const view = this.views[i]
+      view.portrait.update(now,p.zone.active,p.danger,p.dead,winners.includes(i),reduced)
       if (view.player!==p) {
         view.player = p
         view.position = view.forecastKey = view.guideKey = ''

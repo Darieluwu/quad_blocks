@@ -1,5 +1,6 @@
 import type { BlitzMatch } from '../engine/blitz'
 import { HZ } from '../engine/rules'
+import { chooseCharacter, uniqueCharacters } from '../characters/catalog'
 import { consumeRemote, makeMatch, PRESS_LIMIT, randomId, snapshot, START_TICKS,
   type ClientMessage, type Frame, type LobbyState, type MatchStart, type RemoteInput, type ServerMessage } from './protocol'
 
@@ -16,6 +17,7 @@ const emptyInput = (): RemoteInput => ({held:0,pressed:[]})
 export class OnlineRoom {
   private members: (Member|null)[] = [null,null,null,null]
   private botLevels = [5,5,5,5]
+  private characters = uniqueCharacters(null)
   private host = -1
   private phase: LobbyState['phase'] = 'lobby'
   private match: BlitzMatch|null = null
@@ -42,7 +44,7 @@ export class OnlineRoom {
     this.broadcast({type:'lobby',lobby:{host:this.host,phase:this.phase,
       missing:this.members.flatMap(member=>member && !member.peer ? [member.name] : []),
       seats:this.members.map((member,slot)=>({name:member?.name ?? '',connected:!!member?.peer,
-        ready:!!member?.ready,botLevel:this.botLevels[slot]}))}})
+        ready:!!member?.ready,botLevel:this.botLevels[slot],character:this.characters[slot]}))}})
   }
 
   join(peer: Peer, message: Extract<ClientMessage,{type:'join'}>, now: number) {
@@ -91,6 +93,16 @@ export class OnlineRoom {
       return
     }
     if (message.type==='ready' && this.phase==='lobby') member.ready = message.value
+    else if (message.type==='character' && this.phase==='lobby' && (slot===message.slot || slot===this.host && !this.members[message.slot])) {
+      const next = chooseCharacter(this.characters,message.slot,message.id,this.members.map(seat=>!!seat?.ready))
+      if (!next) {
+        this.error(peer,'Ese personaje ya está confirmado por otro participante.')
+        this.lobbyUpdate()
+        return
+      }
+      if (this.characters[message.slot]!==message.id && message.slot===slot) member.ready = false
+      this.characters = next
+    }
     else if (message.type==='bot' && this.phase==='lobby' && slot===this.host && !this.members[message.slot]) {
       this.botLevels[message.slot] = message.level
     } else if (message.type==='lobby' && slot===this.host && this.phase==='results') this.resetLobby()
@@ -105,7 +117,7 @@ export class OnlineRoom {
       this.frameTicks = 0
       this.events = []
       this.fallen = []
-      this.startInfo = {seed,names,levels,countdown:this.countdown}
+      this.startInfo = {seed,names,levels,countdown:this.countdown,characters:[...this.characters]}
       this.match = makeMatch(seed,levels)
       this.phase = 'countdown'
       this.broadcast({type:'start',...this.startInfo})
