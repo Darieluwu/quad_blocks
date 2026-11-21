@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { BlitzMatch, BLITZ_TRANSITION, DEFAULT_BLITZ } from '../src/engine/blitz'
 import { teamForSlot } from '../src/engine/match'
 import { NO_INPUT, type Action, type Input, type Player } from '../src/engine/player'
-import { emptyBoard } from '../src/engine/pieces'
+import { emptyBoard, spawnPiece } from '../src/engine/pieces'
 import { DEFAULT_RULES, HEIGHT, HZ, WIDTH } from '../src/engine/rules'
 import { zoneTitle } from '../src/engine/zone'
 import { defaultMap } from '../src/input'
@@ -104,7 +104,7 @@ describe('2v2 Blitz', () => {
     expect(m.now).toBe(30*HZ+1)
   })
 
-  it('conserva pieza activa, pila, Hold, Next, generador, energía, basura, peligro y estadísticas', () => {
+  it('congela la reserva y relanza la misma pieza al volver, conservando el resto del tablero', () => {
     const m = create({turn:1,countdown:0})
     const i = m.sides[0].active
     const mate = i^1
@@ -112,6 +112,7 @@ describe('2v2 Blitz', () => {
     p.zone.energy = 65
     p.garbage.push({lines:2,hole:8,ready:70})
     m.tick(inputs(i,'hold','hard','right'))
+    p.active.y = 12
     p.board[9][0] = 'G'
     run(m,HZ-1)
     const state = () => structuredClone({board:p.board,hold:p.hold,next:p.next,active:p.active,stats:p.stats,
@@ -123,7 +124,7 @@ describe('2v2 Blitz', () => {
     expect(state()).toEqual(saved)
     run(m,HZ-1+BLITZ_TRANSITION)
     expect(m.sides[0].active).toBe(i)
-    expect(state()).toEqual(saved)
+    expect(state()).toEqual({...saved,active:spawnPiece(saved.active.kind)})
     expect(m.players[i]).toBe(p)
     const expected = p.next[0]
     m.tick(inputs(i,'hard'))
@@ -132,6 +133,30 @@ describe('2v2 Blitz', () => {
     run(m,10)
     m.tick(inputs(i,'hard'))
     expect(p.garbage.total).toBe(0)
+  })
+
+  it('en el relevo de emergencia relanza solo la pieza del jugador que entra', () => {
+    const m = create()
+    const [a,b] = m.sides.map(side=>side.active)
+    const reserve = m.players[a^1]
+    reserve.active.y = 14
+    m.players[b].active.y = 9
+    m.players[a].eliminate()
+    m.tick()
+    expect(reserve.active).toEqual(spawnPiece(reserve.active.kind))
+    expect(m.players[b].active.y).toBe(9)
+  })
+
+  it('mantiene una pieza válida si la salida está obstruida', () => {
+    const m = create()
+    const reserve = m.players[m.sides[0].active^1]
+    reserve.active = {kind:'O',x:0,y:10,rotation:0}
+    const entry = spawnPiece('O')
+    reserve.board[entry.y].fill('G')
+    m.players[m.sides[0].active].eliminate()
+    m.tick()
+    expect(reserve.active).toEqual({kind:'O',x:0,y:10,rotation:0})
+    expect(reserve.dead).toBe(false)
   })
 
   it('envía solo al activo rival y cancela primero la basura propia', () => {

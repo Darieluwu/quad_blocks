@@ -44,6 +44,8 @@ export class BlitzMatch extends Match {
   private partner(side: Side) { return side.members.find(i=>i!==side.active)! }
   get canRotate() { return this.sides.some(side=>!this.players[this.partner(side)].dead) }
 
+  rescueGoals(team: number) { return RESCUES[this.sides[team].used] }
+
   private prepareRescue(side: Side) {
     const goal = RESCUES[side.used]
     if (!goal || side.used>=this.blitz.revives || !this.players[this.partner(side)].dead) return null
@@ -151,6 +153,10 @@ export class BlitzMatch extends Match {
         this.players[ally].event('blitzLast')
       } else if (!emergency && !this.players[ally].dead) side.active = ally
       side.swapped = previous!==side.active
+      if (side.swapped) {
+        this.players[side.active].restartFall()
+        this.bots[side.active]?.resetPlan()
+      }
       side.defended = 0
     }
     this.turn++

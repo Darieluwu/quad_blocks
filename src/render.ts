@@ -63,43 +63,46 @@ function preview(canvas: HTMLCanvasElement, kinds: Cell[], size = 12) {
 
 export function mountArena(root: HTMLElement, roster: readonly Participant[], blitz = false) {
   const card = ({slot,level,team}:Participant) => `
-    <article class="player" data-player="${slot}" style="--player:${COLORS[slot]}">
+    <article class="player${blitz?' blitz-player':''}" data-player="${slot}" style="--player:${COLORS[slot]}">
       <header class="player-head"><span class="player-tag">J${slot+1}</span><h2></h2>
         ${team===undefined ? '' : `<span class="team-tag" data-team="${team}">Equipo ${team===0?'A':'B'}</span>`}
         ${level===undefined ? '' : `<span class="bot-tag" title="Dificultad ${level}">IA ${level}</span>`}
         <span class="zone-badge" hidden>ZONE</span>
         ${blitz ? '<span class="blitz-state"></span>' : ''}
         <span class="danger-label"></span></header>
-      <div class="combat-hud">
+      ${blitz ? '' : `<div class="combat-hud">
         <div><span class="combat-label">ATACAS A</span><strong class="target"></strong></div>
         <div><span class="combat-label">TE ATACAN</span><div class="attackers"></div></div>
-      </div>
+      </div>`}
       <div class="player-body">
-        <div class="rail"><span>HOLD</span><canvas class="hold" width="58" height="38"></canvas><div class="garbage" aria-label="Basura pendiente"><div></div></div><strong class="incoming">0</strong></div>
+        <div class="rail"><span>HOLD</span><canvas class="hold" width="58" height="38"></canvas>
+          ${blitz ? '<div class="blitz-trash"><span>BASURA</span>' : ''}<div class="garbage" aria-label="Basura pendiente"><div></div></div><strong class="incoming">0</strong>${blitz ? '</div>' : ''}</div>
         <div class="well">
           <canvas width="${WIDTH*CELL}" height="${HEIGHT*CELL}" class="board" aria-label="Tablero del jugador ${slot+1}"></canvas>
           <canvas width="${WIDTH*CELL}" height="${HEIGHT*CELL}" class="forecast" aria-hidden="true"></canvas>
           <canvas width="${WIDTH*CELL}" height="${HEIGHT*CELL}" class="spawn-guide" aria-hidden="true"></canvas>
           <div class="projection" hidden><strong></strong></div>
           <div class="board-fx" aria-hidden="true"><span class="zone-burst"></span></div><span class="impact" hidden></span>
-          <div class="zone-result" hidden><small>ZONE COMPLETADA</small><strong></strong><span></span></div>
           <div class="out">${blitz?'JUGADOR CAÍDO':'ELIMINADO'}</div></div>
-        <div class="rail"><span>NEXT</span><canvas class="next" width="64" height="210"></canvas><strong class="spawn-label" hidden></strong></div>
+        <div class="rail"><span>NEXT</span><canvas class="next" width="64" height="210"></canvas><strong class="spawn-label" hidden></strong>
+          ${blitz ? '<div class="blitz-zone"><span>ZONE</span><div class="meter"><div></div></div><div class="zone-label"><strong></strong></div></div>' : ''}</div>
       </div>
-      <div class="zone-label"><span>ZONE</span><strong></strong></div><div class="meter"><div></div></div>
+      ${blitz ? '<div class="blitz-stance" aria-label="Postura"><span>ATAQUE</span><b aria-hidden="true"></b><span>DEFENSA</span></div>' : '<div class="zone-label"><span>ZONE</span><strong></strong></div><div class="meter"><div></div></div>'}
       <div class="player-stats"><span class="lines"></span><span class="sent"></span></div>
-      <div class="effect"></div>
+      <div class="board-notices"><div class="effect"></div><div class="zone-result" hidden><small>ZONE COMPLETADA</small><strong></strong><span></span></div></div>
       ${blitz ? '<span class="reserve-sweat" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span class="blitz-entry" aria-hidden="true"></span>' : ''}
     </article>`
+  const missionRow = (step: number,title: string) => `<div class="rescue-mission" data-step="${step}">
+    <div class="rescue-task"><strong class="rescue-title">${title}</strong><span class="rescue-count"></span></div>
+    <div class="rescue-break" aria-hidden="true">${'<i></i>'.repeat(8)}</div></div>`
   const layout = blitz ? `<div class="blitz-clock" role="timer" aria-label="Segundos para el relevo"><strong></strong></div>
     <div class="blitz-arena">${[0,1].map(team=>`<section class="blitz-team" data-side="${team}">
       <aside class="blitz-summary">
-        <strong class="blitz-team-name"></strong><span class="blitz-partner"></span><div class="blitz-defense"></div>
+        <div class="blitz-team-info"><strong class="blitz-team-name"></strong><span class="blitz-partner"></span><div class="blitz-defense"></div></div>
         <div class="blitz-rescue" hidden>
-          <div class="rescue-step"></div><strong class="rescue-title"></strong>
-          <div class="rescue-count"></div><div class="rescue-meter"><i></i></div>
+          <strong class="rescue-alert">REVIVE A TU COMPAÑERO</strong><span class="rescue-name"></span>
+          ${missionRow(1,'Tetris o T-Spin')}${missionRow(2,'Líneas de ataque')}
         </div>
-        <div class="rescue-break" aria-hidden="true">${'<i></i>'.repeat(8)}</div>
         <div class="blitz-revived" role="status" hidden><strong>¡REVIVIDO!</strong><span></span></div>
       </aside>
       <div class="blitz-stack">${roster.filter(p=>p.team===team).map(card).join('')}</div>
@@ -115,6 +118,7 @@ class Arena {
   private clock: HTMLElement|null
   private teams: HTMLElement[]
   private reviveUntil = [0,0]
+  private rescueClearAt = [0,0]
   private blitzKey = ''
   private finished = false
   constructor(private root: HTMLElement, roster: readonly Participant[]) {
@@ -145,7 +149,7 @@ class Arena {
       stack.height = grid.height
       return {node,team,ctx,grid,stack,stackCtx:stack.getContext('2d')!,revision:-1,signature:'',
         hold:by<HTMLCanvasElement>(node,'.hold'),next:by<HTMLCanvasElement>(node,'.next'),
-        heading:by(node,'h2'),warning:by(node,'.danger-label'),target:by(node,'.target'),attackers:by(node,'.attackers'),
+        heading:by(node,'h2'),warning:by(node,'.danger-label'),target:node.querySelector<HTMLElement>('.target'),attackers:node.querySelector<HTMLElement>('.attackers'),
         incoming:by(node,'.incoming'),garbage:by(node,'.garbage div'),meter:by(node,'.meter div'),
         zone:by(node,'.zone-label strong'),lines:by(node,'.lines'),sent:by(node,'.sent'),effect:by(node,'.effect'),
         forecast:by<HTMLCanvasElement>(node,'.forecast').getContext('2d')!,
@@ -273,9 +277,16 @@ class Arena {
     const view = this.views[i]
     const teamView = view.team===undefined ? undefined : this.teams[view.team]
     if (teamView && type==='blitzChallenge') {
-      const debris = by(teamView,'.rescue-break')
-      debris.classList.remove('burst')
-      requestAnimationFrame(()=>debris.classList.add('burst'))
+      const step = detail==='completo' ? 2 : 1
+      const row = by(teamView,`.rescue-mission[data-step="${step}"]`)
+      row.classList.add('burst')
+      if (step===2) {
+        row.dataset.state = 'done'
+        const count = by(row,'.rescue-count')
+        const goal = count.dataset.goal
+        if (goal) count.textContent = `${goal}/${goal}`
+        this.rescueClearAt[view.team!] = performance.now()+670
+      }
       return
     }
     if (teamView && type==='blitzRevived') {
@@ -310,6 +321,8 @@ class Arena {
       view.zoneResult.hidden = false
       by(view.zoneResult,'strong').textContent = zoneTitle(lines)
       by(view.zoneResult,'span').textContent = lines+(lines===1?' línea':' líneas')
+      view.zoneResult.classList.remove('zone-reveal')
+      requestAnimationFrame(()=>view.zoneResult.classList.add('zone-reveal'))
       view.resultUntil = performance.now()+3000
       return
     }
@@ -348,27 +361,26 @@ class Arena {
   }
 
   private drawProjection(view: Arena['views'][number], p: Player) {
-    const banked = p.zone.active ? p.zone.lines : 0
-    const holes = p.dead ? [] : p.garbage.preview(p.rules.garbageCap)
-    const key = holes.length ? [p.revision,banked,p.zone.active,...holes].join('|') : 'none'
+    const holes = p.dead || p.zone.active ? [] : p.garbage.preview(p.rules.garbageCap)
+    const key = holes.length ? [p.revision,...holes].join('|') : 'none'
     if (view.forecastKey===key) return
     view.forecastKey = key
     const ctx = view.forecast
     ctx.clearRect(0,0,ctx.canvas.width,ctx.canvas.height)
     view.marker.hidden = !holes.length
     if (!holes.length) return
-    const {top,height} = garbageProjection(p.board,banked,holes)
+    const {top,height} = garbageProjection(p.board,0,holes)
     const row = Math.max(0,top)
     view.marker.style.top = row/HEIGHT*100+'%'
     view.marker.dataset.overflow = String(height>VISIBLE)
-    view.markerLabel.textContent = `+${holes.length} · ALTURA ${height}${p.zone.active?' AL SALIR':''}`
+    view.markerLabel.textContent = `+${holes.length} · ALTURA ${height}`
     const color = height>=SETTINGS.critical ? '#ff5270' : '#ffb36b'
     ctx.fillStyle = color
     ctx.strokeStyle = color
-    for (let y=0;y<HEIGHT-banked;y++) {
-      const projected = y+banked-holes.length
+    for (let y=0;y<HEIGHT;y++) {
+      const projected = y-holes.length
       if (projected<0 || projected>=HEIGHT) continue
-      ctx.globalAlpha = .46
+      ctx.globalAlpha = .25
       for (let x=0;x<WIDTH;x++) {
         if (p.board[y][x]) ctx.strokeRect(x*CELL+4,projected*CELL+4,CELL-8,CELL-8)
       }
@@ -376,9 +388,9 @@ class Arena {
     holes.forEach((hole,index) => {
       const y = (HEIGHT-holes.length+index)*CELL
       for (let x=0;x<WIDTH;x++) if (x!==hole) {
-        ctx.globalAlpha = .21
+        ctx.globalAlpha = .10
         ctx.fillRect(x*CELL+1,y+1,CELL-2,CELL-2)
-        ctx.globalAlpha = .48
+        ctx.globalAlpha = .25
         ctx.beginPath()
         ctx.moveTo(x*CELL+5,y+CELL-5)
         ctx.lineTo(x*CELL+CELL-5,y+5)
@@ -446,9 +458,13 @@ class Arena {
       reserve.node.dataset.state = waiting.dead ? 'down' : revived ? 'revived' : 'reserve'
       reserve.node.dataset.reserveDanger = String(!waiting.dead && waiting.danger>0)
       teamView.dataset.reserveDanger = reserve.node.dataset.reserveDanger
-      by(active.node,'.blitz-state').textContent = match.players[side.active].dead ? 'CAÍDO' :
-        match.stances[side.active]==='defense' ? 'ACTIVO · DEFENSA' : 'ACTIVO · ATAQUE'
+      by(active.node,'.blitz-state').textContent = match.players[side.active].dead ? 'CAÍDO' : 'ACTIVO'
       by(reserve.node,'.blitz-state').textContent = waiting.dead ? 'CAÍDO' : revived ? 'REVIVIDO' : 'EN ESPERA'
+      for (const index of side.members) {
+        const stance = by(this.views[index].node,'.blitz-stance')
+        stance.dataset.stance = match.stances[index]
+        stance.setAttribute('aria-label',match.stances[index]==='defense' ? 'Postura: Defensa' : 'Postura: Ataque')
+      }
       by(status,'.blitz-team-name').textContent = `Equipo ${team===0?'A':'B'} · ${match.blitz.revives-side.used} rescates`
       by(status,'.blitz-partner').textContent = name+(waiting.dead ? side.rescue?.stage===2 ? ' · REVIVIENDO' : ' · CAÍDO' :
         revived?' · REVIVIDO':' · EN ESPERA')+
@@ -456,12 +472,18 @@ class Arena {
         (waiting.garbage.total ? ' · +'+waiting.garbage.total+' pendientes' : '')
       const rescue = waiting.dead ? side.rescue : null
       const mission = by(status,'.blitz-rescue')
-      mission.hidden = !rescue
-      if (rescue) {
-        by(mission,'.rescue-step').textContent = `RESCATAR A ${name} · ${rescue.stage}/2`
-        by(mission,'.rescue-title').textContent = rescue.stage===1 ? 'Tetris o T-Spin' : 'Líneas de ataque'
-        by(mission,'.rescue-count').textContent = `${rescue.done} / ${rescue.goal}`
-        by(mission,'.rescue-meter i').style.width = (100*rescue.done/rescue.goal)+'%'
+      mission.hidden = !rescue && !this.rescueClearAt[team]
+      if (rescue && !this.rescueClearAt[team]) {
+        by(mission,'.rescue-name').textContent = name
+        const goals = match.rescueGoals(team)
+        for (const [index,goal] of [goals.plays,goals.power].entries()) {
+          const step = index+1
+          const row = by(mission,`.rescue-mission[data-step="${step}"]`)
+          row.dataset.state = rescue.stage===step ? 'active' : rescue.stage>step ? 'done' : 'locked'
+          const counter = by(row,'.rescue-count')
+          counter.dataset.goal = String(goal)
+          counter.textContent = `${rescue.stage===step ? rescue.done : rescue.stage>step ? goal : 0}/${goal}`
+        }
       }
       by(status,'.blitz-defense').textContent = waiting.dead ? rescue ? '' : 'ÚLTIMA OPORTUNIDAD · Rescates agotados' :
         `Defensa del turno ${side.defended}/${match.blitz.defenseCap} · ${slots[match.roster[side.active].slot].name}`
@@ -469,6 +491,7 @@ class Arena {
   }
 
   private drawCombat(view: Arena['views'][number], i: number, match: Match, slots: Slot[]) {
+    if (!view.target || !view.attackers) return
     const target = match.roster[match.targets[i]]?.slot
     const aimed = match.targets.flatMap((to,from)=>to===i && !match.players[from].dead ? [from] : [])
     const queued = new Map<number,number>()
@@ -500,6 +523,14 @@ class Arena {
     if (this.finished) return
     if (match instanceof BlitzMatch) {
       this.drawBlitz(match,slots)
+      this.rescueClearAt.forEach((until,team)=>{
+        if (!until || performance.now()<until) return
+        const mission = by(this.teams[team],'.blitz-rescue')
+        mission.hidden = true
+        for (const row of mission.querySelectorAll('.burst')) row.classList.remove('burst')
+        this.rescueClearAt[team] = 0
+        this.blitzKey = ''
+      })
       this.reviveUntil.forEach((until,team)=>{
         if (until && performance.now()>=until) {
           by(this.teams[team],'.blitz-revived').hidden = true
@@ -541,8 +572,9 @@ class Arena {
       view.warning.textContent = p.dead ? '' : p.danger === 2 ? '¡ALARMA!' : p.danger ? 'PELIGRO' : ''
       view.incoming.textContent = String(incoming)
       view.garbage.style.height = Math.min(100,incoming*7)+'%'
-      view.meter.style.width = zoneProgress+'%'
-      view.zone.textContent = p.zone.active ? `${p.zone.lines} L · ${(p.zone.remaining/HZ).toFixed(1)} s` :
+      const blitz = match instanceof BlitzMatch
+      view.meter.style[blitz?'height':'width'] = zoneProgress+'%'
+      view.zone.textContent = p.zone.active ? `${blitz ? Math.ceil(zoneProgress)+'% · ' : ''}${p.zone.lines} L · ${(p.zone.remaining/HZ).toFixed(1)} s` :
         match.rules.zone ? Math.round(p.zone.energy)+'%' : 'Desactivada'
       view.lines.textContent = p.stats.lines+' líneas'
       view.sent.textContent = p.stats.sent+' enviadas'

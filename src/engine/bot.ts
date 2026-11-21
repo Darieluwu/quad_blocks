@@ -114,6 +114,8 @@ export class Bot {
   readonly level: number
   private random: () => number
   private plan: Step[] = []
+
+  resetPlan() { this.plan.length = 0 }
   private locks = 0
   private inZone = false
   private rescueStage = 0

@@ -78,6 +78,15 @@ export class Player {
     return spawnPiece(kind,this.zone.active ? this.zone.lines : 0)
   }
 
+  restartFall() {
+    const entry = this.previewSpawn(this.active.kind)
+    if (fits(this.board,entry)) this.active = entry
+    this.gravity = this.lockTimer = this.lockResets = this.softElapsed = 0
+    this.direction = this.dasElapsed = this.repeatElapsed = 0
+    this.lastRotation = null
+    this.buffered.length = 0
+  }
+
   private resetLock(grounded: boolean) {
     if (grounded && this.lockResets < this.rules.resets) {
       this.lockTimer = 0

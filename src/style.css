@@ -141,10 +141,19 @@ dd { margin:0; overflow-wrap:anywhere }
 .board { display:block; width:100%; height:auto; aspect-ratio:5/12; image-rendering:pixelated }
 .forecast,.board-fx,.spawn-guide { position:absolute; inset:0; width:100%; height:100%; pointer-events:none }
 .spawn-label { max-width:100%; font-size:10px; color:#ffe484; text-align:center; overflow-wrap:anywhere }
-.zone-result { position:absolute; z-index:2; bottom:16%; right:4%; display:grid; gap:2px; padding:7px 8px; pointer-events:none; border-radius:5px; border:1px solid #ffdf85a0; background:#2015099c; color:#ffdf85; text-align:right; text-shadow:0 1px 3px #140d07 }
+.board-notices { display:grid; margin-top:4px; min-width:0 }
+.board-notices > * { grid-area:1/1 }
+.board-notices:has(.zone-result:not([hidden])) .effect { visibility:hidden }
+.zone-result { align-self:center; min-width:0; display:flex; justify-content:center; align-items:baseline; gap:clamp(3px,.43vw,9px); pointer-events:none; color:#ffe8a9; text-align:center; opacity:.82 }
 .zone-result[hidden] { display:none }
-.zone-result small,.zone-result span { font:700 clamp(8px,.68vw,12px) Consolas,monospace }
-.zone-result strong { font:900 clamp(12px,1.15vw,21px) Consolas,monospace }
+.zone-result small,.zone-result span { font:700 clamp(7px,.65vw,12px) Consolas,monospace }
+.zone-result strong { font:950 italic clamp(12px,1.3vw,25px)/1 system-ui,sans-serif; text-transform:uppercase; letter-spacing:-.035em; text-shadow:0 0 16px #ffc34d98,1px 2px #784023 }
+.zone-result.zone-reveal { animation:zone-result-in .78s cubic-bezier(.21,.74,.27,1) both }
+@keyframes zone-result-in {
+  0% { opacity:0; transform:translateX(-16%) skewX(-23deg) scale(.72) }
+  39% { opacity:1; transform:skewX(-8deg) scale(1.11); filter:brightness(1.4) }
+  100% { opacity:.82; transform:none }
+}
 .blitz-settings { margin-top:20px }
 .game-bar-blitz .bar-inner { min-height:49px; padding-block:4px; flex-wrap:nowrap }
 .game-bar-blitz .brand-icon { width:30px; height:30px }
@@ -193,23 +202,29 @@ dd { margin:0; overflow-wrap:anywhere }
 .blitz-team[data-side="0"] { justify-items:end; --outward:-1 }
 .blitz-team[data-side="1"] { justify-items:start }
 .blitz-summary {
-  position:absolute; z-index:2; top:12px; inset-inline-end:0; width:clamp(95px,calc(100% - var(--blitz-card)*1.31 - 12px),225px);
-  padding:8px 10px; border:1px solid #354660; border-radius:8px; background:#121c2cea; color:#bacee9;
-  display:grid; gap:4px; overflow-wrap:anywhere; font-size:clamp(10px,1vw,15px);
+  position:absolute; z-index:2; top:12px; inset-inline-end:0; width:clamp(95px,calc(100% - var(--blitz-card)*1.31 - 12px),260px);
+  color:#bacee9; display:grid; gap:4px; overflow-wrap:anywhere; font-size:clamp(10px,1vw,15px);
 }
+.blitz-team-info { display:grid; gap:4px; padding:8px 10px; border:1px solid #354660; border-radius:8px; background:#121c2cea }
 .blitz-team[data-side="0"] .blitz-summary { inset-inline-start:0; inset-inline-end:auto }
-.blitz-team[data-reserve-danger="true"] .blitz-summary { border-color:#f2586d; color:#ffb6c0 }
+.blitz-team[data-reserve-danger="true"] .blitz-team-info { border-color:#f2586d; color:#ffb6c0 }
 .blitz-summary strong { color:#e0eafb }
 .blitz-defense { font:750 clamp(9px,.75vw,13px) Consolas,monospace; color:#ffd182 }
 .blitz-defense:empty { display:none }
-.blitz-rescue { position:relative; display:grid; gap:6px; margin-top:5px; padding:8px; border:1px solid #ffc16c80; border-radius:5px; background:#2a2117; color:#ffd48d; font-family:Consolas,monospace }
+.blitz-rescue { display:grid; gap:6px; margin-top:clamp(12px,2.7vh,40px); padding-inline:4px; text-align:center }
 .blitz-rescue[hidden],.blitz-revived[hidden] { display:none }
-.rescue-step { font-weight:800; font-size:clamp(9px,.72vw,13px); text-transform:uppercase }
-.blitz-summary .rescue-title { color:#fff1cc; font-size:clamp(15px,1.23vw,23px); line-height:1.05 }
-.rescue-count { font-weight:900; font-size:clamp(18px,1.6vw,28px); line-height:1 }
-.rescue-meter { height:5px; background:#594224; border-radius:2px; overflow:hidden }
-.rescue-meter i { display:block; height:100%; background:#ffd990 }
-.rescue-break { position:absolute; inset:42px 0 0; pointer-events:none; z-index:2 }
+.blitz-summary .rescue-alert { color:#ff667e; font:950 italic clamp(14px,1.78vw,34px)/.98 system-ui,sans-serif; letter-spacing:-.035em; text-shadow:0 0 15px #ff476e88; animation:rescue-alert 1.18s ease-in-out 5 }
+@keyframes rescue-alert { 50% { opacity:.42; text-shadow:0 0 5px #ff476e44 } }
+.rescue-name { color:#ffabb7; font:700 clamp(9px,.85vw,16px) Consolas,monospace }
+.rescue-mission { position:relative; margin-top:clamp(5px,1.6vh,18px) }
+.rescue-task { display:flex; justify-content:center; align-items:baseline; flex-wrap:wrap; gap:3px 7px; transform:skewX(-7deg) }
+.blitz-summary .rescue-title { color:inherit; font:900 clamp(13px,1.6vw,29px)/1.05 system-ui,sans-serif; letter-spacing:-.035em }
+.rescue-count { font:900 clamp(12px,1.25vw,23px)/1 Consolas,monospace; white-space:nowrap }
+.rescue-mission[data-state="active"] { color:#fff0c7; text-shadow:0 0 16px #ffb45892,0 2px #935334 }
+.rescue-mission[data-state="locked"] { color:#8993a8; opacity:.63 }
+.rescue-mission[data-state="done"] { color:#839d93 }
+.rescue-mission[data-state="done"] .rescue-count::after { content:" ✓" }
+.rescue-break { position:absolute; inset:0; pointer-events:none; z-index:2 }
 .rescue-break i { --dx:42px; --dy:-32px; --spin:55deg; position:absolute; top:45%; left:47%; width:22%; height:24px; opacity:0;
   background:linear-gradient(145deg,#fff3c7 0 7%,#d29a58 8% 30%,#785132 31% 96%,#ab7340 97%);
   clip-path:polygon(5% 4%,86% 0,100% 30%,84% 94%,18% 100%,0 72%);
@@ -218,10 +233,14 @@ dd { margin:0; overflow-wrap:anywhere }
 .rescue-break i:nth-child(3n) { --dy:62px; --spin:103deg; left:34%; top:51% }
 .rescue-break i:nth-child(4n) { --dx:68px; --dy:47px; --spin:-144deg; left:39% }
 .rescue-break i:nth-child(n+5) { top:54%; width:15%; animation-delay:.035s }
-.rescue-break.burst i { animation-name:rescue-debris; animation-duration:.63s; animation-timing-function:ease-out }
-.rescue-break.burst::before { content:""; position:absolute; inset:0; border:2px solid #ffe4b3; animation:rescue-fracture .54s ease-out both }
+.rescue-mission.burst .rescue-break i { animation:rescue-debris .63s ease-out }
+.rescue-mission.burst .rescue-break::before { content:""; position:absolute; inset:-6px; background:radial-gradient(ellipse,#ffdb9dbb,transparent 72%); animation:rescue-fracture .54s ease-out both }
+.rescue-mission.burst .rescue-task { animation:rescue-strike .63s ease-out }
+.rescue-mission[data-step="1"].burst + .rescue-mission[data-state="active"] .rescue-task { animation:rescue-unlock .26s .63s both ease-out }
 @keyframes rescue-debris { from { opacity:1; transform:scale(1.3) } 54% { opacity:.9 } to { opacity:0; transform:translate(var(--dx),var(--dy)) rotate(var(--spin)) scale(.58) } }
-@keyframes rescue-fracture { from { opacity:.86; box-shadow:inset 0 0 30px #ffba48bd } to { opacity:0; transform:scale(1.15) } }
+@keyframes rescue-fracture { from { opacity:.86; transform:scale(.55) } to { opacity:0; transform:scale(1.35) } }
+@keyframes rescue-strike { 0% { color:#fff0c7; transform:scale(1.16) skewX(-7deg) } 28% { opacity:0 } 72% { opacity:0 } }
+@keyframes rescue-unlock { from { color:#8993a8; opacity:.63; text-shadow:none } to { color:inherit; opacity:1 } }
 .blitz-revived { display:grid; gap:4px; padding:9px 5px; margin-top:5px; text-align:center; border:1px solid #75f4c7; border-radius:5px;
   background:linear-gradient(120deg,#163b34,#10241f); color:#beffe9; pointer-events:none;
 }
@@ -235,9 +254,18 @@ dd { margin:0; overflow-wrap:anywhere }
 .blitz-stack { display:grid; width:var(--blitz-card); min-width:0 }
 .blitz-stack .player { grid-area:1/1; position:relative; min-width:0; padding:8px }
 .blitz-stack .player-body { grid-template-columns:var(--blitz-rail) minmax(0,1fr) var(--blitz-rail) }
-.blitz-stack .combat-hud { margin-bottom:5px; padding-block:4px }
-.blitz-stack .combat-hud > div { gap:2px; grid-template-rows:auto 20px }
-.blitz-stack .zone-label { margin-top:6px }
+.blitz-zone,.blitz-trash { margin-top:auto; height:30%; min-height:0; width:100%; display:grid; grid-template-rows:auto minmax(0,1fr) auto; justify-items:center; gap:4px; text-align:center }
+.blitz-player :is(.blitz-zone,.blitz-trash) > span { color:#d3def0; font-size:clamp(7px,.72vw,13px); letter-spacing:.03em }
+.blitz-trash .garbage,.blitz-zone .meter { width:min(55%,17px); height:100%; min-height:0; margin:0 }
+.blitz-zone .meter { position:relative; border:1px solid #3f4b60; background:#0c101b }
+.blitz-zone .meter div { position:absolute; bottom:0; width:100% }
+.blitz-zone .zone-label { margin:0; min-width:0; font-size:clamp(7px,.70vw,13px) }
+.blitz-stance { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:8px; margin-top:6px; text-align:center;
+  color:#8a9ab2; font:850 clamp(7px,.9vw,16px)/1.12 Consolas,monospace; letter-spacing:.08em }
+.blitz-stance b { width:clamp(8px,1.2vw,22px); height:.67em; background:currentColor; clip-path:polygon(0 50%,38% 0,38% 26%,100% 26%,100% 74%,38% 74%,38% 100%) }
+.blitz-stance[data-stance="attack"] :is(span:first-child,b) { color:#ffc087; text-shadow:0 0 13px #ff935f85 }
+.blitz-stance[data-stance="defense"] :is(span:last-child,b) { color:#91f5e1; text-shadow:0 0 13px #49dabb85 }
+.blitz-stance[data-stance="defense"] b { transform:scaleX(-1) }
 .blitz-stack .player-stats { margin-top:4px }
 .blitz-stack .effect { margin-top:2px }
 .blitz-stack .player[data-state="active"] { z-index:1 }
@@ -288,10 +316,10 @@ dd { margin:0; overflow-wrap:anywhere }
 .blitz-state { flex:none; font:750 clamp(8px,.73vw,12px) Consolas,monospace; color:#b9f3da }
 .blitz-stack .player-head { min-height:27px; margin-bottom:4px; flex-wrap:wrap; column-gap:5px; row-gap:2px }
 .blitz-stack .player-head h2 { max-width:55% }
-.projection { position:absolute; left:0; right:0; border-top:2px dashed #ffc47e; pointer-events:none; z-index:1; line-height:1 }
-.projection strong { position:absolute; top:2px; right:2px; padding:4px 5px; border-radius:3px; background:#201410a0; color:#ffd2a2; font:850 clamp(9px,.65vw,13px) Consolas,monospace; text-shadow:0 1px 3px #140d07 }
-.projection[data-overflow="true"] { border-color:#ff6980 }
-.projection[data-overflow="true"] strong { background:#451120a8; color:#fff0f2 }
+.projection { position:absolute; left:0; right:0; border-top:1px dashed #ffc47e80; pointer-events:none; z-index:1; line-height:1 }
+.projection strong { position:absolute; top:2px; right:3px; color:#ffd2a2c7; font:800 clamp(8px,.62vw,12px) Consolas,monospace; text-shadow:0 1px 3px #140d07 }
+.projection[data-overflow="true"] { border-color:#ff6980a0 }
+.projection[data-overflow="true"] strong { color:#ffc1ccc7 }
 .impact { position:absolute; top:12%; left:50%; translate:-50% 0; pointer-events:none; width:max-content; max-width:100%; text-align:center; background:#501627ed; color:#fff2e6; border:1px solid #ff8194; border-radius:4px; padding:5px 6px; font:850 clamp(9px,.85vw,15px) Consolas,monospace; z-index:1 }
 .board-fx::before,.board-fx::after { content:""; position:absolute; inset:0 }
 .board-fx.zone-in::before { animation:zone-in .65s ease-out }
@@ -425,6 +453,7 @@ dd { margin:0; overflow-wrap:anywhere }
 .reduced :is(.blitz-clock strong,.blitz-stack .player,.blitz-entry,.blitz-stack .player-tag) { animation:none !important }
 .reduced .reserve-sweat { visibility:hidden }
 .reduced .rescue-break { display:none }
+.reduced :is(.rescue-alert,.rescue-mission .rescue-task,.zone-result.zone-reveal) { animation:none !important }
 .reduced .blitz-revived.arrive { animation:none }
 .reduced .result-card { animation:none }
 .reduced .board-fx,.reduced .projectile-layer { display:none }
@@ -436,6 +465,7 @@ dd { margin:0; overflow-wrap:anywhere }
   .board-fx,.projectile-layer { display:none }
   .reserve-sweat { visibility:hidden }
   .rescue-break { display:none }
+  :is(.rescue-alert,.rescue-mission .rescue-task,.zone-result.zone-reveal) { animation:none !important }
   .blitz-revived.arrive { animation:none }
   .result-card { animation:none }
 }
@@ -453,6 +483,8 @@ dd { margin:0; overflow-wrap:anywhere }
 @media (max-width:1000px) {
   .game.game-blitz { --blitz-card:min(calc((100svh - 295px)*5/12 + 2*var(--blitz-rail) + 24px),80%) }
   .blitz-summary { position:static; width:100%; min-height:63px; margin-bottom:5px; padding:4px }
+  .blitz-rescue { margin-top:5px; gap:3px }
+  .rescue-mission { margin-top:3px }
   .blitz-clock { top:56% }
 }
 @media (max-width:970px) {
@@ -481,6 +513,10 @@ dd { margin:0; overflow-wrap:anywhere }
   .blitz-summary { min-height:66px }
   .blitz-stack .player { padding:4px }
   .blitz-stack .player-head h2 { max-width:100%; font-size:10px }
+  .blitz-player :is(.blitz-trash,.blitz-zone) { gap:1px }
+  .blitz-stance { gap:3px; letter-spacing:0 }
+  .zone-result { flex-wrap:wrap; row-gap:0 }
+  .zone-result small { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%) }
   .blitz-stack .player:is([data-state="reserve"],[data-state="revived"],[data-state="down"]) { --reserve-offset:calc(var(--outward) * 20%) }
   .mode { min-height:74px }
   .config-grid,.bindings { grid-template-columns:1fr }

@@ -221,14 +221,17 @@ test('carga Zone jugando, sintetiza sonidos y entrega su ataque al terminar', as
   const j1 = page.locator('[data-player="0"]')
   const j2 = page.locator('[data-player="1"]')
   const press = (key: string) => page.keyboard.press(key,{delay:34})
-  await press('KeyI')
-  async function place(rotation: number, column: number) {
-    if (rotation) await press(rotation===1?'KeyE':'KeyR')
-    for (let x=3;x!==column;x+=Math.sign(column-3)) await press(x>column?'KeyA':'KeyD')
-    await press('KeyW')
+  async function place(rotation: number, column: number, keys = ['KeyE','KeyR','KeyA','KeyD','KeyW']) {
+    if (rotation) await press(keys[rotation-1])
+    for (let x=3;x!==column;x+=Math.sign(column-3)) await press(keys[x>column?2:3])
+    await press(keys[4])
   }
-  for (const [r,x] of [[0,3],[0,1],[0,7],[1,-1],[2,5],[2,4]]) await place(r,x)
+  for (const [r,x] of [[0,3],[0,1],[0,7],[1,-1],[2,5],[2,4]]) {
+    await place(r,x)
+    await place(r,x,['KeyO','KeyP','KeyJ','KeyL','KeyI'])
+  }
   await expect(j1.locator('.zone-label strong')).toHaveText('25%')
+  await expect(j2.locator('.zone-label strong')).toHaveText('25%')
   await press('KeyC')
   await expect(j1).toHaveClass(/zoned/)
   await expect(j1.locator('.zone-badge')).toBeVisible()
@@ -248,6 +251,8 @@ test('carga Zone jugando, sintetiza sonidos y entrega su ataque al terminar', as
   await expect(j1.locator('.zone-result')).toContainText('ZONE COMPLETADA', {timeout:6000})
   await expect(j1.locator('.zone-result')).toContainText('Single')
   await expect(j1.locator('.zone-result')).toContainText('1 línea')
+  await expect(j1.locator('.zone-result')).toHaveCSS('animation-name','zone-result-in')
+  expect(await j1.locator('.well .zone-result').count()).toBe(0)
   const projectile = page.locator('.projectile[data-from="0"][data-to="1"]')
   await expect(projectile).toBeVisible()
   expect(await page.evaluate(()=>(window as unknown as {testFrequencies:number[]}).testFrequencies)).not.toContain(746)
@@ -258,13 +263,20 @@ test('carga Zone jugando, sintetiza sonidos y entrega su ataque al terminar', as
   await expect(j2.locator('.well')).toHaveClass(/hit/)
   await expect(j2.locator('.incoming')).toHaveText('4')
   await expect(j2.locator('.attackers')).toContainText('J1 +4')
-  await expect(j2.locator('.projection')).toHaveText('+4 · ALTURA 5')
-  expect(await j2.locator('.projection').evaluate(el=>parseFloat((el as HTMLElement).style.top))).toBeCloseTo(100*19/24,3)
+  const projection = j2.locator('.projection')
+  await expect(projection).toHaveText(/\+4 · ALTURA \d+/)
   await expect(j2.locator('.impact')).toHaveText('+4 ENTRANTES')
   await page.screenshot({path:info.outputPath('ataque.png')})
   const frequencies = await page.evaluate(()=>(window as unknown as {testFrequencies:number[]}).testFrequencies)
   expect(frequencies).toEqual(expect.arrayContaining([110,620,880,82,746]))
-  await expect(j1.locator('.zone-result')).toBeHidden({timeout:4200})
+  await press('KeyN')
+  await expect(j2).toHaveClass(/zoned/)
+  await expect(projection).toBeHidden()
+  expect(await j2.locator('canvas.forecast').evaluate((canvas:HTMLCanvasElement)=>
+    canvas.getContext('2d')!.getImageData(0,0,canvas.width,canvas.height).data.some(Boolean))).toBe(false)
+  await expect(j2.locator('.incoming')).toHaveText('4')
+  await expect(projection).toBeVisible({timeout:5500})
+  await expect(j1.locator('.zone-result')).toBeHidden()
 })
 
 async function pauseFinalFall(page: Page) {
@@ -476,7 +488,9 @@ test('Blitz reutiliza mandos y teclado, intercambia dos tableros y conserva la r
   const reserve = active.map(slot=>slot^1)
   const frozen = await Promise.all(reserve.map(i=>snapshot(page,i)))
   await page.keyboard.press(['KeyT','KeyV','BracketLeft','NumpadDivide'][active[0]])
-  await expect(front.first().locator('.blitz-state')).toHaveText('ACTIVO · DEFENSA')
+  await expect(front.first().locator('.blitz-stance')).toHaveAttribute('data-stance','defense')
+  await expect(page.locator('.combat-hud')).toHaveCount(0)
+  await expect(front.first().locator('.rail .blitz-zone .zone-label')).toHaveText('0%')
   await page.keyboard.press(['KeyW','KeyI','ArrowUp','Numpad8'][reserve[0]])
   await page.screenshot({path:info.outputPath('blitz.png')})
   expect(await snapshot(page,reserve[0])).toBe(frozen[0])
@@ -519,7 +533,7 @@ test('Blitz reutiliza mandos y teclado, intercambia dos tableros y conserva la r
       const buttons = (window as unknown as {blitzButtons:{pressed:boolean;value:number}[]}).blitzButtons
       buttons[3] = {pressed:true,value:1}
     })
-    await expect(page.locator('[data-player="3"] .blitz-state')).toHaveText('ACTIVO · DEFENSA')
+    await expect(page.locator('[data-player="3"] .blitz-stance')).toHaveAttribute('data-stance','defense')
   }
   await page.getByRole('button',{name:'Pausa',exact:true}).click()
   await expect(page.getByRole('heading',{name:'Partida en pausa'})).toBeVisible()
@@ -567,7 +581,7 @@ test('la música de Blitz hace bucle, conserva el nivel con efectos y sigue las 
   const slot = Number(await page.locator('.blitz-stack [data-state="active"]').first().getAttribute('data-player'))
   const before = (await state())!
   await page.keyboard.press(['KeyT','KeyV','BracketLeft','NumpadDivide'][slot])
-  await expect(page.locator(`[data-player="${slot}"] .blitz-state`)).toHaveText('ACTIVO · DEFENSA')
+  await expect(page.locator(`[data-player="${slot}"] .blitz-stance`)).toHaveAttribute('data-stance','defense')
   expect(before.gain).toBeCloseTo(.10,5)
   expect(await state()).toMatchObject({gain:before.gain,targets:before.targets})
   await page.evaluate(()=>{
@@ -605,7 +619,9 @@ test('Blitz oculta el contador en el duelo final y muestra misiones al costado',
   await expect(page.locator('.blitz-stack [data-state="down"]')).toHaveCount(2)
   await expect(front).toHaveCount(2)
   await expect(page.getByRole('timer',{name:'Segundos para el relevo'})).toBeHidden()
-  await expect(page.locator('.blitz-rescue:visible .rescue-title')).toHaveText(['Tetris o T-Spin','Tetris o T-Spin'])
+  await expect(page.locator('.blitz-rescue:visible [data-state="active"] .rescue-title')).toHaveText(['Tetris o T-Spin','Tetris o T-Spin'])
+  await expect(page.locator('.blitz-rescue:visible [data-state="locked"] .rescue-title')).toHaveText(['Líneas de ataque','Líneas de ataque'])
+  await expect(page.locator('.rescue-alert').first()).toHaveCSS('animation-name','rescue-alert')
   const geometry = await page.locator('.blitz-team').evaluateAll(teams=>teams.map((team,i)=>{
     const mission = team.querySelector('.blitz-rescue')!.getBoundingClientRect()
     const well = team.querySelector('[data-state="active"] .well')!.getBoundingClientRect()
