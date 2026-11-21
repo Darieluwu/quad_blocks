@@ -49,6 +49,8 @@ export class Portrait {
       this.failed.add(this.img.getAttribute('src') ?? '')
       this.image(this.state)
     })
+    const blink = artwork(CHARACTERS[id].assets.portraits.blink)
+    if (blink) new Image().src = blink
   }
 
   private image(state:PortraitState) {
@@ -62,11 +64,14 @@ export class Portrait {
 
   react(cue:Cue,now:number, attacks:boolean) {
     if (!attacks && (cue.portrait==='attack' || cue.portrait==='damage')) return
-    if (this.cue && now<this.until && cue.priority<this.cue.priority) return
+    if (!cue.voice && this.cue && now<this.until && cue.priority<this.cue.priority) return
     this.cue = cue
     this.until = now+(cue.portrait==='zone'?760:1150)
-    const key = cue.portrait==='zone' ? CHARACTERS[this.id].assets.zonePose : cue.attack ? CHARACTERS[this.id].assets.attacks[cue.attack] : ''
-    this.setArt('--character-cue-art',artwork(key))
+    const assets = CHARACTERS[this.id].assets
+    const effect = cue.attack ? artwork(assets.attacks[cue.attack]) : undefined
+    const pose = cue.portrait==='zone' ? artwork(assets.zonePose) : cue.portrait==='attack' ? artwork(assets.attackPose) : undefined
+    this.root.classList.toggle('character-pose',!effect && !!pose)
+    this.setArt('--character-cue-art',effect ?? pose)
   }
 
   private setArt(property:string,url:string|undefined) {
@@ -75,13 +80,17 @@ export class Portrait {
   }
 
   update(now:number, zone:boolean, danger:number, dead:boolean, winner:boolean, reduced:boolean) {
-    if (now>=this.until) this.cue = undefined
+    if (this.cue && now>=this.until) {
+      this.cue = undefined
+      this.root.classList.remove('character-pose')
+      this.setArt('--character-cue-art',undefined)
+    }
     if (!reduced && now>=this.nextBlink) {
       this.blinkUntil = now+135
       this.nextBlink = now+4300
     }
     const state = winner?'victory':dead?'defeat':this.cue?.portrait==='defeat'?'support':
-      danger && !zone && (!this.cue || this.cue.priority<4)?'danger':this.cue?.portrait ??
+      danger && !zone && (!this.cue || !this.cue.voice && this.cue.priority<4)?'danger':this.cue?.portrait ??
       (zone?'zone':danger?'danger':!reduced && now<this.blinkUntil?'blink':'neutral')
     if (this.state===state) return
     this.state = state

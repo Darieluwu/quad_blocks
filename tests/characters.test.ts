@@ -35,6 +35,13 @@ it('registra los seis personajes, los nueve retratos y las doce voces de cada un
   }
 })
 
+it('resuelve la maestra, las nueve expresiones, las poses y el fondo de Volt',()=>{
+  const assets = CHARACTERS.volt.assets
+  for (const key of [assets.master,...Object.values(assets.portraits),assets.attackPose,assets.zonePose,assets.zoneBackground]) {
+    expect(artwork(key),key).toMatch(/\.png$/)
+  }
+})
+
 it('intercambia elecciones provisionales y protege las confirmadas',()=>{
   const picks = uniqueCharacters(['volt','volt','no-existe','pengu'])
   expect(picks).toEqual(['volt','nix','pix','pengu'])

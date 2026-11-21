@@ -4,6 +4,32 @@ import { defaultSlot } from '../../src/input'
 
 const subtitles = JSON.parse(readFileSync(new URL('../../src/characters/subtitles/es.json',import.meta.url),'utf8'))
 
+test('usa la maestra y el retrato de Volt tanto en una plaza humana como de IA',async ({page})=>{
+  await page.goto('/')
+  await page.getByRole('button',{name:'Jugar Versus Zone'}).click()
+  const preview = page.locator('[data-slot="0"] [data-character-id="volt"] img')
+  await expect(preview).toHaveAttribute('src',/master-.*\.png$/)
+  await expect.poll(()=>preview.evaluate((img:HTMLImageElement)=>img.naturalWidth)).toBeGreaterThan(0)
+  const play = page.getByRole('button',{name:'Iniciar partida'})
+  await page.locator('[data-ready="0"]').click()
+  await page.locator('[data-ready="1"]').click()
+  await play.click()
+  const portrait = page.locator('[data-player="0"] [data-character-id="volt"]')
+  await expect(portrait.locator('img')).toHaveAttribute('src',/neutral-.*\.png$/)
+  await portrait.evaluate(node=>{
+    new MutationObserver(()=>{
+      if (node.querySelector('img')?.src.match(/blink-.*\.png$/)) (node as HTMLElement).dataset.sawBlink='yes'
+    }).observe(node,{attributes:true,subtree:true,attributeFilter:['src']})
+  })
+  await expect(portrait).toHaveAttribute('data-saw-blink','yes',{timeout:6800})
+  await page.getByRole('button',{name:'Pausa',exact:true}).click()
+  await page.getByRole('button',{name:'Volver a la sala'}).click()
+  await page.locator('[data-controller="0"]').selectOption('bot')
+  await play.click()
+  await expect(page.locator('[data-player="0"] .bot-tag')).toBeVisible()
+  await expect.poll(()=>portrait.locator('img').evaluate((img:HTMLImageElement)=>img.naturalWidth)).toBe(512)
+})
+
 test('elige personajes con mando y teclado y los conserva al entrar a VS4',async ({page})=>{
   const j1Config = defaultSlot(0), j2Config = defaultSlot(1)
   j1Config.pad.right = 'B10'

@@ -100,8 +100,8 @@ test('Marcar listo reproduce las cuatro voces de selección en VS4 y muestra sus
   await expect.poll(async ()=>(await voices(page)).ends).toEqual(expect.arrayContaining(expected))
 })
 
-async function playbackRoom(page:Page, options?:{attackVoices:boolean;subtitles:boolean}) {
-  const lineup = ['volt','nix','pix','pengu'] as const
+async function playbackRoom(page:Page, options?:{attackVoices:boolean;subtitles:boolean},
+  lineup:readonly CharacterId[] = ['volt','nix','pix','pengu']) {
   const levels = [null,5,null,5]
   const match = makeMatch('voice-validation',levels)
   let connection!:WebSocketRoute
@@ -122,6 +122,32 @@ async function playbackRoom(page:Page, options?:{attackVoices:boolean;subtitles:
   await expect(page.locator('.online-player')).toHaveText('ONLINE · J1')
   return {assets:voiceFiles(),lineup,match,frame:(events:Frame['events'])=>send({type:'frame',state:snapshot(match),events,fallen:[]})}
 }
+
+test('Blitz muestra el retrato activo en grande junto al borde interior sin tapar tablero ni reloj',async ({page},info)=>{
+  await page.setViewportSize({width:1902,height:896})
+  const {match,frame} = await playbackRoom(page,undefined,['nix','pix','volt','pengu'])
+  match.sides[1].active = 2
+  frame([])
+  const player = page.locator('.player[data-player="2"]')
+  const portrait = player.locator('.character-portrait')
+  await expect(player).toHaveAttribute('data-state','active')
+  await expect.poll(()=>portrait.locator('img').evaluate((img:HTMLImageElement)=>img.naturalWidth)).toBe(512)
+  for (const [width,height,min] of [[1902,896,140],[1366,768,95]]) {
+    await page.setViewportSize({width,height})
+    const art = (await portrait.boundingBox())!
+    const board = (await player.locator('.well').boundingBox())!
+    const clock = (await page.locator('.blitz-clock strong').boundingBox())!
+    expect(art.width).toBeGreaterThanOrEqual(min)
+    expect(art.x+art.width).toBeLessThan(board.x)
+    expect(art.x).toBeGreaterThan(clock.x+clock.width)
+    if (width===1902) await page.screenshot({path:info.outputPath('retrato-blitz.png')})
+  }
+  match.sides[1].active = 3
+  match.sides[1].revivedAt = -300
+  frame([])
+  await expect(player).toHaveAttribute('data-state','reserve')
+  await expect.poll(async ()=>(await portrait.boundingBox())!.width).toBeLessThan(40)
+})
 
 test('eventos de combate y Blitz reproducen el personaje correcto en plazas humanas e IA',async ({page})=>{
   const {assets,lineup,match,frame} = await playbackRoom(page)
@@ -162,13 +188,19 @@ test('reemplaza Zone, peligro y derrota de inmediato, con subtítulos y plazas i
   const urls = (['zoneStart','danger','zoneFinish','defeat'] as const).map(event=>assets.find(file=>file.id==='volt' && file.event===event)!.url)
   const other = assets.find(file=>file.id==='nix' && file.event==='zoneStart')!.url
   const caption = page.locator('.player[data-player="0"] .character-caption')
+  const portrait = page.locator('.player[data-player="0"] [data-character-id="volt"]')
   const shown = (event:VoiceEvent) => expect(caption).toHaveText(`VOLT · ${translations.volt[event]}`)
   frame([{slot:0,event:{type:'zoneStart'}},{slot:1,event:{type:'zoneStart'}}])
   await shown('zoneStart')
+  await expect(portrait.locator('img')).toHaveAttribute('src',/zone-.*\.png$/)
+  expect(await portrait.evaluate(node=>[
+    getComputedStyle(node,'::before').backgroundImage,getComputedStyle(node,'::after').backgroundImage,
+  ])).toEqual([expect.stringMatching(/zone-background-.*\.png/),expect.stringMatching(/pose-zone-.*\.png/)])
   await expect.poll(async ()=>(await voices(page)).starts,{intervals:[10,25]}).toContain(other)
   match.players[0].danger = 2
   frame([{slot:0,event:{type:'critical'}}])
   await shown('danger')
+  await expect(portrait.locator('img')).toHaveAttribute('src',/danger-.*\.png$/)
   frame([{slot:0,event:{type:'zoneEnd',detail:'8'}}])
   await shown('zoneFinish')
   match.sides[0].active = 1
