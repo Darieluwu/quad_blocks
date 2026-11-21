@@ -1,4 +1,4 @@
-# Reglas de QUAD BLOCKS
+# Reglas de TETRAVOLT
 
 ## Versus Zone y equipos
 
@@ -87,7 +87,7 @@ Un proyectil del color del atacante conecta ambos tableros. Al llegar suena el i
 
 ## Zone
 
-Zone se carga por cuartos del **25 %**. Al inicio hacen falta **6 líneas** fuera de Zone por cuarto, o **24** para una barra completa desde cero. Cuando un tablero llega a **24** y luego a **60** líneas fuera de Zone, el coste pasa a **8** y **10** líneas para todos a partir del siguiente paso de simulación. QUAD BLOCKS usa líneas para avanzar de fase. La referencia competitiva, Zone Battle, usa puntuación. Los T-Spins, Tetris y Perfect Clears aportan las filas que eliminan. Las líneas que aún no completan un cuarto se guardan al activar Zone. En Configuración, **Líneas por cuarto de Zone** con valor **0** usa las fases. Un valor positivo fija el coste para toda la partida. [Guía de Zone Battle](https://www.tetriseffect.game/beginners-community-guide/)
+Zone se carga por cuartos del **25 %**. Al inicio hacen falta **6 líneas** fuera de Zone por cuarto, o **24** para una barra completa desde cero. Cuando un tablero llega a **24** y luego a **60** líneas fuera de Zone, el coste pasa a **8** y **10** líneas para todos a partir del siguiente paso de simulación. TETRAVOLT usa líneas para avanzar de fase. La referencia competitiva, Zone Battle, usa puntuación. Los T-Spins, Tetris y Perfect Clears aportan las filas que eliminan. Las líneas que aún no completan un cuarto se guardan al activar Zone. En Configuración, **Líneas por cuarto de Zone** con valor **0** usa las fases. Un valor positivo fija el coste para toda la partida. [Guía de Zone Battle](https://www.tetriseffect.game/beginners-community-guide/)
 
 Zone se puede activar desde el **25 %** por defecto y dura en proporción a la energía consumida, con **12 s** al 100 % en Competitivo. El tiempo avanza de forma independiente para cada jugador. Durante Zone se suspende la gravedad automática. Siguen disponibles los movimientos, el descenso voluntario, Hold y Lock Delay. Las filas completadas se acumulan como un piso dorado y sólido en el fondo. Zone se cierra cuando se acaba el tiempo, la siguiente pieza no cabe o, antes de las 20 líneas, una pieza se bloquea por completo en las filas superiores sin limpiar. Al cerrarse, retira las filas acumuladas y resuelve el ataque. Si la siguiente pieza sigue bloqueada después de retirar las filas, el jugador queda eliminado.
 

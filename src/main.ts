@@ -9,8 +9,11 @@ import { Sound } from './audio'
 import { mountArena } from './render'
 import { ATTACK_LABELS, BLITZ_NUMBERS, NUMBER_RULES, freshRules, loadSettings, saveSettings, type Mix, type Profile } from './settings'
 import { configuration, controls, credits, diagnostic, diagnosticsPage, escape, footer, header, home, icon, lobby, modeName, paintHome, teamName, type Mode } from './menu'
+import { RoomClient, inviteCode } from './online/client'
+import { onlineMenu } from './online/menu'
+import { OnlineMatch, randomId, type LobbyState, type ServerMessage } from './online/protocol'
 
-type Page = 'home'|'lobby'|'settings'|'controls'|'diag'|'credits'|'game'
+type Page = 'home'|'lobby'|'settings'|'controls'|'diag'|'credits'|'game'|'online'
 const app = document.querySelector<HTMLElement>('#app')!
 const settings = loadSettings()
 const ready = settings.slots.map(() => false)
@@ -29,16 +32,28 @@ let resumePhase: 'live'|'countdown' = 'countdown'
 let pauseReason = ''
 let overlayState = ''
 let finalFallen: number[] = []
+let online: RoomClient|null = null
+let onlineLobby: LobbyState|null = null
+let onlineSeat = -1
+let onlineNames: string[]|null = null
+let onlineNotice = ''
+let onlineWaiting = false
+let onlineRetry = false
+let onlineLink = inviteCode(new URL(location.href).searchParams.get('sala') ?? '')
+let onlineName = settings.slots[0].name
+if (onlineLink) page = 'online'
 const audio = new Sound(settings.audio)
 const isHuman = (i: number) => !settings.controllers[i].bot
-const inputs = new Inputs(settings.slots,() => page === 'game' && phase !== 'results',isHuman)
+const inputs = new Inputs(settings.slots,() => page === 'game' && phase !== 'results',i=>online && page==='game' ? i===0 : isHuman(i))
 inputs.onWake = () => audio.wake()
-inputs.onBlur = () => { if (page === 'game') pause('La ventana perdió el foco.') }
+inputs.onBlur = () => { if (online) online.input(NO_INPUT); else if (page === 'game') pause('La ventana perdió el foco.') }
 document.addEventListener('pointerdown', () => audio.wake())
 document.addEventListener('keydown', () => audio.wake())
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden && page === 'game') pause('La ventana perdió el foco.')
+  if (document.hidden && page === 'game') { inputs.clear(); inputs.onBlur() }
 })
+
+const displaySlots = () => onlineNames ? settings.slots.map((slot,i)=>({...slot,name:onlineNames![i]})) : settings.slots
 
 const store = () => { saveSettings(settings) }
 function lobbyRoster(): Participant[] {
@@ -78,6 +93,7 @@ function muteButton() {
 function render() {
   app.classList.toggle('reduced',settings.reduced)
   const body = page === 'home' ? home(settings.profile) : page === 'lobby' ? lobby(settings,inputs,ready,mode,canStart(),lobbyIssue) :
+    page === 'online' ? onlineMenu(onlineLobby,onlineSeat,onlineLink,onlineName,onlineNotice,onlineWaiting,onlineRetry) :
     page === 'settings' ? configuration(settings,returnPage) : page === 'controls' ?
       controls(settings,inputs,controlPlayer,controlType,status,returnPage) : page === 'diag' ?
       diagnosticsPage(diagnostic(inputs,settings),returnPage) : credits()
@@ -87,6 +103,12 @@ function render() {
 
 function go(next: Page) {
   if (next === 'game') return
+  if (online && next!=='online') {
+    online.close()
+    online = null; onlineLobby = null; onlineNames = null; onlineSeat = -1
+    onlineLink = onlineNotice = ''; onlineWaiting = onlineRetry = false
+    roomUrl('')
+  }
   if (next === 'settings' || next === 'controls' || next === 'diag') {
     if (page === 'lobby') returnPage = 'lobby'
     else if (page === 'home' || page === 'credits') returnPage = 'home'
@@ -106,27 +128,33 @@ function start(roster: readonly Participant[]) {
     Array.from(crypto.getRandomValues(new Uint32Array(2)),value => value.toString(36)).join('-')
   const rules = structuredClone(settings.rules)
   match = mode==='blitz' ? new BlitzMatch(rules,seed,roster,{...settings.blitz}) : new Match(rules,seed,roster)
+  mountGame(match)
+}
+
+function mountGame(current: Match, initialCountdown: number = SETTINGS.countdown) {
+  const {seed,roster} = current
   if (mode==='blitz') audio.startBlitzMusic()
-  const format = mode==='blitz' ? 'BLITZ' : match.teams ? '2v2' : roster.length===PLAYERS ? 'VS4' : roster.map(()=>1).join('v')
+  const format = mode==='blitz' ? 'BLITZ' : current.teams ? '2v2' : roster.length===PLAYERS ? 'VS4' : roster.map(()=>1).join('v')
   page = 'game'
-  phase = 'countdown'
-  countdown = SETTINGS.countdown
+  phase = initialCountdown ? 'countdown' : 'live'
+  countdown = initialCountdown
   overlayState = ''
   finalFallen = []
   inputs.clear()
   app.innerHTML = `<header class="bar game-bar ${mode==='blitz'?'game-bar-blitz':''}"><div class="bar-inner">
-    <button class="brand" data-do="pause" aria-label="Pausar partida"><span class="brand-icon">${icon('logo')}</span><span>QUAD<span>BLOCKS</span></span></button>
+    <button class="brand" ${online?'data-page="home" aria-label="Salir de la partida"':'data-do="pause" aria-label="Pausar partida"'}><span class="brand-icon">${icon('logo')}</span><span>TETRA<span>VOLT</span></span></button>
     <div class="game-info"><strong>${format}</strong><span>${modeName(mode)}</span>${mode==='blitz'?'':'<output id="elapsed">00:00</output>'}</div>
-    <div class="game-buttons"><button class="icon-button audio-toggle" data-do="mute"></button><button class="secondary" data-do="pause">${icon('pause')} Pausa</button></div>
+    <div class="game-buttons"><button class="icon-button audio-toggle" data-do="mute"></button>${online?`<span class="online-player">ONLINE · J${onlineSeat+1}</span><button class="secondary" data-page="home">Salir</button>`:`<button class="secondary" data-do="pause">${icon('pause')} Pausa</button>`}</div>
   </div></header><main class="game ${mode==='blitz'?'game-blitz':''}"><div id="arena"></div><div id="overlay" aria-live="polite"></div>
-    <div class="match-footer"><span>Semilla <b>${escape(seed)}</b></span><span id="metrics"></span><span>${escape(settings.profile)} · ${modeName(mode)}</span></div></main>`
-  arena = mountArena(document.querySelector<HTMLElement>('#arena')!,roster,match instanceof BlitzMatch)
-  arena.draw(match,settings.slots)
+    <div class="match-footer"><span>${online?'Sala privada':`Semilla <b>${escape(seed)}</b>`}</span><span id="metrics"></span><span>${online?'Reglas competitivas':escape(settings.profile)} · ${modeName(mode)}</span></div></main>`
+  arena = mountArena(document.querySelector<HTMLElement>('#arena')!,roster,current instanceof BlitzMatch)
+  arena.draw(current,displaySlots())
   muteButton()
   drawOverlay()
 }
 
 function pause(reason = '') {
+  if (online) return
   if (phase !== 'live' && phase !== 'countdown') return
   resumePhase = phase
   phase = 'paused'
@@ -146,9 +174,9 @@ function resume() {
 function drawOverlay() {
   if (!match) return
   const overlay = document.querySelector<HTMLElement>('#overlay')!
-  const missing = disconnected(match.roster)
+  const missing = online ? [] : disconnected(match.roster)
   const counter = Math.ceil(countdown/HZ)
-  const key = [phase,phase==='countdown'?counter:'',missing.join(',')].join('|')
+  const key = [phase,phase==='countdown'?counter:'',missing.join(','),online && phase==='paused'?onlineNotice:'',onlineLobby?.host].join('|')
   if (key === overlayState) return
   overlayState = key
   if (phase === 'live') { overlay.innerHTML = ''; overlay.hidden = true; return }
@@ -160,6 +188,10 @@ function drawOverlay() {
   }
   overlay.className = 'overlay'
   if (phase === 'paused') {
+    if (online) {
+      overlay.innerHTML = `<section class="modal"><h2>Partida en espera</h2><p role="status">${escape(onlineNotice)}</p><button class="secondary" data-page="home">Salir de la partida</button></section>`
+      return
+    }
     overlay.innerHTML = `<section class="modal"><div class="overline"><i></i> ${modeName(mode)}</div><h2>Partida en pausa</h2>
       <p>${missing.length ? 'Mando desconectado · '+missing.map(i=>escape(settings.slots[i].name)).join(', ')+'. Reconecta para continuar.' : escape(pauseReason || 'Los tableros están en pausa.')}</p>
       <div class="modal-actions"><button class="primary" data-do="resume" ${missing.length?'disabled':''}>Continuar</button><button class="secondary" data-do="rematch" ${missing.length?'disabled':''}>Reiniciar</button><button class="secondary" data-page="lobby">Volver a la sala</button></div></section>`
@@ -173,10 +205,11 @@ function drawOverlay() {
   overlay.className = 'results-panel'
   const winner = currentMatch.winner
   const team = currentMatch.winningTeam
+  const slots = displaySlots()
   const title = team!==null ? teamName(team)+' gana' : winner===null ? 'Empate' :
-    escape(settings.slots[currentMatch.roster[winner].slot].name)+' gana'
+    escape(slots[currentMatch.roster[winner].slot].name)+' gana'
   const mvps = currentMatch.mvps()
-  const mvpNames = mvps.map(i=>escape(settings.slots[currentMatch.roster[i].slot].name)).join(' · ')
+  const mvpNames = mvps.map(i=>escape(slots[currentMatch.roster[i].slot].name)).join(' · ')
   const bestSent = currentMatch.statsFor(mvps[0]).sent
   let rank = 1
   const rows = currentMatch.ranking().flatMap((group,index) => {
@@ -186,20 +219,144 @@ function drawOverlay() {
       const {slot,level,team} = currentMatch.roster[i]
       const {lines,sent,received,cancelled,pieces} = currentMatch.statsFor(i)
       const type = [team===undefined ? '' : teamName(team),level===undefined ? '' : 'IA '+level].filter(Boolean)
-      return `<li><b>${current}</b><span>${escape(settings.slots[slot].name)}${type.length ? `<small>${type.join(' · ')}</small>` : ''}</span><span>${lines}</span><span>${sent}</span><span>${received}</span><span>${cancelled}</span><span>${pieces}</span></li>`
+      return `<li><b>${current}</b><span>${escape(slots[slot].name)}${type.length ? `<small>${type.join(' · ')}</small>` : ''}</span><span>${lines}</span><span>${sent}</span><span>${received}</span><span>${cancelled}</span><span>${pieces}</span></li>`
     })
   }).join('')
   overlay.innerHTML = `<section class="result-card"><div class="overline"><i></i> RESULTADOS · ${modeName(mode)} <time>${formatTime(currentMatch.now)}</time></div><h2>${title}</h2>
     <div class="result-mvp"><div><small>${mvps.length>1?'MVP COMPARTIDO':'MVP'}</small><strong>${mvpNames}</strong></div>
       <span><b>${bestSent}</b> líneas enviadas</span></div>
     <div class="result-columns"><span>#</span><span>Jugador</span><span title="Líneas limpiadas">Limp.</span><span title="Líneas enviadas">Env.</span><span title="Líneas recibidas">Rec.</span><span title="Líneas canceladas">Canc.</span><span title="Piezas colocadas">Piezas</span></div>
-    <ol class="ranking">${rows}</ol><div class="modal-actions"><button class="primary" data-do="rematch" ${missing.length?'disabled':''}>Revancha</button><button class="secondary" data-page="lobby">Volver a la sala</button></div></section>`
+    <ol class="ranking">${rows}</ol><div class="modal-actions">${online ? `${onlineLobby?.host===onlineSeat?'<button class="primary" data-online="lobby">Volver todos a la sala</button>':''}<button class="secondary" data-page="home">Salir</button>` : `<button class="primary" data-do="rematch" ${missing.length?'disabled':''}>Revancha</button><button class="secondary" data-page="lobby">Volver a la sala</button>`}</div></section>`
   animate?.()
 }
+
+function roomUrl(code: string) {
+  const url = new URL(location.href)
+  if (code) url.searchParams.set('sala',code)
+  else url.searchParams.delete('sala')
+  history.replaceState(null,'',url)
+  return url.href
+}
+
+function receiveOnline(message: ServerMessage) {
+  switch (message.type) {
+    case 'error':
+      onlineNotice = message.message
+      if (page==='online') render()
+      break
+    case 'welcome':
+      onlineSeat = message.slot
+      onlineNotice = ''
+      onlineWaiting = onlineRetry = false
+      onlineLink = roomUrl(online!.code)
+      break
+    case 'lobby':
+      onlineLobby = message.lobby
+      if (message.lobby.phase==='lobby') {
+        audio.stopMusic()
+        match = arena = null
+        onlineNames = null
+        page = 'online'
+        render()
+      } else if (message.lobby.phase==='paused' && page==='game') {
+        phase = 'paused'
+        onlineNotice = `Esperando que vuelva ${message.lobby.missing.join(', ')}.`
+        audio.pauseMusic()
+        inputs.clear()
+        online?.input(NO_INPUT)
+      } else if (page==='game' && message.lobby.phase!=='results') {
+        phase = message.lobby.phase==='countdown' ? 'countdown' : 'live'
+        audio.resumeMusic()
+      }
+      break
+    case 'start':
+      mode = 'blitz'
+      onlineNames = message.names
+      if (match instanceof OnlineMatch && match.seed===message.seed) {
+        countdown = message.countdown
+      } else {
+        match = new OnlineMatch(message)
+        mountGame(match,message.countdown)
+      }
+      break
+    case 'countdown':
+      countdown = message.left
+      break
+    case 'frame':
+      if (!(match instanceof OnlineMatch) || phase==='results') return
+      match.load(message.state)
+      for (const {slot,event} of message.events) playEvent(match,slot,event)
+      if (match.finished) {
+        finalFallen = message.fallen
+        audio.stopMusic()
+        phase = 'results'
+      }
+  }
+}
+
+app.addEventListener('submit',event=>{
+  if (!(event.target instanceof HTMLFormElement) || event.target.id!=='online-connect') return
+  event.preventDefault()
+  const form = new FormData(event.target)
+  onlineName = String(form.get('name') ?? '').trim()
+  onlineLink = String(form.get('invite') ?? '').trim()
+  const create = (event as SubmitEvent).submitter?.getAttribute('name')==='create'
+  const code = create ? randomId() : inviteCode(onlineLink)
+  if (!code || !onlineName) {
+    onlineNotice = 'Introduce un nombre y, para unirte, un enlace o código válido.'
+    render()
+    return
+  }
+  online?.close(online.code!==code || create)
+  onlineNotice = ''
+  online = new RoomClient(code,onlineName,create,receiveOnline,state=>{
+    onlineWaiting = state==='connecting'
+    if (state==='connecting') onlineNotice = 'Conectando…'
+    else if (state==='lost') onlineNotice = 'Conexión perdida. Reconectando…'
+    else {
+      onlineRetry = true
+      if (!onlineNotice || onlineNotice.startsWith('Conect')) {
+        onlineNotice = 'El servidor online no está disponible. Abre la versión servida por Cloudflare Workers.'
+      }
+    }
+    if (page==='game' && phase!=='results') {
+      phase = 'paused'
+      audio.pauseMusic()
+      inputs.clear()
+    } else if (page==='online') {
+      if (state==='closed') onlineLobby = null
+      render()
+    }
+  })
+  online.connect()
+})
+
+app.addEventListener('change',event=>{
+  const element = event.target
+  if (element instanceof HTMLSelectElement && element.dataset.onlineBot!==undefined) {
+    online?.send({type:'bot',slot:Number(element.dataset.onlineBot),level:Number(element.value)})
+  }
+})
 
 app.addEventListener('click',event => {
   const button = (event.target as HTMLElement).closest<HTMLButtonElement>('button')
   if (!button || button.disabled) return
+  if (online && button.dataset.online) {
+    switch (button.dataset.online) {
+      case 'start': online.send({type:'start'}); break
+      case 'lobby': online.send({type:'lobby'}); break
+      case 'ready': online.send({type:'ready',value:!onlineLobby?.seats[onlineSeat]?.ready}); break
+      case 'copy': {
+        const field = document.querySelector<HTMLInputElement>('#online-link')!
+        field.select()
+        const status = document.querySelector('.online-status')!
+        void navigator.clipboard.writeText(field.value).then(()=>{ status.textContent = 'Enlace copiado.' },()=>{
+          status.textContent = 'Copia el enlace seleccionado.'
+        })
+      }
+    }
+    return
+  }
   const {page:next,do:action,ready:index,controlPlayer:player,controlType:type,action:bind} = button.dataset
   if (next) {
     if (button.dataset.mode==='teams' || button.dataset.mode==='versus' || button.dataset.mode==='blitz') mode = button.dataset.mode
@@ -432,16 +589,34 @@ function formatTime(ticks: number) {
   const seconds = Math.floor(ticks/HZ)
   return String(Math.floor(seconds/60)).padStart(2,'0')+':'+String(seconds%60).padStart(2,'0')
 }
+
+function playEvent(activeMatch: Match, i: number, event: Match['players'][number]['events'][number]) {
+  const activeArena = arena
+  const player = activeMatch.players[i]
+  activeArena?.note(i,event.type,event.detail,activeMatch.now)
+  if (activeArena && event.type==='incoming' && event.source!==undefined) {
+    activeArena.attack(event.source,i,() => {
+      if (match!==activeMatch || arena!==activeArena || player.dead) return
+      activeArena.note(i,'impact',undefined,activeMatch.now)
+      audio.play(event,activeMatch.roster[i].slot)
+    })
+  } else if (!(activeMatch instanceof BlitzMatch && event.type==='eliminated')) audio.play(event,activeMatch.roster[i].slot)
+}
+
 function frame(now: number) {
   accumulator += Math.min(Math.max(0,now-previous),frameStep*SETTINGS.catchupTicks)
   previous = now
   frames++
   inputs.poll()
-  if (page === 'game' && match && disconnected(match.roster).length) pause()
+  if (!online && page === 'game' && match && disconnected(match.roster).length) pause()
   while (accumulator >= frameStep) {
     accumulator -= frameStep
     const physical = inputs.consume()
     if (!match || page !== 'game' || phase === 'results') continue
+    if (online) {
+      if (phase==='live') online.input(physical[0])
+      continue
+    }
     const sample = match.roster.map(p=>p.level===undefined ? physical[p.slot] : NO_INPUT)
     if (sample.some(input => input.pressed.includes('pause'))) {
       if (phase === 'paused') resume()
@@ -455,21 +630,10 @@ function frame(now: number) {
     }
     const alive = match.players.map(p=>!p.dead)
     match.tick(sample)
-    const activeMatch = match
-    const activeArena = arena
     steps++
     match.players.forEach((p,i) => {
       if (p.zone.active && p.zone.remaining % (HZ*2) === 0 && p.zone.remaining !== p.zone.duration) p.event('zoneLoop')
-      for (const event of p.events) {
-        activeArena?.note(i,event.type,event.detail,activeMatch.now)
-        if (activeArena && event.type==='incoming' && event.source!==undefined) {
-          activeArena.attack(event.source,i,() => {
-            if (match!==activeMatch || arena!==activeArena || p.dead) return
-            activeArena.note(i,'impact',undefined,activeMatch.now)
-            audio.play(event,activeMatch.roster[i].slot)
-          })
-        } else if (!(activeMatch instanceof BlitzMatch && event.type==='eliminated')) audio.play(event,activeMatch.roster[i].slot)
-      }
+      for (const event of p.events) if (match) playEvent(match,i,event)
       p.events.length = 0
     })
     if (match.finished) {
@@ -479,7 +643,7 @@ function frame(now: number) {
     }
   }
   if (match && page === 'game') {
-    arena?.draw(match,settings.slots)
+    arena?.draw(match,displaySlots())
     drawOverlay()
     const time = formatTime(match.now)
     const elapsed = document.querySelector('#elapsed')

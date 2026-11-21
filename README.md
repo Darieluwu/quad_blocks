@@ -1,6 +1,8 @@
-# QUAD BLOCKS
+# TETRAVOLT
 
-Arena local de bloques descendentes. **Versus Zone** reúne de dos a cuatro plazas en un todos contra todos. **Equipos 2v2** enfrenta a J1 y J2 contra J3 y J4. **2v2 Blitz** enfrenta a los mismos equipos con un tablero activo por lado, relevos y rescates. Cada plaza puede ser una persona o una IA de nivel 1 a 10.
+Arena de bloques descendentes. **Versus Zone** reúne de dos a cuatro plazas en un todos contra todos. **Equipos 2v2** enfrenta a J1 y J2 contra J3 y J4. **2v2 Blitz** enfrenta a los mismos equipos con un tablero activo por lado, relevos y rescates. Cada plaza puede ser una persona o una IA de nivel 1 a 10. **Blitz online** permite que dos a cuatro personas jueguen en una sala privada desde navegadores separados. Las plazas libres se completan con IA.
+
+Para publicar el juego y activar las salas, sigue la [guía de despliegue de TETRAVOLT](docs/despliegue.md).
 
 Blitz reproduce en bucle `src/music/blitz.mp3` a un nivel bajo y estable. Ajusta su volumen en **Configuración → Audio y pantalla → Música (Blitz)**.
 
@@ -60,7 +62,7 @@ npm.cmd run test:e2e
 Para ejecutar Playwright con Microsoft Edge ya instalado:
 
 ```powershell
-$env:QUAD_BROWSER = 'msedge'
+$env:TETRAVOLT_BROWSER = 'msedge'
 npm.cmd run test:e2e
 ```
 

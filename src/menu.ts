@@ -34,21 +34,21 @@ export function header(page: string, mute: boolean) {
   const items = [['play','Jugar','home'],['settings','Configuración','settings'],['controls','Controles','controls'],
     ['diag','Diagnóstico','diag'],['credits','Créditos','credits']]
   return `<header class="bar"><div class="bar-inner">
-    <button class="brand" data-page="home" aria-label="Inicio"><span class="brand-icon">${icon('logo')}</span><span>QUAD<span>BLOCKS</span></span></button>
+    <button class="brand" data-page="home" aria-label="Inicio"><span class="brand-icon">${icon('logo')}</span><span>TETRA<span>VOLT</span></span></button>
     <nav aria-label="Menú principal">${items.map(([symbol,text,id]) => `<button data-page="${id}" class="${id===page || (id==='home' && page==='lobby')?'current':''}">${icon(symbol)}<span>${text}</span></button>`).join('')}</nav>
     <button class="icon-button audio-toggle" data-do="mute" title="${mute?'Activar audio':'Silenciar audio'}" aria-label="${mute?'Activar audio':'Silenciar audio'}">${icon(mute?'mute':'audio')}</button>
   </div></header>`
 }
-export const footer = `<footer class="footer"><span><i></i> MODO LOCAL · OFFLINE</span><span>QUAD BLOCKS <b> / </b> V1.0</span></footer>`
+export const footer = `<footer class="footer"><span><i></i> LOCAL Y ONLINE</span><span>TETRAVOLT</span></footer>`
 
 export function home(profile: string) {
   return `<main class="home">
     <section class="hero">
       <div class="hero-copy">
-        <div class="overline"><i></i> ARENA COMPETITIVA LOCAL</div>
-        <h1>QUAD<br><span>BLOCKS</span><i>.</i></h1>
+        <div class="overline"><i></i> ARENA COMPETITIVA</div>
+        <h1>TETRA<br><span>VOLT</span><i>.</i></h1>
         <p>Hasta cuatro jugadores en una pantalla. Compite por tu cuenta o en equipo y activa Zone para lanzar ataques.</p>
-        <div class="hero-actions"><button class="primary" data-page="lobby" data-mode="versus">${icon('play')} Jugar Versus Zone</button><button class="secondary" data-page="controls">${icon('controls')} Ver controles</button></div>
+        <div class="hero-actions"><button class="primary" data-page="online">${icon('play')} Jugar online</button><button class="secondary" data-page="lobby" data-mode="versus">Jugar Versus Zone</button><button class="secondary" data-page="controls">${icon('controls')} Ver controles</button></div>
         <div class="hero-legend" aria-label="Hasta cuatro jugadores locales">${COLORS.map((color,i) => `<span style="--player:${color}"><i></i> J${i+1}</span>`).join('')}</div>
       </div>
       <div class="hero-visual"><canvas id="hero-art" width="700" height="460" aria-hidden="true"></canvas></div>
@@ -170,4 +170,4 @@ export function diagnostic(inputs: Inputs, settings: Settings) {
   return cards.join('') || '<p class="hint">No hay mandos visibles. Conecta un mando y pulsa uno de sus botones para que el navegador lo detecte.</p>'
 }
 export const diagnosticsPage = (inner: string, back: string) => `<main class="panel">${intro('Diagnóstico de mandos','Consulta en directo el estado de los dispositivos, sus botones y sus ejes.',back)}<div id="device-list" class="config-grid">${inner}</div></main>`
-export const credits = () => `<main class="panel">${intro('Créditos','QUAD BLOCKS · Arena competitiva local','home')}<section class="settings-card"><h2>QUAD BLOCKS</h2><p>Diseño, implementación, gráficos de Canvas y síntesis sonora originales para este proyecto.</p><p>Motor en TypeScript, renderizado en HTML5 Canvas y audio sintetizado con Web Audio API.</p></section></main>`
+export const credits = () => `<main class="panel">${intro('Créditos','TETRAVOLT · Arena competitiva','home')}<section class="settings-card"><h2>TETRAVOLT</h2><p>Diseño, implementación, gráficos de Canvas y síntesis sonora originales para este proyecto.</p><p>Motor en TypeScript, renderizado en HTML5 Canvas y audio sintetizado con Web Audio API.</p></section></main>`

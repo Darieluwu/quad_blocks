@@ -20,7 +20,7 @@ test('menú, cuatro tableros horizontales, controles de teclado, pausa y reinici
   const errors: string[] = []
   page.on('pageerror',error => errors.push(error.message))
   await page.goto('/')
-  await expect(page.getByRole('heading',{name:'QUAD BLOCKS.'})).toBeVisible()
+  await expect(page.getByRole('heading',{name:/TETRA\s*VOLT\./})).toBeVisible()
   await expect(page.getByRole('button',{name:/VS[23]/})).toHaveCount(0)
   await expect(page.getByRole('button',{name:/Equipos 2v2/})).toBeEnabled()
   await page.screenshot({path:info.outputPath('menu.png')})
