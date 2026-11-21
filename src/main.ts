@@ -37,7 +37,6 @@ let overlayState = ''
 let finalFallen: number[] = []
 let matchCharacters = [...settings.characters]
 let lobbyPadPrior: (ReadonlySet<Action>|undefined)[] = []
-const voiceCooldown = new Map<string,number>()
 const selectionCaptions = new Map<number,{id:CharacterId;text:string}>()
 let onlineConfirm = false
 let online: RoomClient|null = null
@@ -165,7 +164,6 @@ function mountGame(current: Match, initialCountdown: number = SETTINGS.countdown
   phase = initialCountdown ? 'countdown' : 'live'
   countdown = initialCountdown
   selectionCaptions.clear()
-  voiceCooldown.clear()
   overlayState = ''
   finalFallen = []
   inputs.clear()
@@ -713,16 +711,15 @@ function pollCharacterPads() {
   }
 }
 
-function speak(id:CharacterId,event:VoiceEvent,seat:number,caption:(text:string,duration?:number)=>void) {
-  const clip = settings.characterOptions.attackVoices || !isAttackVoice(event) ? japaneseVoice(id,event) : undefined
+function speak(id:CharacterId,event:VoiceEvent,seat:number,caption:(text:string|undefined,timed:boolean)=>void) {
+  const voiceEnabled = settings.characterOptions.attackVoices || !isAttackVoice(event)
+  const clip = voiceEnabled ? japaneseVoice(id,event) : undefined
   const text = settings.characterOptions.subtitles ? subtitleFor(id,event) : undefined
-  if (!clip && !text) return
-  const now = performance.now(), key = `${seat}:${event}`
-  if (event!=='selection' && now-(voiceCooldown.get(key) ?? -Infinity)<2800) return
-  voiceCooldown.set(key,now)
-  const show = (duration?:number) => { if (text) caption(text,duration) }
-  if (clip) { audio.wake(); audio.playCharacterVoice(clip,seat,show) }
-  else show()
+  if (!voiceEnabled && !text) return
+  if (clip) audio.wake()
+  audio.playCharacterVoice(clip,seat,state=>{
+    caption(state==='playing' || state==='fallback' ? text : undefined,state==='fallback')
+  })
 }
 
 function showSelectionCaption(seat:number,text:string) {
@@ -731,25 +728,31 @@ function showSelectionCaption(seat:number,text:string) {
 }
 
 function showSelection(id:CharacterId,seat:number) {
-  speak(id,'selection',seat,(text,duration)=>{
+  speak(id,'selection',seat,(text,timed)=>{
     if (page!=='lobby' && page!=='online') return
+    if (!text) {
+      selectionCaptions.delete(seat)
+      showSelectionCaption(seat,'')
+      return
+    }
     if ((page==='online' ? onlineLineup() : settings.characters)[seat]!==id) return
     const caption = {id,text:`${CHARACTERS[id].name} · ${text}`}
     selectionCaptions.set(seat,caption)
     showSelectionCaption(seat,caption.text)
-    setTimeout(()=>{
+    if (timed) setTimeout(()=>{
       if (selectionCaptions.get(seat)!==caption) return
       selectionCaptions.delete(seat)
       showSelectionCaption(seat,'')
-    },duration ?? 3500)
+    },3500)
   })
 }
 
 function presentCharacter(index:number,event:Match['players'][number]['events'][number],current:Match) {
-  const cue = arena?.characterEvent(index,event)
+  const view = arena
+  const cue = view?.characterEvent(index,event)
   if (!cue?.voice) return
   const seat = current.roster[index].slot
-  speak(matchCharacters[seat],cue.voice,seat,(text,duration)=>arena?.subtitle(index,text,cue.priority,duration))
+  speak(matchCharacters[seat],cue.voice,seat,(text,timed)=>view?.subtitle(index,text,timed))
 }
 
 function playEvent(activeMatch: Match, i: number, event: Match['players'][number]['events'][number]) {

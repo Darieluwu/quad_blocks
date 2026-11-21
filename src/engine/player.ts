@@ -9,7 +9,7 @@ export const ACTIONS = ['left','right','soft','hard','cw','ccw','half','hold','z
 export type Action = typeof ACTIONS[number]
 export type Input = {held: ReadonlySet<Action>; pressed: readonly Action[]}
 export const NO_INPUT: Input = {held:new Set(),pressed:[]}
-export type GameEvent = {type:string; detail?:string; source?:number}
+export type GameEvent = {type:string; detail?:string; source?:number; repeat?:true}
 export type PlayerStats = {pieces:number; lines:number; sent:number; received:number; cancelled:number}
 export type CombatPlay = {kind:'lock'; qualifies:boolean; power:number; zoned:boolean} | {kind:'zoneEnd'}
 const clearNames = ['','single','double','triple','quad']
@@ -272,7 +272,8 @@ export class Player {
     const level = spawnThreat || Math.max(height,effective) >= SETTINGS.critical ? 2 :
       Math.max(height,effective) >= SETTINGS.early ? 1 : 0
     if (level && (level > this.danger || now >= this.warningAt)) {
-      this.event(level === 2 ? 'critical' : 'danger')
+      if (level===2 && this.danger===2) this.events.push({type:'critical',repeat:true})
+      else this.event(level===2 ? 'critical' : 'danger')
       this.warningAt = now + SETTINGS.alarmTicks
     }
     this.danger = level

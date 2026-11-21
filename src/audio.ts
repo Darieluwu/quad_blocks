@@ -41,8 +41,8 @@ const VOICES = 20
 const SIGNAL_VOICES = 40
 const CHARACTER_LEVEL = .42
 type Voice = {osc:OscillatorNode; gain:GainNode; priority:number}
-type Line = {src:string; caption:(duration?:number)=>void}
-type Dialogue = {queue:Line[]; active?:{src:string;gain:GainNode;stop:()=>void}}
+export type DialogueState = 'playing'|'waiting'|'fallback'|'stopped'
+type Dialogue = {notify:(state:DialogueState)=>void; media?:{gain:GainNode;dispose:()=>void}}
 export class Sound {
   private context?: AudioContext
   private master?: GainNode
@@ -125,67 +125,68 @@ export class Sound {
     this.music.track.currentTime = 0
   }
 
-  playCharacterVoice(src:string,player:number,caption:Line['caption']) {
-    if (!this.context || !this.dialogueBus || this.mix.mute || !Number.isInteger(player) || player<0 || player>3) {
-      caption()
-      return
-    }
-    let seat = this.dialogue.get(player)
-    if (!seat) { seat = {queue:[]}; this.dialogue.set(player,seat) }
-    if (seat.active?.src===src || seat.queue.some(line=>line.src===src)) return
-    seat.queue.push({src,caption})
-    if (!seat.active) this.nextLine(player,seat)
-  }
-
-  private nextLine(player:number,seat:Dialogue) {
+  playCharacterVoice(src:string|undefined,player:number,notify:Dialogue['notify']) {
+    if (!Number.isInteger(player) || player<0 || player>3) return
+    this.stopCharacterVoice(player)
+    const line: Dialogue = {notify}
+    this.dialogue.set(player,line)
     const context = this.context
     const bus = this.dialogueBus
-    const line = seat.queue.shift()
-    if (!context || !bus || !line) { this.dialogue.delete(player); this.levelDialogue(); return }
-    const clip = new Audio(line.src)
+    if (!context || !bus || !src || this.mix.mute) { notify('fallback'); return }
+    const clip = new Audio(src)
     const source = context.createMediaElementSource(clip)
     const gain = context.createGain()
     const pan = context.createStereoPanner()
     pan.pan.value = (player-1.5)*.25
     gain.gain.value = 0
     source.connect(gain).connect(pan).connect(bus)
-    let announced = false
-    const stop = () => {
-      if (seat.active?.stop!==stop) return
-      seat.active = undefined
+    const listeners = new AbortController()
+    line.media = {gain,dispose:()=>{
+      listeners.abort()
       clip.pause()
       clip.removeAttribute('src')
+      clip.load()
       source.disconnect()
       gain.disconnect()
       pan.disconnect()
+    }}
+    const current = () => this.dialogue.get(player)===line && !!line.media
+    const fallback = () => {
+      if (!current()) return
+      line.media!.dispose()
+      line.media = undefined
+      this.levelDialogue()
+      notify('fallback')
     }
-    const finish = () => {
-      if (seat.active?.stop!==stop) return
-      stop()
-      if (!announced) line.caption()
-      this.nextLine(player,seat)
-    }
-    seat.active = {src:line.src,gain,stop}
     this.levelDialogue()
     clip.addEventListener('playing',()=>{
-      if (seat.active?.stop!==stop) return
-      announced = true
-      line.caption(Number.isFinite(clip.duration) && clip.duration>0 ? clip.duration*1000 : undefined)
-    },{once:true})
-    clip.addEventListener('ended',finish,{once:true})
-    clip.addEventListener('error',finish,{once:true})
-    void clip.play().catch(finish)
+      if (current()) notify('playing')
+    },{signal:listeners.signal})
+    const waiting = () => { if (current()) notify('waiting') }
+    clip.addEventListener('waiting',waiting,{signal:listeners.signal})
+    clip.addEventListener('pause',waiting,{signal:listeners.signal})
+    clip.addEventListener('ended',()=>{ if (current()) this.stopCharacterVoice(player) },{once:true,signal:listeners.signal})
+    clip.addEventListener('error',fallback,{once:true,signal:listeners.signal})
+    void clip.play().catch(fallback)
   }
 
   private levelDialogue() {
-    const active = [...this.dialogue.values()].flatMap(seat=>seat.active ? [seat.active] : [])
+    const active = [...this.dialogue.values()].flatMap(line=>line.media ? [line.media] : [])
     const level = CHARACTER_LEVEL/Math.sqrt(Math.max(1,active.length))
     for (const line of active) line.gain.gain.setTargetAtTime(level,this.context!.currentTime,.024)
   }
 
+  private stopCharacterVoice(player:number) {
+    const line = this.dialogue.get(player)
+    if (!line) return
+    this.dialogue.delete(player)
+    line.media?.dispose()
+    line.notify('stopped')
+    this.levelDialogue()
+  }
+
   stopCharacterVoices() {
-    for (const seat of this.dialogue.values()) seat.active?.stop()
-    this.dialogue.clear()
+    for (const player of this.dialogue.keys()) this.stopCharacterVoice(player)
   }
 
   play(event: GameEvent, player: number) {

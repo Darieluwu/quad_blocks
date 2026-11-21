@@ -192,10 +192,15 @@ describe('Jugadas especiales y puntuación', () => {
     p.updateDanger(3+SETTINGS.alarmTicks)
     expect(p.danger).toBe(2)
     expect(p.events.map(e=>e.type)).toEqual(['danger','critical','critical'])
+    expect(p.events.map(e=>e.repeat)).toEqual([undefined,undefined,true])
     p.board[early][0] = p.board[critical][1] = null
     p.updateDanger(4+2*SETTINGS.alarmTicks)
     expect(p.danger).toBe(0)
     expect(p.events).toHaveLength(3)
+    p.board[critical][1] = 'G'
+    p.updateDanger(5+2*SETTINGS.alarmTicks)
+    expect(p.events.at(-1)).toMatchObject({type:'critical'})
+    expect(p.events.at(-1)?.repeat).toBeUndefined()
   })
 })
 

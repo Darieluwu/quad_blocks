@@ -155,7 +155,7 @@ class Arena {
       stack.width = grid.width
       stack.height = grid.height
       return {node,team,ctx,grid,stack,stackCtx:stack.getContext('2d')!,revision:-1,signature:'',
-        portrait:new Portrait(characters[slot],by(node,'.character-portrait'),slot),caption:by(node,'.character-caption'),captionUntil:0,captionPriority:0,
+        portrait:new Portrait(characters[slot],by(node,'.character-portrait'),slot),caption:by(node,'.character-caption'),captionUntil:0,
         hold:by<HTMLCanvasElement>(node,'.hold'),next:by<HTMLCanvasElement>(node,'.next'),
         heading:by(node,'h2'),warning:by(node,'.danger-label'),target:node.querySelector<HTMLElement>('.target'),attackers:node.querySelector<HTMLElement>('.attackers'),
         incoming:by(node,'.incoming'),garbage:by(node,'.garbage div'),meter:by(node,'.meter div'),
@@ -287,15 +287,11 @@ class Arena {
     return cue
   }
 
-  subtitle(i:number,text:string,priority:number,duration?:number) {
+  subtitle(i:number,text:string|undefined,timed:boolean) {
     const view = this.views[i]
-    const now = performance.now()
-    const displayPriority = duration===undefined ? priority : Infinity
-    if (now<view.captionUntil && view.captionPriority>displayPriority) return
-    view.caption.textContent = `${CHARACTERS[view.portrait.id].name} · ${text}`
-    view.caption.hidden = false
-    view.captionPriority = displayPriority
-    view.captionUntil = now+(duration ?? Math.min(5000,Math.max(2200,text.length*55)))
+    view.caption.textContent = text ? `${CHARACTERS[view.portrait.id].name} · ${text}` : ''
+    view.caption.hidden = !text
+    view.captionUntil = text && timed ? performance.now()+Math.min(5000,Math.max(2200,text.length*55)) : Infinity
   }
 
   placeResultCaptions(overlay:HTMLElement) {
@@ -552,7 +548,7 @@ class Arena {
 
   draw(match: Match, slots: Slot[]) {
     const now = performance.now()
-    for (const view of this.views) if (!view.caption.hidden && now>=view.captionUntil) view.caption.hidden = true
+    for (const [i,view] of this.views.entries()) if (!view.caption.hidden && now>=view.captionUntil) this.subtitle(i,undefined,false)
     if (this.finished) return
     const reduced = this.reduced.matches || !!this.root.closest('.reduced')
     const winners = match.finished ? match.winnerBoards() : []

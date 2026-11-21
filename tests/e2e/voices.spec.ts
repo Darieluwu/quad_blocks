@@ -30,22 +30,32 @@ function voiceFiles() {
 async function traceVoices(page:Page) {
   await page.addInitScript(()=>{
     const real = AudioContext.prototype.createMediaElementSource
-    const log = {starts:[] as string[],ends:[] as string[],active:0,peak:0}
+    const log = {starts:[] as string[],ends:[] as string[],pauses:[] as string[],times:[] as number[],active:0,peak:0}
     Object.defineProperty(window,'voiceLog',{value:log})
     AudioContext.prototype.createMediaElementSource = function(track) {
       const node = real.call(this,track)
       const url = new URL(track.src).pathname
       if (!url.endsWith('.ogg')) return node
+      let active = false
+      const finish = (events:string[])=>{ if (active) { active=false; events.push(url); log.active-- } }
+      const pause = track.pause.bind(track)
+      track.pause = () => {
+        if (!track.ended) finish(log.pauses)
+        pause()
+      }
       track.addEventListener('playing',()=>{
         log.starts.push(url)
+        log.times.push(performance.now())
+        active = true
         log.peak = Math.max(log.peak,++log.active)
       },{once:true})
-      track.addEventListener('ended',()=>{ log.ends.push(url); log.active-- },{once:true})
+      track.addEventListener('ended',()=>finish(log.ends),{once:true})
+      track.addEventListener('pause',()=>{ if (!track.ended) finish(log.pauses) },{once:true})
       return node
     }
   })
 }
-type VoiceLog = {starts:string[]; ends:string[]; active:number; peak:number}
+type VoiceLog = {starts:string[]; ends:string[]; pauses:string[]; times:number[]; active:number; peak:number}
 const voices = (page:Page) => page.evaluate(()=>(window as unknown as {voiceLog:VoiceLog}).voiceLog)
 
 test('las 72 grabaciones exactas se sirven y decodifican en el navegador desde el build',async ({page})=>{
@@ -90,16 +100,14 @@ test('Marcar listo reproduce las cuatro voces de selección en VS4 y muestra sus
   await expect.poll(async ()=>(await voices(page)).ends).toEqual(expect.arrayContaining(expected))
 })
 
-async function playbackRoom(page:Page, mutedAttacks=false) {
+async function playbackRoom(page:Page, options?:{attackVoices:boolean;subtitles:boolean}) {
   const lineup = ['volt','nix','pix','pengu'] as const
   const levels = [null,5,null,5]
   const match = makeMatch('voice-validation',levels)
   let connection!:WebSocketRoute
   const send = (message:ServerMessage) => connection.send(JSON.stringify(message))
   await traceVoices(page)
-  if (mutedAttacks) await page.addInitScript(()=>localStorage.setItem('quad-blocks-v1',JSON.stringify({
-    characterOptions:{attackVoices:false,subtitles:false},
-  })))
+  if (options) await page.addInitScript(characterOptions=>localStorage.setItem('quad-blocks-v1',JSON.stringify({characterOptions})),options)
   await page.routeWebSocket('**/api/salas/*',socket=>{
     connection = socket
     socket.onMessage(message=>{
@@ -141,10 +149,56 @@ test('eventos de combate y Blitz reproducen el personaje correcto en plazas huma
 })
 
 test('las preferencias silencian voces de ataque y subtítulos mientras se reproduce la voz de peligro',async ({page})=>{
-  const {assets,frame} = await playbackRoom(page,true)
+  const {assets,frame} = await playbackRoom(page,{attackVoices:false,subtitles:false})
   frame([{slot:0,event:{type:'quad'}},{slot:0,event:{type:'critical'}}])
   const danger = assets.find(file=>file.id==='volt' && file.event==='danger')!.url
   await expect.poll(async ()=>(await voices(page)).starts).toEqual([danger])
   await expect.poll(async ()=>(await voices(page)).ends).toEqual([danger])
   await expect(page.locator('.character-caption:visible')).toHaveCount(0)
+})
+
+test('reemplaza Zone, peligro y derrota de inmediato, con subtítulos y plazas independientes en el relevo',async ({page})=>{
+  const {assets,match,frame} = await playbackRoom(page)
+  const urls = (['zoneStart','danger','zoneFinish','defeat'] as const).map(event=>assets.find(file=>file.id==='volt' && file.event===event)!.url)
+  const other = assets.find(file=>file.id==='nix' && file.event==='zoneStart')!.url
+  const caption = page.locator('.player[data-player="0"] .character-caption')
+  const shown = (event:VoiceEvent) => expect(caption).toHaveText(`VOLT · ${translations.volt[event]}`)
+  frame([{slot:0,event:{type:'zoneStart'}},{slot:1,event:{type:'zoneStart'}}])
+  await shown('zoneStart')
+  await expect.poll(async ()=>(await voices(page)).starts,{intervals:[10,25]}).toContain(other)
+  match.players[0].danger = 2
+  frame([{slot:0,event:{type:'critical'}}])
+  await shown('danger')
+  frame([{slot:0,event:{type:'zoneEnd',detail:'8'}}])
+  await shown('zoneFinish')
+  match.sides[0].active = 1
+  match.turn = 2
+  frame([{slot:0,event:{type:'critical',repeat:true}}])
+  await expect(page.locator('.blitz-clock')).toHaveAttribute('data-turn','2')
+  await shown('zoneFinish')
+  expect((await voices(page)).pauses).not.toContain(other)
+  frame([{slot:0,event:{type:'eliminated'}}])
+  await shown('defeat')
+  await expect.poll(async ()=>(await voices(page)).ends).toContain(urls[3])
+  const log = await voices(page)
+  expect(log.starts.filter(url=>urls.includes(url))).toEqual(urls)
+  expect(log.times[log.starts.indexOf(urls[1])]-log.times[log.starts.indexOf(urls[0])]).toBeLessThan(1000)
+  expect(log.pauses).toEqual(expect.arrayContaining(urls.slice(0,3)))
+  await expect(caption).toBeHidden()
+})
+
+test('el texto sustituye a la voz de inmediato si el ataque está silenciado o el archivo falta',async ({page})=>{
+  const {assets,frame} = await playbackRoom(page,{attackVoices:false,subtitles:true})
+  const caption = page.locator('.player[data-player="0"] .character-caption')
+  const zone = assets.find(file=>file.id==='volt' && file.event==='zoneStart')!.url
+  const missing = assets.find(file=>file.id==='volt' && file.event==='danger')!.url
+  await page.route(`**${missing}`,route=>route.fulfill({status:404}))
+  frame([{slot:0,event:{type:'zoneStart'}}])
+  await expect(caption).toContainText(translations.volt.zoneStart)
+  frame([{slot:0,event:{type:'quad'}}])
+  await expect(caption).toContainText(translations.volt.tetris)
+  await expect.poll(async ()=>(await voices(page)).pauses).toContain(zone)
+  frame([{slot:0,event:{type:'critical'}}])
+  await expect(caption).toContainText(translations.volt.danger)
+  expect((await voices(page)).starts).toEqual([zone])
 })

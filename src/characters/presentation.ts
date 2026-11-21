@@ -21,6 +21,7 @@ export const isAttackVoice = (event:VoiceEvent) => event==='tetris' || event==='
 export function cueFor(event:GameEvent) {
   if (event.type==='combo' && Number(event.detail)<3) return undefined
   if (event.type==='zoneEnd' && !Number(event.detail)) return {portrait:'zone',voice:'zoneFinish',priority:6} satisfies Cue
+  if (event.type==='critical' && event.repeat) return cues.danger
   return cues[event.type]
 }
 

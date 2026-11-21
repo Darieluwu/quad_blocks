@@ -10,13 +10,14 @@ class AudioNodeMock {
 const parameter = () => ({value:0,setTargetAtTime:vi.fn(),setValueAtTime:vi.fn(),exponentialRampToValueAtTime:vi.fn()})
 const gainNode = () => Object.assign(new AudioNodeMock(),{gain:parameter()})
 
-it('mezcla cuatro plazas, encadena frases sin interrumpir y mantiene las alertas en otro bus',()=>{
+it('mezcla cuatro plazas, interrumpe solo la plaza vigente y mantiene las alertas en otro bus',async ()=>{
   class Clip extends EventTarget {
     static instances:Clip[] = []
-    duration = 2
     pause = vi.fn()
     removeAttribute = vi.fn()
-    play = vi.fn(()=>Promise.resolve())
+    load = vi.fn()
+    reject!: (reason:Error)=>void
+    play = vi.fn(()=>new Promise<void>((_,reject)=>{this.reject = reject}))
     constructor(readonly src:string) { super(); Clip.instances.push(this) }
   }
   class Context {
@@ -43,13 +44,12 @@ it('mezcla cuatro plazas, encadena frases sin interrumpir y mantiene las alertas
   try {
     const mixer = new Sound({...MIX,mute:false})
     mixer.wake()
-    const captions = Array.from({length:5},()=>vi.fn())
+    const captions = Array.from({length:8},()=>vi.fn())
     for (let i=0;i<4;i++) mixer.playCharacterVoice(`line-${i}`,i,captions[i])
-    mixer.playCharacterVoice('follow-up',0,captions[4])
     expect(Clip.instances.map(clip=>clip.src)).toEqual(['line-0','line-1','line-2','line-3'])
     for (const [i,clip] of Clip.instances.entries()) {
       clip.dispatchEvent(new Event('playing'))
-      expect(captions[i]).toHaveBeenCalledWith(2000)
+      expect(captions[i]).toHaveBeenCalledWith('playing')
       expect(clip.pause).not.toHaveBeenCalled()
     }
     const dialogueGain = Context.sources[0].outputs[0] as ReturnType<typeof gainNode>
@@ -65,11 +65,28 @@ it('mezcla cuatro plazas, encadena frases sin interrumpir y mantiene las alertas
     expect(alertBus).not.toBe(dialogueBus)
     expect(zoneBus).not.toBe(dialogueBus)
     expect(alertBus.outputs[0]).toBe(zoneBus.outputs[0])
-    Clip.instances[0].dispatchEvent(new Event('ended'))
-    expect(Clip.instances[4].src).toBe('follow-up')
-    expect(captions[4]).not.toHaveBeenCalled()
+    mixer.playCharacterVoice('danger',0,captions[4])
+    expect(captions[0]).toHaveBeenLastCalledWith('stopped')
+    expect(Clip.instances[0].load).toHaveBeenCalledOnce()
+    expect(Clip.instances[4].src).toBe('danger')
+    expect(Clip.instances[4].play).toHaveBeenCalledOnce()
+    mixer.playCharacterVoice('zoneFinish',0,captions[5])
+    Clip.instances[5].dispatchEvent(new Event('playing'))
+    expect(captions[5]).toHaveBeenLastCalledWith('playing')
     Clip.instances[4].dispatchEvent(new Event('playing'))
-    expect(captions[4]).toHaveBeenCalledWith(2000)
+    Clip.instances[4].dispatchEvent(new Event('ended'))
+    Clip.instances[4].reject(new Error('Fallo de una carga anterior'))
+    await Promise.resolve()
+    expect(captions[4].mock.calls).toEqual([['stopped']])
+    expect(Clip.instances[5].pause).not.toHaveBeenCalled()
+    mixer.playCharacterVoice('defeat',0,captions[6])
+    expect(captions[5]).toHaveBeenLastCalledWith('stopped')
+    Clip.instances[6].dispatchEvent(new Event('error'))
+    expect(captions[6]).toHaveBeenLastCalledWith('fallback')
+    mixer.playCharacterVoice(undefined,0,captions[7])
+    expect(captions[6]).toHaveBeenLastCalledWith('stopped')
+    expect(captions[7]).toHaveBeenCalledWith('fallback')
+    expect(Clip.instances).toHaveLength(7)
     for (const clip of Clip.instances.slice(1,4)) expect(clip.pause).not.toHaveBeenCalled()
     mixer.stopCharacterVoices()
     expect(Clip.instances.every(clip=>clip.pause.mock.calls.length===1)).toBe(true)
