@@ -14,7 +14,7 @@ test('usa la maestra y el retrato de Volt tanto en una plaza humana como de IA',
   await page.locator('[data-ready="0"]').click()
   await page.locator('[data-ready="1"]').click()
   await play.click()
-  const portrait = page.locator('[data-player="0"] [data-character-id="volt"]')
+  const portrait = page.locator('[data-player="0"] .player-banner [data-character-id="volt"]')
   await expect(portrait.locator('img')).toHaveAttribute('src',/neutral-.*\.png$/)
   await portrait.evaluate(node=>{
     new MutationObserver(()=>{
@@ -75,9 +75,9 @@ test('elige personajes con mando y teclado y los conserva al entrar a VS4',async
   await expect(page.locator('[data-selection-caption="0"]')).toContainText(subtitles.nix.selection)
   for (const i of [2,3]) await page.locator(`[data-ready="${i}"]`).click()
   await page.getByRole('button',{name:'Iniciar partida'}).click()
-  await expect(page.locator('.player[data-player="0"] .character-portrait')).toHaveAttribute('data-character-id','nix')
-  await expect(page.locator('.player[data-player="1"] .character-portrait')).toHaveAttribute('data-character-id','pengu')
-  await expect(page.locator('.player .character-portrait')).toHaveCount(4)
+  await expect(page.locator('.player[data-player="0"] .player-banner .character-portrait')).toHaveAttribute('data-character-id','nix')
+  await expect(page.locator('.player[data-player="1"] .player-banner .character-portrait')).toHaveAttribute('data-character-id','pengu')
+  await expect(page.locator('.player .player-banner .character-portrait')).toHaveCount(4)
   expect(errors).toEqual([])
 })
 

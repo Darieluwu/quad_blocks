@@ -1,0 +1,115 @@
+.cinematic-layer { position:absolute; inset:0; z-index:2; pointer-events:none }
+.cinematic-scene {
+  position:absolute; isolation:isolate; container-type:inline-size; overflow:hidden; pointer-events:none;
+  background:radial-gradient(ellipse at 51% 56%,#70320b,#23141d 65%,#0e121c);
+  clip-path:polygon(7% 0,100% 0,100% 94%,93% 100%,0 100%,0 6%);
+  border-block:1px solid color-mix(in srgb,var(--scene-color) 70%,transparent);
+}
+.cinematic-background,.cinematic-pose,.cinematic-electricity,.cinematic-grid,.cinematic-sparks {
+  position:absolute; inset:0; width:100%; height:100%;
+}
+.cinematic-background {
+  object-fit:cover; object-position:5% 50%;
+  animation:cinematic-storm var(--scene-time) ease-out both;
+}
+.cinematic-scene[data-direction="left"] .cinematic-background { object-position:95% 50% }
+.cinematic-grid {
+  background:linear-gradient(0deg,#110b16 2%,transparent 35%,transparent 82%,#110b166b),
+    repeating-linear-gradient(0deg,transparent 0 4px,#f9d39110 5px 6px);
+}
+.cinematic-pose {
+  inset:0 auto 0 50%; width:auto; max-width:none; height:100%;
+  filter:drop-shadow(1px 0 9px color-mix(in srgb,var(--scene-color) 65%,transparent));
+  animation:cinematic-figure var(--scene-time) cubic-bezier(.16,.7,.26,1) both;
+}
+.cinematic-electricity {
+  fill:none; stroke:var(--scene-light); stroke-width:2px;
+  filter:drop-shadow(0 0 5px var(--scene-color));
+  animation:cinematic-current var(--scene-time) linear both;
+}
+.cinematic-title {
+  position:absolute; inset:auto 7% 5%;
+  color:#fff8db; text-align:left;
+  font:1000 italic clamp(23px,15cqi,48px)/.82 system-ui,sans-serif;
+  letter-spacing:-.075em; text-shadow:2px 2px #6e271a,0 3px 14px #080811,0 0 14px #080811;
+  animation:cinematic-name var(--scene-time) cubic-bezier(.15,.68,.23,1) both;
+}
+.cinematic-title small {
+  display:block; margin-bottom:7px; color:var(--scene-light);
+  font:900 11px/1 Consolas,monospace; letter-spacing:.18em;
+}
+.cinematic-title strong { display:block }
+.cinematic-sparks i {
+  position:absolute; left:51%; top:54%; width:16px; height:2px;
+  border-radius:50%; background:var(--scene-light); box-shadow:0 0 7px var(--scene-color);
+  opacity:0; animation:cinematic-spark 470ms calc(490ms + var(--delay)) ease-out both;
+}
+.cinematic-beam {
+  position:absolute; left:0; top:46%; width:100%; height:20%; overflow:visible;
+  fill:none; stroke:var(--scene-light); stroke-width:3; opacity:0;
+  filter:drop-shadow(0 0 3px #fff4c7) drop-shadow(0 0 10px var(--scene-color));
+  animation:cinematic-discharge 370ms 520ms ease-out both;
+}
+.cinematic-beam .beam-branch { stroke-width:1.5 }
+.cinematic-scene[data-direction="left"] .cinematic-beam { transform:scaleX(-1) }
+.cinematic-scene[data-delivery="false"] .cinematic-beam { inset-inline:15%; width:70%; opacity:.58 }
+
+@keyframes cinematic-storm {
+  from { opacity:.25; transform:scale(1.24) }
+  25%,73% { opacity:.92 }
+  81% { opacity:1 }
+  to { opacity:.37; transform:scale(1.06) }
+}
+@keyframes cinematic-figure {
+  from { opacity:0; transform:translateX(calc(-50% + var(--scene-entry)*110px)) scale(.86) skewX(-7deg) }
+  21% { opacity:1; transform:translateX(-50%) scale(1.02) }
+  66% { opacity:1; transform:translateX(-50%) scale(1.055) }
+  to { opacity:0; transform:translateX(calc(-50% - var(--scene-entry)*32px)) scale(1.12) }
+}
+@keyframes cinematic-current {
+  0%,44%,100% { opacity:0 }
+  15%,37% { opacity:.74 }
+  23%,56% { opacity:.34 }
+  77% { opacity:.88 }
+}
+@keyframes cinematic-name {
+  from,9% { opacity:0; transform:translateY(18px) skewX(-16deg) }
+  28%,82% { opacity:1; transform:translateY(0) skewX(-5deg) }
+  to { opacity:0; transform:translateY(-5px) skewX(-9deg) }
+}
+@keyframes cinematic-spark {
+  from { opacity:0; transform:rotate(var(--angle)) translateX(6px) scaleX(.25) }
+  20% { opacity:1 }
+  to { opacity:0; transform:rotate(var(--angle)) translateX(var(--distance)) scaleX(1.3) }
+}
+@keyframes cinematic-discharge {
+  from { opacity:0; clip-path:inset(0 96% 0 0) }
+  38% { opacity:1; clip-path:inset(0) }
+  57% { opacity:.85; clip-path:inset(0) }
+  to { opacity:0; clip-path:inset(0 0 0 97%) }
+}
+
+.cinematic-edge {
+  position:absolute; inset:-2px; z-index:2; pointer-events:none; border-radius:inherit;
+  border:2px solid var(--scene-color); color:var(--scene-color);
+  box-shadow:0 0 20px currentColor;
+  animation:cinematic-edge 430ms ease-out both;
+}
+.cinematic-edge i {
+  position:absolute; width:34px; height:15px; background:#fff6a8;
+  filter:drop-shadow(0 0 5px currentColor);
+  clip-path:polygon(0 68%,39% 46%,33% 13%,71% 43%,77% 11%,100% 25%,69% 85%,61% 57%,28% 92%,27% 63%);
+}
+.cinematic-edge i:nth-child(1) { inset:-8px auto auto 5% }
+.cinematic-edge i:nth-child(2) { inset:22% -18px auto auto; rotate:91deg }
+.cinematic-edge i:nth-child(3) { inset:auto 6% -8px auto; rotate:180deg }
+.cinematic-edge i:nth-child(4) { inset:auto auto 22% -18px; rotate:-91deg }
+.cinematic-impact { animation-duration:280ms }
+@keyframes cinematic-edge {
+  from { opacity:1 }
+  to { opacity:0 }
+}
+
+.dialogue-slot[data-cinematic-line] .character-caption { --dialogue-accent:var(--scene-color) }
+.reduced :is(.cinematic-layer,.cinematic-edge),.no-attack-animation :is(.cinematic-layer,.cinematic-edge) { visibility:hidden }
+@media (prefers-reduced-motion:reduce) { .cinematic-layer,.cinematic-edge { visibility:hidden } }

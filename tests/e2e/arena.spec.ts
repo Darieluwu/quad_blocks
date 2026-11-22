@@ -188,6 +188,7 @@ test('cuatro mandos simulados, diagnóstico, reasignación de eje y reconexión 
 
 test('carga Zone jugando, sintetiza sonidos y entrega su ataque al terminar', async ({page},info) => {
   await page.emulateMedia({reducedMotion:'no-preference'})
+  await page.clock.install()
   await page.addInitScript(() => {
     const animate = Element.prototype.animate
     Element.prototype.animate = function (keyframes, options) {
@@ -220,7 +221,12 @@ test('carga Zone jugando, sintetiza sonidos y entrega su ataque al terminar', as
   await start(page)
   const j1 = page.locator('[data-player="0"]')
   const j2 = page.locator('[data-player="1"]')
-  const press = (key: string) => page.keyboard.press(key,{delay:34})
+  await page.clock.pauseAt(await page.evaluate(()=>Date.now()+100))
+  const press = async (key: string) => {
+    await page.keyboard.press(key)
+    // The game processes horizontal input before hard drop within a simulation tick.
+    await page.clock.runFor(34)
+  }
   async function place(rotation: number, column: number, keys = ['KeyE','KeyR','KeyA','KeyD','KeyW']) {
     if (rotation) await press(keys[rotation-1])
     for (let x=3;x!==column;x+=Math.sign(column-3)) await press(keys[x>column?2:3])
@@ -246,6 +252,7 @@ test('carga Zone jugando, sintetiza sonidos y entrega su ataque al terminar', as
     })
   })
   expect(banked).toBe(true)
+  await page.clock.resume()
   await page.screenshot({path:info.outputPath('zone.png')})
   await expect(j2.locator('.incoming')).toHaveText('0')
   await expect(j1.locator('.zone-result')).toContainText('ZONE COMPLETADA', {timeout:6000})
@@ -308,7 +315,9 @@ test('el tablero final cae intacto en VS4 y deja al ganador, estadísticas y rev
   await expect(page.getByRole('heading',{name:'Jugador 1 gana'})).toBeVisible()
   await expect(page.locator('.ranking li')).toHaveCount(4)
   await expect(page.locator('.ranking li').nth(1)).toContainText('Jugador 4')
-  await expect(page.locator('[data-result-player="3"] .character-caption')).toContainText('ASTRA')
+  const defeat = page.locator('li:has([data-result-player="3"]) .character-caption')
+  await expect(defeat).toBeVisible()
+  await expect(defeat.locator('.dialogue-name')).toHaveText('ASTRA')
   await expect(page.locator('.result-boards .player')).toHaveAttribute('data-player','0')
   await expect(page.locator('.result-mvp')).toContainText('MVP')
   const falling = page.locator('.board-fall[data-player="3"]')
@@ -387,10 +396,11 @@ test('la pila crítica activa el marco rojo y la alarma sintetizada', async ({pa
   }
   await expect(player.locator('.danger-label')).toHaveText('¡ALARMA!')
   const caption = player.locator('.character-caption')
-  await expect(caption).toContainText('VOLT · Tch... ¡Esto se complica!')
+  await expect(caption.locator('.dialogue-name')).toHaveText('VOLT')
+  await expect(caption.locator('.dialogue-text')).toHaveText('Tch... ¡Esto se complica!')
   const captionBox = await caption.boundingBox()
   const wellBox = await player.locator('.well').boundingBox()
-  expect(captionBox!.y).toBeGreaterThanOrEqual(wellBox!.y+wellBox!.height)
+  expect(captionBox!.y+captionBox!.height).toBeLessThanOrEqual(wellBox!.y)
   await expect(player.locator('.spawn-label')).toContainText('APARICIÓN')
   const guide = await player.locator('canvas.spawn-guide').evaluate(el=>{
     const canvas = el as HTMLCanvasElement

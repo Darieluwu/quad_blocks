@@ -1,0 +1,115 @@
+.hud-portrait {
+  position:relative;
+  grid-area:1/1;
+  align-self:start;
+  inline-size:var(--portrait-size);
+  aspect-ratio:1;
+  isolation:isolate;
+  pointer-events:none;
+}
+
+.hud-portrait .character-portrait {
+  display:grid;
+  inline-size:100%;
+  block-size:100%;
+  grid-template: minmax(0,1fr) / minmax(0,1fr);
+  padding:6%;
+  border-radius:7px 2px 7px 2px;
+  border-inline-end:2px solid var(--character-color);
+  background:repeating-linear-gradient(137deg,transparent 0 14px,#d1edff0d 14px 15px),
+    radial-gradient(ellipse at 33% 74%,color-mix(in srgb,var(--character-color) 27%,#20283b),#141a27 76%);
+}
+.hud-portrait .character-portrait img {
+  object-fit:contain;
+  min-inline-size:0;
+  min-block-size:0;
+}
+.hud-portrait .character-portrait[data-portrait="danger"] { border-color:#ff7689 }
+.zoned .hud-portrait .character-portrait {
+  border-color:color-mix(in srgb,var(--character-light) 68%,var(--character-color));
+  box-shadow:0 0 16px color-mix(in srgb,var(--character-color) 55%,transparent);
+}
+.hud-portrait[data-pulsing]::after {
+  content:"";
+  position:absolute;
+  inset:-4px;
+  border-radius:9px 3px;
+  background:conic-gradient(from -28deg,var(--character-color),transparent 12% 47%,var(--character-color) 50%,transparent 63% 96%,var(--character-color));
+  mask:linear-gradient(#000 0 0) content-box exclude,linear-gradient(#000 0 0);
+  padding:2px;
+  animation:hud-portrait-spark 520ms ease-out both;
+}
+@keyframes hud-portrait-spark {
+  0%,100% { opacity:0 }
+  28% { opacity:1 }
+}
+
+@media (min-width:1140px) and (max-width:1499px) and (min-height:650px), (min-width:1500px) and (min-height:720px) {
+  .blitz-stack .player[data-featured="true"] .player-banner {
+    position:static;
+    grid-template-columns:minmax(0,1fr);
+  }
+  .blitz-stack .player[data-featured="true"] .player-profile { grid-area:1/1; padding-inline:8px }
+  .blitz-stack .player[data-featured="true"] .volt-showcase { inset:8px 8px auto auto; width:calc(100% - 16px) }
+  .blitz-stack .player[data-featured="true"] .hud-portrait {
+    position:absolute;
+    grid-area:auto;
+    top:var(--hud-portrait-top);
+    inset-inline-start:calc(100% + 8px);
+    inline-size:var(--hud-side-size);
+    --hud-pulse-x:6px;
+    --hud-pulse-scale:1.18;
+    transform-origin:left center;
+    transition:opacity 130ms ease;
+  }
+  .blitz-team[data-side="1"] .player[data-featured="true"] .hud-portrait {
+    top:var(--hud-portrait-top-right,var(--hud-portrait-top));
+    inset-inline-start:auto;
+    inset-inline-end:calc(100% + 8px);
+    --hud-pulse-x:-6px;
+    transform-origin:right center;
+  }
+  .blitz-stack .player[data-featured="true"] .hud-portrait::before {
+    content:"";
+    position:absolute;
+    background:var(--character-color);
+    inline-size:14px;
+    block-size:2px;
+    inset:50% 100% auto auto;
+  }
+  .blitz-team[data-side="1"] .player[data-featured="true"] .hud-portrait::before { inset:50% auto auto 100% }
+  .blitz-stack .player[data-featured="true"] .hud-portrait .character-portrait {
+    font:850 clamp(22px,2vw,32px) Consolas,monospace;
+    letter-spacing:.12em;
+  }
+  #arena:has(.cinematic-scene) .blitz-stack .player[data-featured="true"] .hud-portrait {
+    --hud-pulse-scale:1;
+    --hud-pulse-x:0px;
+  }
+  #arena:has(.cinematic-scene[data-layout="center"]) .blitz-stack .player[data-featured="true"] .hud-portrait { opacity:0 }
+}
+@media (min-width:1140px) and (max-width:1499px) and (min-height:650px) {
+  .game.game-blitz:not(.result-scene) {
+    --blitz-gap:clamp(164px,14vw,216px);
+    --hud-side-size:clamp(100px,8.7vw,128px);
+    --hud-portrait-top:12%;
+    --hud-portrait-top-right:66%;
+  }
+}
+@media (min-width:1500px) and (min-height:720px) {
+  .game.game-blitz:not(.result-scene) {
+    --blitz-wide-gap:clamp(377px,22vw,428px);
+    --hud-side-size:min(176px,calc((var(--blitz-gap) - 38px)/2.36));
+    --hud-portrait-top:7%;
+  }
+}
+
+:is(.reduced,.no-attack-animation) .hud-portrait[data-pulsing] {
+  transform:none !important;
+}
+:is(.reduced,.no-attack-animation) .hud-portrait[data-pulsing]::after { display:none }
+.reduced .hud-portrait { transition:none !important }
+@media (prefers-reduced-motion:reduce) {
+  .hud-portrait { transform:none !important; transition:none !important }
+  .hud-portrait[data-pulsing]::after { display:none }
+}

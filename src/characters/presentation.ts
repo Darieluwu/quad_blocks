@@ -69,7 +69,9 @@ export class Portrait {
     this.until = now+(cue.portrait==='zone'?760:1150)
     const assets = CHARACTERS[this.id].assets
     const effect = cue.attack ? artwork(assets.attacks[cue.attack]) : undefined
-    const pose = cue.portrait==='zone' ? artwork(assets.zonePose) : cue.portrait==='attack' ? artwork(assets.attackPose) : undefined
+    // VOLT has a dedicated HUD surface for full poses.
+    const pose = this.id==='volt' ? undefined :
+      cue.portrait==='zone' ? artwork(assets.zonePose) : cue.portrait==='attack' ? artwork(assets.attackPose) : undefined
     this.root.classList.toggle('character-pose',!effect && !!pose)
     this.setArt('--character-cue-art',effect ?? pose)
   }
@@ -95,7 +97,7 @@ export class Portrait {
     if (this.state===state) return
     this.state = state
     this.root.dataset.portrait = state
-    this.setArt('--character-zone-art',state==='zone'?artwork(CHARACTERS[this.id].assets.zoneBackground):undefined)
+    this.setArt('--character-zone-art',state==='zone' && this.id!=='volt'?artwork(CHARACTERS[this.id].assets.zoneBackground):undefined)
     this.image(state)
   }
 }

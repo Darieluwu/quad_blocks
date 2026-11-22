@@ -9,6 +9,11 @@ import { zoneTitle } from './engine/zone'
 import type { Slot } from './input'
 import { CHARACTERS, uniqueCharacters, type CharacterId } from './characters/catalog'
 import { Portrait, cueFor, portraitMarkup } from './characters/presentation'
+import { artwork } from './characters/assets'
+import { DialogueCard, dialogueMarkup } from './characters/dialogue'
+import './characters/dialogue.css'
+import { ZoneCinematics } from './characters/cinematics'
+import './characters/hud-portrait.css'
 import type { GameEvent } from './engine/player'
 
 export const COLORS = ['#ff5266','#59aaff','#58e39a','#be86fa']
@@ -29,6 +34,11 @@ const ANIMATIONS: Record<string,string> = {
 }
 const CELL = 26
 const by = <E extends HTMLElement>(root: ParentNode, selector: string) => root.querySelector<E>(selector)!
+
+function voltShowcase() {
+  const url = artwork(CHARACTERS.volt.assets.attackPose)
+  return url ? `<div class="volt-showcase" aria-hidden="true"><img class="volt-attack" src="${url}" alt="" draggable="false"></div>` : ''
+}
 
 function square(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, color: string, ghost = false) {
   if (ghost) {
@@ -65,15 +75,25 @@ function preview(canvas: HTMLCanvasElement, kinds: Cell[], size = 12) {
 }
 
 export function mountArena(root: HTMLElement, roster: readonly Participant[], blitz = false, characters = uniqueCharacters(null), attackAnimations = true) {
-  const card = ({slot,level,team}:Participant) => `
-    <article class="player${blitz?' blitz-player':''}" data-player="${slot}" style="--player:${COLORS[slot]}">
-      <header class="player-head"><span class="player-tag">J${slot+1}</span><h2></h2>
-        <span class="character-identity" title="${CHARACTERS[characters[slot]].name}">${portraitMarkup(characters[slot])}<span>${CHARACTERS[characters[slot]].name}</span></span>
+  const card = ({slot,level,team}:Participant) => {
+    const id = characters[slot]
+    const {name,colors} = CHARACTERS[id]
+    return `
+    <article class="player${blitz?' blitz-player':''}" data-player="${slot}" style="--player:${COLORS[slot]};--character-color:${colors[0]}">
+      <header class="player-banner">
+        <div class="hud-portrait">${portraitMarkup(id)}</div>
+        <div class="player-profile"><div class="player-head"><span class="player-tag">J${slot+1}</span><h2></h2>
+        <span class="character-name">${name}</span>
         ${team===undefined ? '' : `<span class="team-tag" data-team="${team}">Equipo ${team===0?'A':'B'}</span>`}
         ${level===undefined ? '' : `<span class="bot-tag" title="Dificultad ${level}">IA ${level}</span>`}
         <span class="zone-badge" hidden>ZONE</span>
         ${blitz ? '<span class="blitz-state"></span>' : ''}
-        <span class="danger-label"></span></header>
+        <span class="danger-label"></span></div>
+        ${blitz ? '<div class="reserve-readout"><span class="reserve-zone"></span><strong class="reserve-garbage" hidden></strong></div>' : ''}
+        </div>
+        ${id==='volt' ? voltShowcase() : ''}
+      </header>
+      ${dialogueMarkup(id)}
       ${blitz ? '' : `<div class="combat-hud">
         <div><span class="combat-label">ATACAS A</span><strong class="target"></strong></div>
         <div><span class="combat-label">TE ATACAN</span><div class="attackers"></div></div>
@@ -94,16 +114,16 @@ export function mountArena(root: HTMLElement, roster: readonly Participant[], bl
       ${blitz ? '<div class="blitz-stance" aria-label="Postura"><span>ATAQUE</span><b aria-hidden="true"></b><span>DEFENSA</span></div>' : '<div class="zone-label"><span>ZONE</span><strong></strong></div><div class="meter"><div></div></div>'}
       <div class="player-stats"><span class="lines"></span><span class="sent"></span></div>
       <div class="board-notices"><div class="effect"></div><div class="zone-result" hidden><small>ZONE COMPLETADA</small><strong></strong><span></span></div></div>
-      <p class="character-caption" hidden></p>
-      ${blitz ? '<span class="reserve-sweat" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span class="blitz-entry" aria-hidden="true"></span>' : ''}
+      ${blitz ? '<span class="reserve-sweat" aria-hidden="true"><i></i><i></i></span><span class="blitz-entry" aria-hidden="true"></span>' : ''}
     </article>`
+  }
   const missionRow = (step: number,title: string) => `<div class="rescue-mission" data-step="${step}">
     <div class="rescue-task"><strong class="rescue-title">${title}</strong><span class="rescue-count"></span></div>
     <div class="rescue-break" aria-hidden="true">${'<i></i>'.repeat(8)}</div></div>`
   const layout = blitz ? `<div class="blitz-clock" role="timer" aria-label="Segundos para el relevo"><strong></strong></div>
     <div class="blitz-arena">${[0,1].map(team=>`<section class="blitz-team" data-side="${team}">
       <aside class="blitz-summary">
-        <div class="blitz-team-info"><strong class="blitz-team-name"></strong><span class="blitz-partner"></span><div class="blitz-defense"></div></div>
+        <div class="blitz-team-info"><strong class="blitz-team-name"></strong><div class="blitz-defense"></div></div>
         <div class="blitz-rescue" hidden>
           <strong class="rescue-alert">REVIVE A TU COMPAÑERO</strong><span class="rescue-name"></span>
           ${missionRow(1,'Tetris o T-Spin')}${missionRow(2,'Líneas de ataque')}
@@ -121,6 +141,7 @@ export function mountArena(root: HTMLElement, roster: readonly Participant[], bl
 class Arena {
   private views
   private layer: HTMLElement
+  private cinematics: ZoneCinematics
   private clock: HTMLElement|null
   private teams: HTMLElement[]
   private reviveUntil = [0,0]
@@ -130,6 +151,7 @@ class Arena {
   private reduced = matchMedia('(prefers-reduced-motion: reduce)')
   constructor(private root: HTMLElement, roster: readonly Participant[], characters:readonly CharacterId[],private attackAnimations:boolean) {
     this.layer = by(root,'.projectile-layer')
+    this.cinematics = new ZoneCinematics(root,characters)
     this.clock = root.querySelector('.blitz-clock')
     this.teams = [...root.querySelectorAll<HTMLElement>('.blitz-team')]
     this.views = roster.map(({slot,team}) => {
@@ -155,7 +177,11 @@ class Arena {
       stack.width = grid.width
       stack.height = grid.height
       return {node,team,ctx,grid,stack,stackCtx:stack.getContext('2d')!,revision:-1,signature:'',
-        portrait:new Portrait(characters[slot],by(node,'.character-portrait'),slot),caption:by(node,'.character-caption'),captionUntil:0,
+        portrait:new Portrait(characters[slot],by(node,'.hud-portrait .character-portrait'),slot),
+        portraitFrame:by(node,'.hud-portrait'),portraitPulse:null as Animation|null,
+        dialogue:new DialogueCard(by(node,'.dialogue-slot'),characters[slot],slot),
+        reserveZone:node.querySelector<HTMLElement>('.reserve-zone'),reserveGarbage:node.querySelector<HTMLElement>('.reserve-garbage'),
+        showcase:node.querySelector<HTMLElement>('.volt-showcase'),showcaseAnimation:null as Animation|null,
         hold:by<HTMLCanvasElement>(node,'.hold'),next:by<HTMLCanvasElement>(node,'.next'),
         heading:by(node,'h2'),warning:by(node,'.danger-label'),target:node.querySelector<HTMLElement>('.target'),attackers:node.querySelector<HTMLElement>('.attackers'),
         incoming:by(node,'.incoming'),garbage:by(node,'.garbage div'),meter:by(node,'.meter div'),
@@ -174,6 +200,7 @@ class Arena {
   finish(match: Match, fallen: readonly number[]) {
     if (this.finished) return
     this.finished = true
+    this.cinematics.stop()
     const effects = !this.root.closest('.reduced') && !window.matchMedia('(prefers-reduced-motion: reduce)').matches
     const winners = match.winnerBoards().map(index=>{
       const node = this.views[index].node
@@ -245,16 +272,22 @@ class Arena {
     }
   }
 
-  attack(from: number, to: number, arrive: () => void) {
+  attack(from: number, to: number, tick:number, arrive: () => void) {
+    const origin = this.views[from]
+    const victim = this.views[to]
+    this.cinematics.delivered(origin.node,victim.node,tick)
     if (!this.attackAnimations || this.layer.closest('.reduced') || this.reduced.matches) {
       arrive()
       return
     }
-    const origin = this.views[from]
-    const victim = this.views[to]
+    const electric = origin.portrait.id==='volt'
     const bounds = this.layer.getBoundingClientRect()
-    const start = origin.well.getBoundingClientRect()
-    const end = victim.well.getBoundingClientRect()
+    const anchor = (view: Arena['views'][number]) => {
+      const field = view.well.getBoundingClientRect()
+      return field.width ? field : view.node.getBoundingClientRect()
+    }
+    const start = anchor(origin)
+    const end = anchor(victim)
     const direction = Math.sign(end.left-start.left) || 1
     const x = (direction>0 ? start.right : start.left)-bounds.left
     const y = Math.max(18,Math.min(start.top,end.top)-bounds.top-12)
@@ -262,11 +295,12 @@ class Arena {
     const arc = Math.min(16,Math.abs(dx)*.10,y-8)
     const projectile = document.createElement('span')
     projectile.className = 'projectile'
+    if (electric) projectile.classList.add('projectile-electric')
     projectile.dataset.from = origin.node.dataset.player
     projectile.dataset.to = victim.node.dataset.player
     projectile.style.left = x+'px'
     projectile.style.top = y+'px'
-    projectile.style.setProperty('--shot',COLORS[Number(origin.node.dataset.player)])
+    projectile.style.setProperty('--shot',electric ? '#ffd345' : COLORS[Number(origin.node.dataset.player)])
     projectile.style.setProperty('--shot-accent',CHARACTERS[origin.portrait.id].colors[1])
     projectile.style.setProperty('--bearing',Math.atan2(0,dx)+'rad')
     this.layer.append(projectile)
@@ -277,26 +311,84 @@ class Arena {
     ],{duration:Math.min(490,310+Math.abs(dx)*.12),easing:'ease-out'})
     flight.onfinish = () => {
       projectile.remove()
-      if (this.layer.isConnected) arrive()
+      if (!this.layer.isConnected) return
+      if (electric && victim.node.dataset.featured!=='false' && !victim.node.classList.contains('dead')) {
+        victim.well.animate([
+          {boxShadow:'0 0 17px 3px #ffd345, 0 0 4px 1px #fff6a9 inset'},
+          {boxShadow:'none'},
+        ],{duration:320,easing:'ease-out'})
+      }
+      arrive()
     }
   }
 
-  characterEvent(i:number,event:GameEvent) {
+  characterEvent(i:number,event:GameEvent,tick:number) {
     const cue = cueFor(event)
-    if (cue) this.views[i].portrait.react(cue,performance.now(),this.attackAnimations)
+    const view = this.views[i]
+    if (cue) view.portrait.react(cue,performance.now(),this.attackAnimations)
+    if (cue?.attack==='tetris' || cue?.attack==='spin' || cue?.attack==='combo' ||
+        event.type==='blitzGuard' || event.type==='blitzProtected') this.emphasizePortrait(view)
+    if (event.type==='zoneStart') this.cinematics.charge(view.portrait.id,view.node)
+    if (cue?.attack==='zoneFinish') {
+      view.portraitPulse?.cancel()
+      view.showcaseAnimation?.cancel()
+      this.cinematics.finish(view.portrait.id,view.node,tick)
+    }
+    if (!view.showcase || !cue) return cue
+    if (event.type==='eliminated' || event.type==='victory' || event.type==='blitzVictory') view.showcaseAnimation?.cancel()
+    if (!cue.attack || cue.attack==='zoneFinish' || !this.attackAnimations || this.reduced.matches || this.root.closest('.reduced')) return cue
+    view.showcaseAnimation?.cancel()
+    view.showcase.dataset.scene = 'attack'
+    const scene = by(view.showcase,'.volt-attack')
+    const animation = scene.animate([
+      {opacity:0,transform:'translateX(15%)'},{opacity:1,transform:'none',offset:.22},{opacity:0,transform:'none'},
+    ],{duration:570,easing:'ease-out'})
+    view.showcaseAnimation = animation
+    const clear = () => {
+      if (view.showcaseAnimation!==animation) return
+      delete view.showcase!.dataset.scene
+      view.showcaseAnimation = null
+    }
+    animation.onfinish = animation.oncancel = clear
     return cue
   }
 
-  subtitle(i:number,text:string|undefined,timed:boolean) {
-    const view = this.views[i]
-    view.caption.textContent = text ? `${CHARACTERS[view.portrait.id].name} · ${text}` : ''
-    view.caption.hidden = !text
-    view.captionUntil = text && timed ? performance.now()+Math.min(5000,Math.max(2200,text.length*55)) : Infinity
+  private emphasizePortrait(view:Arena['views'][number]) {
+    if (!this.attackAnimations || this.reduced.matches || this.root.closest('.reduced') ||
+        view.node.dataset.featured==='false' || this.root.querySelector('.cinematic-scene')) return
+    if (view.portraitPulse && Number(view.portraitPulse.currentTime)<65) return
+    view.portraitPulse?.cancel()
+    const frame = view.portraitFrame
+    frame.dataset.pulsing = ''
+    const pulse = frame.animate([
+      {transform:'none',easing:'cubic-bezier(.24,.65,.32,1)'},
+      {transform:'translateX(var(--hud-pulse-x,0px)) scale(var(--hud-pulse-scale,1))',offset:.26,easing:'ease-out'},
+      {transform:'none'},
+    ],{duration:520})
+    view.portraitPulse = pulse
+    const clear = () => {
+      if (view.portraitPulse!==pulse) return
+      delete frame.dataset.pulsing
+      view.portraitPulse = null
+    }
+    pulse.onfinish = pulse.oncancel = clear
+  }
+
+  subtitle(i:number,text:string|undefined,timed:boolean,ended:boolean,zoneFinish:boolean) {
+    const {dialogue,portrait} = this.views[i]
+    if (!text) {
+      dialogue.hide(ended)
+      return
+    }
+    const accent = zoneFinish ? this.cinematics.accent(portrait.id) : undefined
+    dialogue.slot.toggleAttribute('data-cinematic-line',!!accent)
+    if (accent) dialogue.slot.style.setProperty('--scene-color',accent)
+    dialogue.show(text,timed)
   }
 
   placeResultCaptions(overlay:HTMLElement) {
     for (const view of this.views) {
-      if (!view.node.isConnected) overlay.querySelector(`[data-result-player="${view.node.dataset.player}"]`)?.append(view.caption)
+      if (!view.node.isConnected) overlay.querySelector(`[data-result-player="${view.node.dataset.player}"]`)?.closest('li')?.append(view.dialogue.slot)
     }
   }
 
@@ -455,8 +547,10 @@ class Arena {
     const clock = this.clock!
     const seconds = Math.ceil(match.left/HZ)
     const warning = match.canRotate && !match.transition && match.left<=match.warningTicks
+    // Online snapshots serialize the initial -Infinity timestamp as null.
+    const revivedTeams = match.sides.map(side=>Number.isFinite(side.revivedAt) && match.now-side.revivedAt<3*HZ)
     const key = [seconds,warning,match.canRotate,!!match.transition,match.rotation,match.turn,...match.stances,
-      ...match.sides.flatMap(side=>[side.active,side.used,side.defended,match.now-side.revivedAt<3*HZ,
+      ...match.sides.flatMap((side,team)=>[side.active,side.used,side.defended,revivedTeams[team],
         side.rescue?.stage,side.rescue?.done,
         ...side.members.flatMap(i=>[match.players[i].dead,match.players[i].danger,match.players[i].garbage.total])])].join('|')
     if (key===this.blitzKey) return
@@ -476,27 +570,24 @@ class Arena {
       const status = by(teamView,'.blitz-summary')
       const ally = side.members.find(i=>i!==side.active)!
       const waiting = match.players[ally]
-      const revived = !waiting.dead && match.now-side.revivedAt<3*HZ
+      const revived = !waiting.dead && revivedTeams[team]
       const name = slots[match.roster[ally].slot].name
       const active = this.views[side.active]
       const reserve = this.views[ally]
+      active.node.dataset.featured = 'true'
+      reserve.node.dataset.featured = 'false'
       active.node.dataset.state = match.players[side.active].dead ? 'down' : 'active'
       active.node.dataset.reserveDanger = 'false'
       reserve.node.dataset.state = waiting.dead ? 'down' : revived ? 'revived' : 'reserve'
       reserve.node.dataset.reserveDanger = String(!waiting.dead && waiting.danger>0)
-      teamView.dataset.reserveDanger = reserve.node.dataset.reserveDanger
       by(active.node,'.blitz-state').textContent = match.players[side.active].dead ? 'CAÍDO' : 'ACTIVO'
-      by(reserve.node,'.blitz-state').textContent = waiting.dead ? 'CAÍDO' : revived ? 'REVIVIDO' : 'EN ESPERA'
+      by(reserve.node,'.blitz-state').textContent = waiting.dead ? side.rescue?.stage===2 ? 'REVIVIENDO' : 'CAÍDO' : revived ? 'REVIVIDO' : 'EN ESPERA'
       for (const index of side.members) {
         const stance = by(this.views[index].node,'.blitz-stance')
         stance.dataset.stance = match.stances[index]
         stance.setAttribute('aria-label',match.stances[index]==='defense' ? 'Postura: Defensa' : 'Postura: Ataque')
       }
       by(status,'.blitz-team-name').textContent = `Equipo ${team===0?'A':'B'} · ${match.blitz.revives-side.used} rescates`
-      by(status,'.blitz-partner').textContent = name+(waiting.dead ? side.rescue?.stage===2 ? ' · REVIVIENDO' : ' · CAÍDO' :
-        revived?' · REVIVIDO':' · EN ESPERA')+
-        (waiting.danger && !waiting.dead ? ' · '+(waiting.danger===2?'ALARMA':'PELIGRO') : '')+
-        (waiting.garbage.total ? ' · +'+waiting.garbage.total+' pendientes' : '')
       const rescue = waiting.dead ? side.rescue : null
       const mission = by(status,'.blitz-rescue')
       mission.hidden = !rescue && !this.rescueClearAt[team]
@@ -513,7 +604,7 @@ class Arena {
         }
       }
       by(status,'.blitz-defense').textContent = waiting.dead ? rescue ? '' : 'ÚLTIMA OPORTUNIDAD · Rescates agotados' :
-        `Defensa del turno ${side.defended}/${match.blitz.defenseCap} · ${slots[match.roster[side.active].slot].name}`
+        `Defensa del turno ${side.defended}/${match.blitz.defenseCap}`
     }
   }
 
@@ -548,7 +639,7 @@ class Arena {
 
   draw(match: Match, slots: Slot[]) {
     const now = performance.now()
-    for (const [i,view] of this.views.entries()) if (!view.caption.hidden && now>=view.captionUntil) this.subtitle(i,undefined,false)
+    for (const view of this.views) view.dialogue.update(now)
     if (this.finished) return
     const reduced = this.reduced.matches || !!this.root.closest('.reduced')
     const winners = match.finished ? match.winnerBoards() : []
@@ -608,6 +699,11 @@ class Arena {
       view.meter.style[blitz?'height':'width'] = zoneProgress+'%'
       view.zone.textContent = p.zone.active ? `${blitz ? Math.ceil(zoneProgress)+'% · ' : ''}${p.zone.lines} L · ${(p.zone.remaining/HZ).toFixed(1)} s` :
         match.rules.zone ? Math.round(p.zone.energy)+'%' : 'Desactivada'
+      if (view.reserveZone) view.reserveZone.textContent = p.dead || !match.rules.zone ? '' : `Zone ${view.zone.textContent}`
+      if (view.reserveGarbage) {
+        view.reserveGarbage.hidden = p.dead || !incoming
+        view.reserveGarbage.textContent = `+${incoming} basura`
+      }
       view.lines.textContent = p.stats.lines+' líneas'
       view.sent.textContent = p.stats.sent+' enviadas'
     }

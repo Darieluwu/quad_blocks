@@ -5,7 +5,7 @@ import { HZ, PLAYERS, SETTINGS } from './engine/rules'
 import { ACTIONS, NO_INPUT, type Action } from './engine/player'
 import { botLevel } from './engine/bot'
 import { Inputs, automaticPadMap, conflict, defaultMap, keyboardClashes, label, padBindings, pressedButtons } from './input'
-import { Sound } from './audio'
+import { Sound, type DialogueState } from './audio'
 import { mountArena } from './render'
 import { ATTACK_LABELS, BLITZ_NUMBERS, NUMBER_RULES, freshRules, loadSettings, saveSettings, type Mix, type Profile } from './settings'
 import { configuration, controls, credits, diagnostic, diagnosticsPage, escape, footer, header, home, icon, lobby, modeName, paintHome, teamName, type Mode } from './menu'
@@ -711,14 +711,15 @@ function pollCharacterPads() {
   }
 }
 
-function speak(id:CharacterId,event:VoiceEvent,seat:number,caption:(text:string|undefined,timed:boolean)=>void) {
+function speak(id:CharacterId,event:VoiceEvent,seat:number,caption:(text:string|undefined,timed:boolean,state:DialogueState)=>void) {
   const voiceEnabled = settings.characterOptions.attackVoices || !isAttackVoice(event)
   const clip = voiceEnabled ? japaneseVoice(id,event) : undefined
   const text = settings.characterOptions.subtitles ? subtitleFor(id,event) : undefined
   if (!voiceEnabled && !text) return
   if (clip) audio.wake()
+  caption(undefined,false,'waiting')
   audio.playCharacterVoice(clip,seat,state=>{
-    caption(state==='playing' || state==='fallback' ? text : undefined,state==='fallback')
+    caption(state==='playing' || state==='fallback' ? text : undefined,state==='fallback',state)
   })
 }
 
@@ -749,10 +750,11 @@ function showSelection(id:CharacterId,seat:number) {
 
 function presentCharacter(index:number,event:Match['players'][number]['events'][number],current:Match) {
   const view = arena
-  const cue = view?.characterEvent(index,event)
+  const cue = view?.characterEvent(index,event,current.now)
   if (!cue?.voice) return
   const seat = current.roster[index].slot
-  speak(matchCharacters[seat],cue.voice,seat,(text,timed)=>view?.subtitle(index,text,timed))
+  speak(matchCharacters[seat],cue.voice,seat,(text,timed,state)=>
+    view?.subtitle(index,text,timed,state==='ended',cue.voice==='zoneFinish'))
 }
 
 function playEvent(activeMatch: Match, i: number, event: Match['players'][number]['events'][number]) {
@@ -765,7 +767,7 @@ function playEvent(activeMatch: Match, i: number, event: Match['players'][number
   }
   activeArena?.note(i,event.type,event.detail,activeMatch.now)
   if (activeArena && event.type==='incoming' && event.source!==undefined) {
-    activeArena.attack(event.source,i,() => {
+    activeArena.attack(event.source,i,activeMatch.now,() => {
       if (match!==activeMatch || arena!==activeArena || player.dead) return
       activeArena.note(i,'impact',undefined,activeMatch.now)
       audio.play(event,activeMatch.roster[i].slot)

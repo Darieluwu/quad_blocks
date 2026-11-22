@@ -41,7 +41,7 @@ const VOICES = 20
 const SIGNAL_VOICES = 40
 const CHARACTER_LEVEL = .42
 type Voice = {osc:OscillatorNode; gain:GainNode; priority:number}
-export type DialogueState = 'playing'|'waiting'|'fallback'|'stopped'
+export type DialogueState = 'playing'|'waiting'|'fallback'|'stopped'|'ended'
 type Dialogue = {notify:(state:DialogueState)=>void; media?:{gain:GainNode;dispose:()=>void}}
 export class Sound {
   private context?: AudioContext
@@ -165,7 +165,7 @@ export class Sound {
     const waiting = () => { if (current()) notify('waiting') }
     clip.addEventListener('waiting',waiting,{signal:listeners.signal})
     clip.addEventListener('pause',waiting,{signal:listeners.signal})
-    clip.addEventListener('ended',()=>{ if (current()) this.stopCharacterVoice(player) },{once:true,signal:listeners.signal})
+    clip.addEventListener('ended',()=>{ if (current()) this.stopCharacterVoice(player,'ended') },{once:true,signal:listeners.signal})
     clip.addEventListener('error',fallback,{once:true,signal:listeners.signal})
     void clip.play().catch(fallback)
   }
@@ -176,12 +176,12 @@ export class Sound {
     for (const line of active) line.gain.gain.setTargetAtTime(level,this.context!.currentTime,.024)
   }
 
-  private stopCharacterVoice(player:number) {
+  private stopCharacterVoice(player:number,reason:'stopped'|'ended' = 'stopped') {
     const line = this.dialogue.get(player)
     if (!line) return
     this.dialogue.delete(player)
     line.media?.dispose()
-    line.notify('stopped')
+    line.notify(reason)
     this.levelDialogue()
   }
 
