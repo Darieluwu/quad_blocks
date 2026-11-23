@@ -1,6 +1,6 @@
 # TETRAVOLT
 
-Arena de bloques descendentes. **Versus Zone** reúne de dos a cuatro plazas en un todos contra todos. **Equipos 2v2** enfrenta a J1 y J2 contra J3 y J4. **2v2 Blitz** enfrenta a los mismos equipos con un tablero activo por lado, relevos y rescates. Cada plaza puede ser una persona o una IA de nivel 1 a 10. **Blitz online** permite que dos a cuatro personas jueguen en una sala privada desde navegadores separados. Las plazas libres se completan con IA.
+Arena de bloques descendentes. **Versus SURGE** reúne de dos a cuatro plazas en un todos contra todos. **Equipos 2v2** enfrenta a J1 y J2 contra J3 y J4. **2v2 Blitz** enfrenta a los mismos equipos con un tablero activo por lado, relevos y rescates. Cada plaza puede ser una persona o una IA de nivel 1 a 10. **Blitz online** permite que dos a cuatro personas jueguen en una sala privada desde navegadores separados. Las plazas libres se completan con IA.
 
 Para publicar el juego y activar las salas, sigue la [guía de despliegue de TETRAVOLT](docs/despliegue.md).
 
@@ -20,9 +20,9 @@ Abre **http://127.0.0.1:4173**. Para desarrollar con recarga automática, usa `n
 
 La instalación inicial requiere internet. El juego compilado se sirve desde `dist/` mediante HTTP local y funciona con internet desconectado. Los gráficos, sonidos e IA se ejecutan localmente.
 
-1. Elige **Versus Zone**, **Equipos 2v2** o **2v2 Blitz**.
+1. Elige **Versus SURGE**, **Equipos 2v2** o **2v2 Blitz**.
 2. Selecciona **Persona** o **IA** en cada plaza. Al añadir una IA, la plaza queda lista y puedes elegir su dificultad. El **nivel 10, Ultra experto**, usa Hold, giros avanzados y evalúa la pieza actual y las dos siguientes.
-3. Pulsa **Marcar listo** para cada persona que jugará. En Versus Zone inicia con dos, tres o cuatro plazas listas. En los modos por equipo confirma las cuatro. En la sala de Blitz, **Reglas de Blitz** permite cambiar el tiempo de relevo, la protección, las resurrecciones y los efectos.
+3. Pulsa **Marcar listo** para cada persona que jugará. En Versus SURGE inicia con dos, tres o cuatro plazas listas. En los modos por equipo confirma las cuatro. En la sala de Blitz, **Reglas de Blitz** permite cambiar el tiempo de relevo, la protección, las resurrecciones y los efectos.
 
 Para asignar un mando, abre **Controles**, elige J1, J2, J3 o J4, pulsa **Asignar pulsando un botón** y luego pulsa un botón en el mando. Repite para los demás jugadores. El juego asigna el dispositivo y carga todas las acciones disponibles de su perfil automáticamente. El perfil estándar usa las asignaciones de la tabla. El perfil genérico aprovecha los botones disponibles y, cuando corresponde, los primeros dos ejes. Algunos mandos genéricos informan los botones en un orden distinto o tienen menos entradas físicas. Puedes revisar y ajustar cualquier acción en **Controles → Mando**. También puedes seleccionar dispositivos en la sala.
 
@@ -42,7 +42,7 @@ Si se desconecta un mando asignado, los cuatro tableros se pausan. Reconéctalo 
 | Giro antihorario | Q | U | Coma | Num 7 | X / □ |
 | Giro 180° | R | P | Barra diagonal | Num 1 | B / ○ |
 | Hold | F | H | Shift derecho | Num 0 | LB / L1 |
-| Zone | C | N | Enter | Enter numérico | RB / R1 |
+| SURGE | C | N | Enter | Enter numérico | RB / R1 |
 | Objetivo anterior | Z | B | Punto y coma | Num 2 | LT / L2 |
 | Objetivo siguiente | X | M | Apóstrofo | Num 3 | RT / R2 |
 | Pausa | 1 | 2 | 3 | 4 | Start / Options |
@@ -66,12 +66,12 @@ $env:TETRAVOLT_BROWSER = 'msedge'
 npm.cmd run test:e2e
 ```
 
-Vitest cubre las reglas, la puntuación, los ataques por equipo, Zone simultánea, la victoria y la IA. Playwright comprueba los tableros, las salas variables, el 2v2 con IA, las entradas, los ajustes persistentes, los mandos simulados y la revancha.
+Vitest cubre las reglas, la puntuación, los ataques por equipo, SURGE simultánea, la victoria y la IA. Playwright comprueba los tableros, las salas variables, el 2v2 con IA, las entradas, los ajustes persistentes, los mandos simulados y la revancha.
 
 ## Código y reglas
 
 - [Reglas de partida](docs/reglas.md)
 - [Selección y recursos de personajes](docs/recursos-personajes.md)
-- `src/engine/` contiene reglas, piezas, rotaciones, generación, Spins, basura, Zone, IA y coordinación de partidas.
+- `src/engine/` contiene reglas, piezas, rotaciones, generación, Spins, basura, SURGE, IA y coordinación de partidas.
 - `src/input.ts`, `src/audio.ts` y `src/render.ts` gestionan entrada, audio y dibujo respectivamente.
 - `src/main.ts`, `src/menu.ts` y `src/settings.ts` integran la partida, los menús y la persistencia.

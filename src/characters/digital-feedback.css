@@ -1,0 +1,37 @@
+.digital-portrait,.digital-impact {
+  position:absolute; inset:0; z-index:2; pointer-events:none; color:#39f4db;
+  border:2px solid currentColor; border-radius:inherit;
+  box-shadow:inset 0 0 12px #3ee0e2a0,0 0 12px #884af58a;
+  animation:pix-emission 540ms steps(14,end) both;
+}
+.digital-portrait i,.digital-impact i {
+  position:absolute; width:9px; height:9px; background:currentColor;
+  box-shadow:0 0 9px currentColor; inset:-4px auto auto 14%;
+  animation:pix-fragment 490ms steps(7,end) both;
+}
+.digital-portrait i:nth-child(2),.digital-impact i:nth-child(2) { inset:20% -4px auto auto; color:#ae7cff }
+.digital-portrait i:nth-child(3),.digital-impact i:nth-child(3) { inset:auto 14% -4px auto; width:5px; height:5px }
+.digital-portrait i:nth-child(4),.digital-impact i:nth-child(4) { inset:auto auto 20% -4px; color:#a9ff5c }
+.digital-portrait i:nth-child(5),.digital-impact i:nth-child(5) { inset:-4px 23% auto auto; width:14px; height:5px }
+.digital-portrait i:nth-child(6),.digital-impact i:nth-child(6) { inset:auto -4px 10% auto; color:#ae7cff }
+.digital-portrait[data-effect="tetris"] { border-width:3px; background:linear-gradient(120deg,#12f9d92a,transparent 39% 68%,#952df84d) }
+.digital-portrait[data-effect="spin"] { color:#af84ff; animation-name:pix-injection }
+.digital-portrait[data-effect="combo"] { color:#a9ff5c; border-style:dotted }
+.digital-portrait[data-effect="danger"],.digital-portrait[data-effect="down"] { color:#ff86c5; border-style:dashed }
+.digital-portrait[data-effect="damage"] { border-style:dashed; animation-name:pix-jitter; color:#a289ff }
+.digital-portrait[data-effect="shield"] { color:#a1fff3; border:4px double currentColor; background:linear-gradient(130deg,#36c6ee44,transparent 64%) }
+.digital-portrait[data-effect="reboot"] { color:#b7ff6b; animation-name:pix-reboot }
+.digital-impact { inset:-2px; animation-duration:320ms; border-style:double }
+.projectile-digital::before { height:16px; width:71px; left:-68px; top:-8px; border-radius:0;
+  transform-origin:68px 8px;
+  background:repeating-linear-gradient(90deg,#27eed3 0 7px,transparent 8px 12px,#9639ff 12px 18px,transparent 18px 22px);
+  clip-path:polygon(0 45%,36% 45%,36% 17%,73% 17%,73% 0,100% 0,100% 100%,55% 100%,55% 76%,0 76%) }
+.projectile-digital::after { border-radius:1px; background:#c8ff93; box-shadow:0 0 10px 2px #43eede; transform:rotate(45deg) }
+.pix-showcase .character-cut-in { object-position:50% 9%; mask-image:linear-gradient(90deg,transparent,#000 44%) }
+.reduced :is(.digital-portrait,.digital-impact),.no-attack-animation :is(.digital-portrait,.digital-impact) { visibility:hidden }
+@media (prefers-reduced-motion:reduce) { .digital-portrait,.digital-impact { visibility:hidden } }
+@keyframes pix-emission { 0% { opacity:0 } 19% { opacity:.9 } 56% { opacity:.53 } 100% { opacity:0 } }
+@keyframes pix-fragment { 0% { opacity:0; transform:translateY(8px) } 28% { opacity:1 } 100% { opacity:0; transform:translateY(-12px) } }
+@keyframes pix-injection { 0%,100% { opacity:0 } 23% { opacity:1; transform:rotate(-3deg) } 56% { opacity:.8; transform:rotate(2deg) } }
+@keyframes pix-jitter { 0%,100% { opacity:0 } 18% { opacity:1; transform:translateX(3px) } 45% { opacity:.65; transform:translateX(-3px) } }
+@keyframes pix-reboot { 0%,100% { opacity:0; clip-path:inset(88% 0 0) } 27% { opacity:1; clip-path:inset(0) } 58% { opacity:.8 } }

@@ -1,6 +1,6 @@
 import { escape } from '../menu'
 import { uniqueCharacters } from '../characters/catalog'
-import { characterPicker } from '../characters/picker'
+import { lobbyEditors, lobbyFighter, lobbyLineup, seatEditor } from '../lobby-view'
 import type { LobbyState } from './protocol'
 
 export function onlineMenu(lobby: LobbyState|null, seat: number, invite: string, name: string, notice: string, waiting: boolean, retry: boolean) {
@@ -15,19 +15,27 @@ export function onlineMenu(lobby: LobbyState|null, seat: number, invite: string,
     </form></main>`
   const host = seat===lobby.host
   const lineup = uniqueCharacters(lobby.seats.map(p=>p.character))
-  const reserved = lobby.seats.map(p=>p.ready)
-  const canStart = lobby.seats.filter(p=>p.connected && p.ready).length>=2 && lobby.seats.every(p=>!p.name || p.ready && p.connected)
-  const seats = lobby.seats.map((p,i)=>`<li class="settings-card" style="--seat:${['#ff5266','#59aaff','#58e39a','#be86fa'][i]}">
-    <span>J${i+1} · Equipo ${i<2?'A':'B'}${i===seat?' · Tú':''}${i===lobby.host?' · Anfitrión':''}</span>
-    <strong>${escape(p.name) || 'Disponible'}</strong>
-    ${p.name ? `<span>${p.connected ? p.ready ? 'Listo' : 'Preparándose' : 'Reconectando'}</span>` : host ?
-      `<label>IA si queda libre <select data-online-bot="${i}">${Array.from({length:10},(_,j)=>`<option value="${j+1}" ${p.botLevel===j+1?'selected':''}>${j+1}</option>`).join('')}</select></label>` : `<span>IA ${p.botLevel} si queda libre</span>`}
-    ${characterPicker(i,lineup,reserved,i===seat || host && !p.name)}</li>`).join('')
-  return `<main class="panel online-panel"><button class="back" data-page="home">Salir de la sala</button>
+  const reserved = lobby.seats.map(p=>p.characterConfirmed ?? p.ready)
+  const humans = lobby.seats.filter(p=>p.name)
+  const readyCount = humans.filter(p=>p.connected && p.ready).length
+  const canStart = readyCount>=2 && readyCount===humans.length
+  const editors:string[] = []
+  const seats = lobby.seats.map((p,i)=>{
+    const editableBot = host && !p.name
+    if (editableBot) editors.push(seatEditor(i,`<label>Dificultad de la IA <select data-online-bot="${i}">
+      ${Array.from({length:10},(_,j)=>`<option value="${j+1}" ${p.botLevel===j+1?'selected':''}>${j+1}</option>`).join('')}</select></label>`,false))
+    return lobbyFighter({slot:i,id:lineup[i],name:escape(p.name) || 'Plaza libre',
+      details:p.name ? `Persona · ${i===seat?'Tus controles de J1':i===lobby.host?'Anfitrión':'Invitado'}` : `IA de nivel ${p.botLevel} si queda libre`,
+      state:p.name ? p.connected ? p.ready?'LISTO':'POR CONFIRMAR' : 'RECONECTANDO' : reserved[i]?'PERSONAJE LISTO':'DISPONIBLE',
+      ready:!!reserved[i] && (!p.name || p.connected),editable:i===seat || editableBot,settings:editableBot,
+      readyAction:i===seat?`<button class="secondary ready" data-online="ready" aria-pressed="${p.ready}">${p.ready?'Quitar listo':'Marcar listo'}</button>`:undefined})
+  })
+  return `<main class="panel match-lobby"><button class="back" data-page="home">Salir de la sala</button>
     <h1>Sala Blitz online</h1>${status}<div class="online-invite"><label>Enlace de invitación <input id="online-link" readonly value="${escape(invite)}"></label>
-    <button class="secondary" data-online="copy">Copiar enlace</button></div><ol class="online-seats">${seats}</ol>
-    <div class="modal-actions"><button class="secondary" data-online="ready">${lobby.seats[seat]?.ready?'Quitar listo':'Marcar listo'}</button>
+    <button class="secondary" data-online="copy">Copiar enlace</button></div>${lobbyLineup(seats,true,canStart)}
+    <div class="panel-actions"><span class="lobby-count" role="status">${readyCount} de ${humans.length} personas listas</span>
       ${host?`<button class="primary" data-online="start" ${canStart?'':'disabled'}>Iniciar partida</button>`:'<span>El anfitrión inicia la partida.</span>'}</div>
+    ${lobbyEditors(editors)}
     <p class="desc">Se necesitan al menos dos personas. Las plazas libres se completan con IA.</p>
-    <p class="hint">Usa los controles asignados de izquierda, derecha y giro horario para elegir y confirmar.</p></main>`
+    <p class="hint">Izquierda y derecha para elegir, giro horario para confirmar y giro antihorario para volver.</p></main>`
 }

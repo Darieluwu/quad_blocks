@@ -13,6 +13,8 @@ import { artwork } from './characters/assets'
 import { DialogueCard, dialogueMarkup } from './characters/dialogue'
 import './characters/dialogue.css'
 import { ZoneCinematics } from './characters/cinematics'
+import { characterVisuals } from './characters/visuals'
+import { digitalImpact, digitalPortrait } from './characters/digital-feedback'
 import './characters/hud-portrait.css'
 import type { GameEvent } from './engine/player'
 
@@ -25,7 +27,7 @@ const WORDS: Record<string,string> = {
   single:'SINGLE',double:'DOUBLE',triple:'TRIPLE',quad:'TETRIS',mini:'T-SPIN MINI',tZero:'T-SPIN',
   tSingle:'T-SPIN SINGLE',tDouble:'T-SPIN DOUBLE',tTriple:'T-SPIN TRIPLE',
   spinL:'L-SPIN',spinJ:'J-SPIN',spinS:'S-SPIN',spinZ:'Z-SPIN',backToBack:'BACK-TO-BACK',
-  perfect:'PERFECT CLEAR',zoneStart:'ZONE ACTIVADA',zoneEnd:'ZONE COMPLETADA',
+  perfect:'PERFECT CLEAR',zoneStart:'SURGE ACTIVADO',zoneEnd:'SURGE COMPLETADO',
   blitzDown:'JUGADOR CAÍDO',blitzProtected:'BASURA CANCELADA',blitzGuard:'DEFENSA DE EQUIPO',
 }
 const PRIORITY: Record<string,number> = {perfect:5,zoneStart:6,zoneEnd:6,backToBack:1}
@@ -35,9 +37,10 @@ const ANIMATIONS: Record<string,string> = {
 const CELL = 26
 const by = <E extends HTMLElement>(root: ParentNode, selector: string) => root.querySelector<E>(selector)!
 
-function voltShowcase() {
-  const url = artwork(CHARACTERS.volt.assets.attackPose)
-  return url ? `<div class="volt-showcase" aria-hidden="true"><img class="volt-attack" src="${url}" alt="" draggable="false"></div>` : ''
+function attackShowcase(id:CharacterId) {
+  if (!characterVisuals[id]) return ''
+  const url = artwork(CHARACTERS[id].assets.attackPose)
+  return url ? `<div class="character-showcase ${id}-showcase" aria-hidden="true"><img class="character-cut-in ${id}-attack" src="${url}" alt="" draggable="false"></div>` : ''
 }
 
 function square(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, color: string, ghost = false) {
@@ -86,12 +89,12 @@ export function mountArena(root: HTMLElement, roster: readonly Participant[], bl
         <span class="character-name">${name}</span>
         ${team===undefined ? '' : `<span class="team-tag" data-team="${team}">Equipo ${team===0?'A':'B'}</span>`}
         ${level===undefined ? '' : `<span class="bot-tag" title="Dificultad ${level}">IA ${level}</span>`}
-        <span class="zone-badge" hidden>ZONE</span>
+        <span class="zone-badge" hidden>SURGE</span>
         ${blitz ? '<span class="blitz-state"></span>' : ''}
         <span class="danger-label"></span></div>
         ${blitz ? '<div class="reserve-readout"><span class="reserve-zone"></span><strong class="reserve-garbage" hidden></strong></div>' : ''}
         </div>
-        ${id==='volt' ? voltShowcase() : ''}
+        ${attackShowcase(id)}
       </header>
       ${dialogueMarkup(id)}
       ${blitz ? '' : `<div class="combat-hud">
@@ -109,11 +112,11 @@ export function mountArena(root: HTMLElement, roster: readonly Participant[], bl
           <div class="board-fx" aria-hidden="true"><span class="zone-burst"></span></div><span class="impact" hidden></span>
           <div class="out">${blitz?'JUGADOR CAÍDO':'ELIMINADO'}</div></div>
         <div class="rail"><span>NEXT</span><canvas class="next" width="64" height="210"></canvas><strong class="spawn-label" hidden></strong>
-          ${blitz ? '<div class="blitz-zone"><span>ZONE</span><div class="meter"><div></div></div><div class="zone-label"><strong></strong></div></div>' : ''}</div>
+          ${blitz ? '<div class="blitz-zone"><span>SURGE</span><div class="meter"><div></div></div><div class="zone-label"><strong></strong></div></div>' : ''}</div>
       </div>
-      ${blitz ? '<div class="blitz-stance" aria-label="Postura"><span>ATAQUE</span><b aria-hidden="true"></b><span>DEFENSA</span></div>' : '<div class="zone-label"><span>ZONE</span><strong></strong></div><div class="meter"><div></div></div>'}
+      ${blitz ? '<div class="blitz-stance" aria-label="Postura"><span>ATAQUE</span><b aria-hidden="true"></b><span>DEFENSA</span></div>' : '<div class="zone-label"><span>SURGE</span><strong></strong></div><div class="meter"><div></div></div>'}
       <div class="player-stats"><span class="lines"></span><span class="sent"></span></div>
-      <div class="board-notices"><div class="effect"></div><div class="zone-result" hidden><small>ZONE COMPLETADA</small><strong></strong><span></span></div></div>
+      <div class="board-notices"><div class="effect"></div><div class="zone-result" hidden><small>SURGE COMPLETADO</small><strong></strong><span></span></div></div>
       ${blitz ? '<span class="reserve-sweat" aria-hidden="true"><i></i><i></i></span><span class="blitz-entry" aria-hidden="true"></span>' : ''}
     </article>`
   }
@@ -181,7 +184,7 @@ class Arena {
         portraitFrame:by(node,'.hud-portrait'),portraitPulse:null as Animation|null,
         dialogue:new DialogueCard(by(node,'.dialogue-slot'),characters[slot],slot),
         reserveZone:node.querySelector<HTMLElement>('.reserve-zone'),reserveGarbage:node.querySelector<HTMLElement>('.reserve-garbage'),
-        showcase:node.querySelector<HTMLElement>('.volt-showcase'),showcaseAnimation:null as Animation|null,
+        showcase:node.querySelector<HTMLElement>('.character-showcase'),showcaseAnimation:null as Animation|null,
         hold:by<HTMLCanvasElement>(node,'.hold'),next:by<HTMLCanvasElement>(node,'.next'),
         heading:by(node,'h2'),warning:by(node,'.danger-label'),target:node.querySelector<HTMLElement>('.target'),attackers:node.querySelector<HTMLElement>('.attackers'),
         incoming:by(node,'.incoming'),garbage:by(node,'.garbage div'),meter:by(node,'.meter div'),
@@ -280,7 +283,8 @@ class Arena {
       arrive()
       return
     }
-    const electric = origin.portrait.id==='volt'
+    const theme = characterVisuals[origin.portrait.id]?.theme
+    const electric = theme==='electric'
     const bounds = this.layer.getBoundingClientRect()
     const anchor = (view: Arena['views'][number]) => {
       const field = view.well.getBoundingClientRect()
@@ -295,12 +299,12 @@ class Arena {
     const arc = Math.min(16,Math.abs(dx)*.10,y-8)
     const projectile = document.createElement('span')
     projectile.className = 'projectile'
-    if (electric) projectile.classList.add('projectile-electric')
+    if (theme) projectile.classList.add(`projectile-${theme}`)
     projectile.dataset.from = origin.node.dataset.player
     projectile.dataset.to = victim.node.dataset.player
     projectile.style.left = x+'px'
     projectile.style.top = y+'px'
-    projectile.style.setProperty('--shot',electric ? '#ffd345' : COLORS[Number(origin.node.dataset.player)])
+    projectile.style.setProperty('--shot',theme==='digital'?'#30f5df':electric ? '#ffd345' : COLORS[Number(origin.node.dataset.player)])
     projectile.style.setProperty('--shot-accent',CHARACTERS[origin.portrait.id].colors[1])
     projectile.style.setProperty('--bearing',Math.atan2(0,dx)+'rad')
     this.layer.append(projectile)
@@ -312,6 +316,7 @@ class Arena {
     flight.onfinish = () => {
       projectile.remove()
       if (!this.layer.isConnected) return
+      if (theme==='digital') digitalImpact(victim.node)
       if (electric && victim.node.dataset.featured!=='false' && !victim.node.classList.contains('dead')) {
         victim.well.animate([
           {boxShadow:'0 0 17px 3px #ffd345, 0 0 4px 1px #fff6a9 inset'},
@@ -326,8 +331,10 @@ class Arena {
     const cue = cueFor(event)
     const view = this.views[i]
     if (cue) view.portrait.react(cue,performance.now(),this.attackAnimations)
-    if (cue?.attack==='tetris' || cue?.attack==='spin' || cue?.attack==='combo' ||
-        event.type==='blitzGuard' || event.type==='blitzProtected') this.emphasizePortrait(view)
+    if (cue && characterVisuals[view.portrait.id]?.theme==='digital' && this.attackAnimations &&
+        !this.reduced.matches && !this.root.closest('.reduced')) digitalPortrait(view.portraitFrame,event,cue)
+    const attackPulse = cue?.attack==='tetris' || cue?.attack==='spin' || cue?.attack==='combo'
+    if (attackPulse || event.type==='blitzGuard' || event.type==='blitzProtected') this.emphasizePortrait(view,attackPulse)
     if (event.type==='zoneStart') this.cinematics.charge(view.portrait.id,view.node)
     if (cue?.attack==='zoneFinish') {
       view.portraitPulse?.cancel()
@@ -339,7 +346,7 @@ class Arena {
     if (!cue.attack || cue.attack==='zoneFinish' || !this.attackAnimations || this.reduced.matches || this.root.closest('.reduced')) return cue
     view.showcaseAnimation?.cancel()
     view.showcase.dataset.scene = 'attack'
-    const scene = by(view.showcase,'.volt-attack')
+    const scene = by(view.showcase,'.character-cut-in')
     const animation = scene.animate([
       {opacity:0,transform:'translateX(15%)'},{opacity:1,transform:'none',offset:.22},{opacity:0,transform:'none'},
     ],{duration:570,easing:'ease-out'})
@@ -353,7 +360,7 @@ class Arena {
     return cue
   }
 
-  private emphasizePortrait(view:Arena['views'][number]) {
+  private emphasizePortrait(view:Arena['views'][number],towardRival:boolean) {
     if (!this.attackAnimations || this.reduced.matches || this.root.closest('.reduced') ||
         view.node.dataset.featured==='false' || this.root.querySelector('.cinematic-scene')) return
     if (view.portraitPulse && Number(view.portraitPulse.currentTime)<65) return
@@ -362,7 +369,7 @@ class Arena {
     frame.dataset.pulsing = ''
     const pulse = frame.animate([
       {transform:'none',easing:'cubic-bezier(.24,.65,.32,1)'},
-      {transform:'translateX(var(--hud-pulse-x,0px)) scale(var(--hud-pulse-scale,1))',offset:.26,easing:'ease-out'},
+      {transform:`translateX(${towardRival?'var(--hud-pulse-x,0px)':'0px'}) scale(var(--hud-pulse-scale,1))`,offset:.26,easing:'ease-out'},
       {transform:'none'},
     ],{duration:520})
     view.portraitPulse = pulse
@@ -699,7 +706,7 @@ class Arena {
       view.meter.style[blitz?'height':'width'] = zoneProgress+'%'
       view.zone.textContent = p.zone.active ? `${blitz ? Math.ceil(zoneProgress)+'% · ' : ''}${p.zone.lines} L · ${(p.zone.remaining/HZ).toFixed(1)} s` :
         match.rules.zone ? Math.round(p.zone.energy)+'%' : 'Desactivada'
-      if (view.reserveZone) view.reserveZone.textContent = p.dead || !match.rules.zone ? '' : `Zone ${view.zone.textContent}`
+      if (view.reserveZone) view.reserveZone.textContent = p.dead || !match.rules.zone ? '' : `SURGE ${view.zone.textContent}`
       if (view.reserveGarbage) {
         view.reserveGarbage.hidden = p.dead || !incoming
         view.reserveGarbage.textContent = `+${incoming} basura`

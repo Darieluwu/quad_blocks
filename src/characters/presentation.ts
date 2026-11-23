@@ -1,6 +1,7 @@
 import { artwork } from './assets'
 import { CHARACTERS, type CharacterId, type PortraitState, type VisualAttack, type VoiceEvent } from './catalog'
 import type { GameEvent } from '../engine/player'
+import { characterVisuals } from './visuals'
 
 type Cue = {portrait:PortraitState; voice?:VoiceEvent; attack?:VisualAttack; priority:number}
 const spin: Cue = {portrait:'attack',voice:'spin',attack:'spin',priority:3}
@@ -8,6 +9,7 @@ const cues: Record<string,Cue> = {
   quad:{portrait:'attack',voice:'tetris',attack:'tetris',priority:4},
   mini:spin,tZero:spin,tSingle:spin,tDouble:spin,tTriple:spin,spinL:spin,spinJ:spin,spinS:spin,spinZ:spin,
   combo:{portrait:'attack',voice:'combo',attack:'combo',priority:2},send:{portrait:'attack',priority:1},
+  simpleAttack:{portrait:'attack',priority:1},
   incoming:{portrait:'damage',priority:3},receive:{portrait:'damage',priority:4},
   danger:{portrait:'danger',priority:2},critical:{portrait:'danger',voice:'danger',priority:5},
   zoneStart:{portrait:'zone',voice:'zoneStart',priority:6},zoneEnd:{portrait:'attack',voice:'zoneFinish',attack:'zoneFinish',priority:6},
@@ -69,8 +71,8 @@ export class Portrait {
     this.until = now+(cue.portrait==='zone'?760:1150)
     const assets = CHARACTERS[this.id].assets
     const effect = cue.attack ? artwork(assets.attacks[cue.attack]) : undefined
-    // VOLT has a dedicated HUD surface for full poses.
-    const pose = this.id==='volt' ? undefined :
+    // Characters with a cinematic theme have a dedicated surface for full poses.
+    const pose = characterVisuals[this.id] ? undefined :
       cue.portrait==='zone' ? artwork(assets.zonePose) : cue.portrait==='attack' ? artwork(assets.attackPose) : undefined
     this.root.classList.toggle('character-pose',!effect && !!pose)
     this.setArt('--character-cue-art',effect ?? pose)
@@ -97,7 +99,7 @@ export class Portrait {
     if (this.state===state) return
     this.state = state
     this.root.dataset.portrait = state
-    this.setArt('--character-zone-art',state==='zone' && this.id!=='volt'?artwork(CHARACTERS[this.id].assets.zoneBackground):undefined)
+    this.setArt('--character-zone-art',state==='zone' && !characterVisuals[this.id]?artwork(CHARACTERS[this.id].assets.zoneBackground):undefined)
     this.image(state)
   }
 }

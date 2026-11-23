@@ -3,7 +3,7 @@ import { PLAYERS, SETTINGS } from './engine/rules'
 
 export const actionNames: Record<Action,string> = {
   left:'Mover izquierda',right:'Mover derecha',soft:'Soft Drop',hard:'Hard Drop',
-  cw:'Giro horario',ccw:'Giro antihorario',half:'Giro 180°',hold:'Hold',zone:'Activar Zone',
+  cw:'Giro horario',ccw:'Giro antihorario',half:'Giro 180°',hold:'Hold',zone:'Activar SURGE',
   prev:'Objetivo anterior',next:'Objetivo siguiente',pause:'Pausa',
   stance:'Cambiar postura',
 }

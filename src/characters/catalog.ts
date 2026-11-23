@@ -2,7 +2,7 @@ export const CHARACTER_IDS = ['volt','nix','pix','astra','blaze','pengu'] as con
 export type CharacterId = typeof CHARACTER_IDS[number]
 export const PORTRAITS = ['neutral','blink','attack','danger','damage','victory','defeat','support','zone'] as const
 export type PortraitState = typeof PORTRAITS[number]
-export const VOICE_EVENTS = ['selection','tetris','spin','combo','zoneStart','zoneFinish','danger','victory','defeat',
+export const VOICE_EVENTS = ['selection','simpleAttack1','simpleAttack2','tetris','spin','combo','zoneStart','zoneFinish','danger','victory','defeat',
   'teamDefense','teammateDown','teammateRevived'] as const
 export type VoiceEvent = typeof VOICE_EVENTS[number]
 export const VISUAL_ATTACKS = ['tetris','spin','combo','zoneFinish'] as const
@@ -27,7 +27,7 @@ function define(id:CharacterId,element:string,colors:Character['colors'],descrip
 export const CHARACTERS = {
   volt:define('volt','Electricidad',['#ff5266','#ffdd56'],'Rival competitivo, joven y atlético, de cabello rojo y chaqueta futurista.'),
   nix:define('nix','Hielo',['#65baff','#eff9ff'],'Estratega serena con un elegante abrigo tecnológico.'),
-  pix:define('pix','Tecnología',['#a7ff43','#64ffd6'],'Hacker traviesa de cabello asimétrico, audífonos y chaqueta oversized.'),
+  pix:define('pix','Tecnología',['#39ebd3','#baff67'],'Hacker traviesa de cabello turquesa y negro, audífonos y chaqueta oversized.'),
   astra:define('astra','Cosmos',['#bf92ff','#e6e6f8'],'Viajera dimensional enigmática, con capa y elementos orbitales.'),
   blaze:define('blaze','Combustión',['#ff9940','#252126'],'Piloto gigantesco y muy musculoso, con gafas de aviador, chaqueta abierta y módulos térmicos. Fanático de las llamas.'),
   pengu:define('pengu','Magia lunar',['#bd8bff','#ffd670'],'Archimago dormilón. Pingüino de magia lunar.'),

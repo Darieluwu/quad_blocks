@@ -32,17 +32,17 @@ Retratos / expresiones
 - Victoria: puño arriba, sonrisa desafiante
 - Derrota: frustrado pero digno
 - Apoyo: “vamos, tú puedes”
-- Zone: rostro más serio, ojos brillando
+- SURGE: rostro más serio, ojos brillando
 Ataques característicos
 - Tetris: Lightning Strike
 - Spin: Volt Spiral
 - Defensa de equipo: Static Guard
 - Combo alto / gran presión: Chain Spark
-- Zone definitiva: Thunder Overdrive
-Cinemática Zone
+- SURGE definitiva: Thunder Overdrive
+Cinemática SURGE
 Volt entra desde un lateral con una aceleración brusca, como si irrumpiera cargado de electricidad.
 Su cuerpo se rodea de rayos y líneas de energía. Extiende el brazo hacia delante y descarga un gran relámpago hacia el rival.
-Fondo temático de Zone
+Fondo temático de SURGE
 - Cielo tormentoso estilizado
 - Rayos rojos y amarillos
 - Líneas de velocidad
@@ -91,17 +91,17 @@ Retratos / expresiones
 - Victoria: pequeña sonrisa satisfecha
 - Derrota: decepción silenciosa
 - Apoyo: confianza calmada
-- Zone: mirada intensa, fría y dominante
+- SURGE: mirada intensa, fría y dominante
 Ataques característicos
 - Tetris: Frost Edge
 - Spin: Crystal Break
 - Defensa de equipo: Ice Shield
 - Combo alto: Silent Blizzard
-- Zone definitiva: Absolute Zero
-Cinemática Zone
+- SURGE definitiva: Absolute Zero
+Cinemática SURGE
 Nix entra suavemente desde un lateral, mientras se forman cristales tras ella.
 Levanta la mano y todo se congela simbólicamente a su alrededor. Luego rompe el gran cristal central, liberando una ráfaga helada.
-Fondo temático de Zone
+Fondo temático de SURGE
 - Geometría helada
 - Cristales brillando
 - Viento frío estilizado
@@ -149,17 +149,17 @@ Retratos / expresiones
 - Victoria: gesto de paz o sonrisa burlona
 - Derrota: cara de “qué fastidio”
 - Apoyo: entusiasmo hacker
-- Zone: expresión dominante, confiada, casi “te hackeé”
+- SURGE: expresión dominante, confiada, casi “te hackeé”
 Ataques característicos
 - Tetris: Pixel Crash
 - Spin: Glitch Drive
 - Defensa de equipo: Support Link
 - Combo alto: Data Burst
-- Zone definitiva: System Override
-Cinemática Zone
+- SURGE definitiva: System Override
+Cinemática SURGE
 Pix entra con una distorsión digital desde el lateral.
 Aparecen paneles holográficos detrás de ella. Con un gesto rápido, “hackea” visualmente el entorno y provoca una explosión de píxeles y glitch.
-Fondo temático de Zone
+Fondo temático de SURGE
 - Interfaz holográfica
 - Cuadrículas digitales
 - Glitches
@@ -207,17 +207,17 @@ Retratos / expresiones
 - Victoria: sonrisa pequeña y digna
 - Derrota: resignación elegante
 - Apoyo: calma protectora
-- Zone: intensa, majestuosa y poderosa
+- SURGE: intensa, majestuosa y poderosa
 Ataques característicos
 - Tetris: Starfall Arc
 - Spin: Nebula Twist
 - Defensa de equipo: Astral Veil
 - Combo alto: Cosmic Pulse
-- Zone definitiva: Event Horizon
-Cinemática Zone
+- SURGE definitiva: Event Horizon
+Cinemática SURGE
 Astra entra flotando levemente desde un lateral.
 Detrás de ella se abre un portal cósmico con estrellas y anillos. Extiende la mano y comprime visualmente la energía del espacio, liberando una onda gravitacional estilizada.
-Fondo temático de Zone
+Fondo temático de SURGE
 - Nebulosa
 - Estrellas
 - Anillos planetarios abstractos
@@ -264,17 +264,17 @@ Retratos / expresiones
 - Victoria: celebración grande
 - Derrota: frustrado pero encendido
 - Apoyo: ánimo explosivo
-- Zone: feroz y enfocado
+- SURGE: feroz y enfocado
 Ataques característicos
 - Tetris: Flare Impact
 - Spin: Blaze Fang
 - Defensa de equipo: Burning Guard
 - Combo alto: Wildfire Rush
-- Zone definitiva: Inferno Break
-Cinemática Zone
+- SURGE definitiva: Inferno Break
+Cinemática SURGE
 Blaze entra con un estallido desde un lateral.
 Las llamas crecen detrás de él formando un torbellino. Golpea o impulsa la energía hacia delante y provoca una explosión ardiente muy vistosa.
-Fondo temático de Zone
+Fondo temático de SURGE
 - Tormenta de fuego
 - Brasas
 - Ondas de calor
@@ -324,17 +324,17 @@ Retratos / expresiones
 - Victoria: bostezo o gesto relajado
 - Derrota: cansancio total
 - Apoyo: calma reconfortante
-- Zone: mucho más serio, ojos intensos, presencia mágica fuerte
+- SURGE: mucho más serio, ojos intensos, presencia mágica fuerte
 Ataques característicos
 - Tetris: Starfall
 - Spin: Lunar Twist
 - Defensa de equipo: Dream Ward
 - Combo alto: Moonlit Cascade
-- Zone definitiva: Midnight Reverie
-Cinemática Zone
+- SURGE definitiva: Midnight Reverie
+Cinemática SURGE
 PengU entra desde un lateral con un desplazamiento suave, casi flotando.
 El fondo se oscurece con una atmósfera onírica. Levanta su varita o ala, aparece un eclipse lunar mágico detrás de él y libera una lluvia de estrellas y energía de sueño.
-Fondo temático de Zone
+Fondo temático de SURGE
 - Cielo nocturno
 - Luna / eclipse
 - Estrellas doradas

@@ -18,6 +18,7 @@ export class OnlineRoom {
   private members: (Member|null)[] = [null,null,null,null]
   private botLevels = [5,5,5,5]
   private characters = uniqueCharacters(null)
+  private botConfirmed = [false,false,false,false]
   private host = -1
   private phase: LobbyState['phase'] = 'lobby'
   private match: BlitzMatch|null = null
@@ -44,7 +45,8 @@ export class OnlineRoom {
     this.broadcast({type:'lobby',lobby:{host:this.host,phase:this.phase,
       missing:this.members.flatMap(member=>member && !member.peer ? [member.name] : []),
       seats:this.members.map((member,slot)=>({name:member?.name ?? '',connected:!!member?.peer,
-        ready:!!member?.ready,botLevel:this.botLevels[slot],character:this.characters[slot]}))}})
+        ready:!!member?.ready,botLevel:this.botLevels[slot],character:this.characters[slot],
+        characterConfirmed:member ? member.ready : this.botConfirmed[slot]}))}})
   }
 
   join(peer: Peer, message: Extract<ClientMessage,{type:'join'}>, now: number) {
@@ -72,6 +74,7 @@ export class OnlineRoom {
     const slot = SEATS.find(i=>!this.members[i])
     if (slot===undefined) return this.error(peer,'La sala está llena.',true)
     this.members[slot] = {token:message.token,name:message.name.trim(),peer,ready:false,input:emptyInput()}
+    this.botConfirmed[slot] = false
     if (this.host===-1) this.host = slot
     this.lastActivity = now
     this.send(peer,{type:'welcome',slot})
@@ -93,15 +96,28 @@ export class OnlineRoom {
       return
     }
     if (message.type==='ready' && this.phase==='lobby') member.ready = message.value
-    else if (message.type==='character' && this.phase==='lobby' && (slot===message.slot || slot===this.host && !this.members[message.slot])) {
-      const next = chooseCharacter(this.characters,message.slot,message.id,this.members.map(seat=>!!seat?.ready))
+    else if (message.type==='character') {
+      const {slot:target,id,request} = message
+      const reply = (accepted:boolean) => {
+        if (request!==undefined) this.send(peer,{type:'characterConfirmed',slot:target,id,request,accepted})
+      }
+      if (this.phase!=='lobby' || target!==slot && (slot!==this.host || this.members[target])) { reply(false); return }
+      const next = chooseCharacter(this.characters,target,id,this.members.map((seat,i)=>seat ? seat.ready : this.botConfirmed[i]))
       if (!next) {
         this.error(peer,'Ese personaje ya está confirmado por otro participante.')
         this.lobbyUpdate()
+        reply(false)
         return
       }
-      if (this.characters[message.slot]!==message.id && message.slot===slot) member.ready = false
+      if (target===slot) {
+        if (request!==undefined) member.ready = true
+        else if (this.characters[target]!==id) member.ready = false
+      } else this.botConfirmed[target] = request!==undefined
       this.characters = next
+      this.lastActivity = now
+      this.lobbyUpdate()
+      reply(true)
+      return
     }
     else if (message.type==='bot' && this.phase==='lobby' && slot===this.host && !this.members[message.slot]) {
       this.botLevels[message.slot] = message.level

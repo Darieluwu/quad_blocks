@@ -211,7 +211,9 @@ export class Player {
     if (perfect) this.event('perfect')
     if (!zoned && hidden && !lines) { this.eliminate(); return }
 
-    this.send(this.zone.clear(lines,result.attack,this.rules,quarterLines))
+    const attack = this.send(this.zone.clear(lines,result.attack,this.rules,quarterLines))
+    const special = !!spin || lines >= 4 || this.combo >= 3
+    if (!zoned && attack>0 && !special) this.event('simpleAttack')
     if (zoned && hidden && !lines && banked<VISIBLE) this.resolveZone(this.zone.finish(this.rules),false)
     if (!zoned && !lines) {
       const holes = this.garbage.take(now,this.rules.garbageCap)

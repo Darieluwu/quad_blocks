@@ -100,6 +100,90 @@ test('Marcar listo reproduce las cuatro voces de selección en VS4 y muestra sus
   await expect.poll(async ()=>(await voices(page)).ends).toEqual(expect.arrayContaining(expected))
 })
 
+test('la pista de selección mantiene una sola instancia y la sala funciona si la pista falta',async ({page},info)=>{
+  await page.addInitScript(()=>{
+    const tracks:HTMLMediaElement[] = []
+    Object.assign(window,{selectionTracks:tracks})
+    const create = AudioContext.prototype.createMediaElementSource
+    AudioContext.prototype.createMediaElementSource = function(track) {
+      if (track.src.includes('/selection-') && track.src.endsWith('.mp3')) tracks.push(track)
+      return create.call(this,track)
+    }
+  })
+  const music = () => page.evaluate(()=>{
+    const tracks = (window as unknown as {selectionTracks:HTMLMediaElement[]}).selectionTracks
+    return tracks.map(track=>({loop:track.loop,paused:track.paused,time:track.currentTime,error:track.error?.code}))
+  })
+  await page.goto('/')
+  await page.getByRole('button',{name:'Jugar Versus Zone'}).click()
+  await expect.poll(async ()=>(await music())[0]?.time).toBeGreaterThan(0)
+  await expect(page.locator('.lobby-fighter[data-slot="2"] .lobby-fighter-art img')).toHaveAttribute('src',/master-.+\.png$/)
+  await page.locator('[data-character="2"]').click()
+  await expect(page.locator('.arcade-scene:not(.outgoing)')).toHaveAttribute('data-preview','pix')
+  await expect(page.locator('.arcade-master')).toHaveAttribute('src',/master-.+\.png$/)
+  await expect.poll(()=>page.locator('.arcade-master').evaluate((image:HTMLImageElement)=>image.naturalWidth)).toBeGreaterThan(100)
+  await page.screenshot({path:info.outputPath('pix-selector.png')})
+  const before = (await music())[0].time
+  await page.locator('[data-picker-confirm]').click()
+  await expect(page.locator('.arcade-caption')).toContainText(translations.pix.selection)
+  await page.keyboard.press('Escape')
+  expect(await music()).toMatchObject([{loop:true,paused:false}])
+  expect((await music())[0].time).toBeGreaterThan(before)
+  await page.locator('[data-ready="0"]').click()
+  await page.getByRole('button',{name:'Iniciar partida'}).click()
+  await expect.poll(async ()=>(await music())[0].paused).toBe(true)
+  await page.route('**/assets/selection-*.mp3',route=>route.fulfill({status:404}))
+  await page.reload()
+  await page.getByRole('button',{name:'Jugar Versus Zone'}).click()
+  await expect.poll(async ()=>(await music())[0]?.error).toBeTruthy()
+  await page.locator('[data-seat-settings="2"]').click()
+  await page.locator('[data-controller="2"]').selectOption('bot')
+  await page.locator('[data-character="2"]').click()
+  await page.locator('[data-picker-confirm]').click()
+  await expect(page.locator('.arcade-caption')).toContainText(translations.pix.selection)
+})
+
+test('la sala arcade reserva al confirmar y reproduce las voces de persona e IA',async ({page},info)=>{
+  const assets = voiceFiles()
+  await traceVoices(page)
+  await page.goto('/')
+  await page.getByRole('button',{name:/2v2 Blitz/}).click()
+  await page.locator('[data-seat-settings="1"]').click()
+  await page.locator('[data-controller="1"]').selectOption('bot')
+  await page.locator('[data-seat-close]:visible').click()
+  expect((await voices(page)).starts).toEqual([])
+  await page.screenshot({path:info.outputPath('sala-arcade.png')})
+  await page.locator('[data-character="0"]').click()
+  const picker = page.getByRole('dialog')
+  const confirm = picker.locator('[data-picker-confirm]')
+  await expect(picker.locator('.arcade-master')).toBeVisible()
+  await expect.poll(()=>picker.locator('.arcade-master').evaluate((image:HTMLImageElement)=>image.naturalHeight)).toBeGreaterThan(800)
+  await page.screenshot({path:info.outputPath('selector-volt.png')})
+  await picker.locator('[data-picker-id="blaze"]').click()
+  await expect(picker.locator('.arcade-scene:not(.outgoing) h3')).toHaveText('BLAZE')
+  await expect(picker.locator('.arcade-scene:not(.outgoing) .arcade-figure > span')).toHaveText('BL')
+  await page.keyboard.press('Escape')
+  await expect(page.locator('[data-character="0"]')).toHaveAttribute('data-id','volt')
+  expect((await voices(page)).starts).toEqual([])
+  await page.locator('[data-character="0"]').click()
+  await confirm.click()
+  await expect(picker.locator('.arcade-feedback')).toHaveText('PERSONAJE CONFIRMADO')
+  await expect(picker.locator('.arcade-caption')).toContainText(translations.volt.selection)
+  await picker.locator('[data-picker-seat="1"]').click()
+  await picker.locator('[data-picker-id="volt"]').click()
+  await expect(picker.locator('[data-picker-id="volt"]')).toContainText('OCUPADO')
+  await expect(confirm).toBeDisabled()
+  await picker.locator('[data-picker-id="blaze"]').click()
+  await confirm.click()
+  await expect(picker.locator('.arcade-caption')).toContainText(translations.blaze.selection)
+  const sounds = ['volt','blaze'].map(id=>assets.find(file=>file.id===id && file.event==='selection')!.url)
+  expect((await voices(page)).starts).toEqual(sounds)
+  await page.setViewportSize({width:390,height:844})
+  await expect(picker.locator('.arcade-scene.outgoing')).toHaveCount(0)
+  expect(await picker.evaluate(dialog=>dialog.scrollWidth<=dialog.clientWidth)).toBe(true)
+  await page.screenshot({path:info.outputPath('selector-compacto.png')})
+})
+
 async function playbackRoom(page:Page, options?:{attackVoices:boolean;subtitles:boolean;attackAnimations?:boolean},
   lineup:readonly CharacterId[] = ['volt','nix','pix','pengu']) {
   const levels = [null,5,null,5]
@@ -122,6 +206,52 @@ async function playbackRoom(page:Page, options?:{attackVoices:boolean;subtitles:
   await expect(page.locator('.online-player')).toHaveText('ONLINE · J1')
   return {assets:voiceFiles(),lineup,match,frame:(events:Frame['events'])=>send({type:'frame',state:snapshot(match),events,fallen:[]})}
 }
+
+test('PIX usa reacciones digitales y System Override en Blitz',async ({page},info)=>{
+  await page.setViewportSize({width:1920,height:1080})
+  const {match,frame} = await playbackRoom(page)
+  match.sides[0].active = 0
+  match.sides[1].active = 2
+  frame([])
+  const player = page.locator('[data-player="2"]')
+  const art = player.locator('.hud-portrait img')
+  await expect(art).toHaveAttribute('src',/neutral-.+\.png$/)
+  for (const [type,detail,effect,pose] of [
+    ['quad','4','tetris','attack'],['tDouble','2','spin','attack'],['combo','3','combo','attack'],
+    ['receive','3','damage','damage'],['critical','','danger','danger'],['blitzGuard','2','shield','support'],
+    ['teammateDown','','down','support'],['teammateRevived','','reboot','support'],
+  ]) {
+    frame([{slot:2,event:{type,detail}}])
+    await expect(player.locator('.digital-portrait')).toHaveAttribute('data-effect',effect)
+    await expect(art).toHaveAttribute('src',new RegExp(`/${pose}-.+\\.png$`))
+  }
+  frame([{slot:2,event:{type:'zoneStart'}}])
+  await expect(player.locator('.cinematic-charge.cinematic-digital')).toBeVisible()
+  await expect(art).toHaveAttribute('src',/zone-.+\.png$/)
+  match.now++
+  frame([{slot:2,event:{type:'zoneEnd',detail:'8'}},{slot:0,event:{type:'incoming',source:2,detail:'4'}}])
+  const scene = page.locator('.cinematic-scene.cinematic-digital')
+  await expect(scene).toContainText(/SYSTEM\s*OVERRIDE/)
+  await expect(scene).toHaveAttribute('data-delivery','true')
+  await expect(page.locator('.projectile-digital[data-from="2"]')).toBeVisible()
+  await expect(scene.locator('.cinematic-pose')).toBeVisible()
+  await expect(player.locator('.dialogue-text')).toHaveText(translations.pix.zoneFinish)
+  await scene.evaluate(node=>node.getAnimations({subtree:true}).forEach(animation=>{
+    animation.pause()
+    animation.currentTime = 640
+  }))
+  await page.screenshot({path:info.outputPath('pix-system-override.png')})
+  await scene.evaluate(node=>node.getAnimations({subtree:true}).forEach(animation=>animation.finish()))
+  await expect(scene).toHaveCount(0)
+  frame([{slot:2,event:{type:'victory'}}])
+  await expect(art).toHaveAttribute('src',/victory-.+\.png$/)
+  match.players[2].dead = true
+  frame([{slot:2,event:{type:'eliminated'}}])
+  await expect(art).toHaveAttribute('src',/defeat-.+\.png$/)
+  await page.emulateMedia({reducedMotion:'reduce'})
+  frame([{slot:2,event:{type:'zoneEnd',detail:'8'}}])
+  await expect(scene).toHaveCount(0)
+})
 
 test('Blitz ubica dos tarjetas en el centro o el marco y las traslada con el relevo',async ({page},info)=>{
   await page.setViewportSize({width:1902,height:896})
@@ -209,7 +339,7 @@ test('el retrato lateral amplía Tetris y Spin sin desplazar el campo y conserva
   const matrix = player.locator('.well')
   const base = (await portraitFrame.boundingBox())!
   const board = await matrix.boundingBox()
-  for (const type of ['quad','tDouble','combo','blitzGuard']) {
+  for (const type of ['quad','combo','blitzGuard','tDouble']) {
     frame([{slot:0,event:{type,detail:'3'}}])
     await expect(portrait).toHaveAttribute('data-portrait',type==='blitzGuard'?'support':'attack')
     await expect(portraitFrame).toHaveAttribute('data-pulsing','')
@@ -221,7 +351,8 @@ test('el retrato lateral amplía Tetris y Spin sin desplazar el campo y conserva
     })).toBe(520)
     const expanded = (await portraitFrame.boundingBox())!
     expect(expanded.width/base.width).toBeCloseTo(1.18,2)
-    expect(expanded.x).toBeGreaterThan(base.x)
+    if (type==='blitzGuard') expect(expanded.x).toBeCloseTo(base.x)
+    else expect(expanded.x).toBeGreaterThan(base.x)
     const other = (await page.locator('[data-player="2"] .hud-portrait').boundingBox())!
     expect(expanded.x+expanded.width).toBeLessThan(other.x)
     expect(await matrix.boundingBox()).toEqual(board)

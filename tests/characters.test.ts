@@ -5,7 +5,7 @@ import subtitles from '../src/characters/subtitles/es.json'
 import { cueFor, isAttackVoice } from '../src/characters/presentation'
 import { loadSettings, saveSettings } from '../src/settings'
 
-it('carga los 72 subtítulos oficiales con sus claves y su texto exacto',()=>{
+it('carga los subtítulos oficiales con sus claves y su texto exacto',()=>{
   expect(Object.keys(subtitles).sort()).toEqual([...CHARACTER_IDS].sort())
   for (const id of CHARACTER_IDS) {
     expect(Object.keys(subtitles[id]).sort()).toEqual([...VOICE_EVENTS].sort())
@@ -13,7 +13,7 @@ it('carga los 72 subtítulos oficiales con sus claves y su texto exacto',()=>{
   }
 })
 
-it('resuelve las 72 combinaciones a su archivo japonés exacto',()=>{
+it('resuelve todas las voces de personaje a su archivo japonés exacto',()=>{
   const clips = import.meta.glob('../src/characters/voices/ja/*/*.ogg',{
     eager:true,import:'default',query:'?url&no-inline',
   })
@@ -24,7 +24,7 @@ it('resuelve las 72 combinaciones a su archivo japonés exacto',()=>{
   }
 })
 
-it('registra los seis personajes, los nueve retratos y las doce voces de cada uno',()=>{
+it('registra los seis personajes, los nueve retratos y las catorce voces de cada uno',()=>{
   expect(CHARACTER_IDS).toEqual(['volt','nix','pix','astra','blaze','pengu'])
   for (const id of CHARACTER_IDS) {
     const {assets} = CHARACTERS[id]
@@ -35,8 +35,8 @@ it('registra los seis personajes, los nueve retratos y las doce voces de cada un
   }
 })
 
-it('resuelve la maestra, las nueve expresiones, las poses y el fondo de Volt',()=>{
-  const assets = CHARACTERS.volt.assets
+it.each(['volt','pix'] as const)('resuelve la maestra, las nueve expresiones, las poses y el fondo de %s',id=>{
+  const assets = CHARACTERS[id].assets
   for (const key of [assets.master,...Object.values(assets.portraits),assets.attackPose,assets.zonePose,assets.zoneBackground]) {
     expect(artwork(key),key).toMatch(/\.png$/)
   }

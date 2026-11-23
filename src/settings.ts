@@ -3,7 +3,7 @@ import { conflict, defaultSlot, type Slot } from './input'
 import { botLevel } from './engine/bot'
 import { DEFAULT_BLITZ, type BlitzRules } from './engine/blitz'
 import { CHARACTER_OPTIONS, uniqueCharacters, type CharacterId, type CharacterOptions } from './characters/catalog'
-export const MIX = {master:0.72,move:0.52,play:0.8,attack:0.64,alert:0.55,zone:0.75,music:0.10}
+export const MIX = {master:0.72,move:0.52,play:0.8,attack:0.64,alert:0.55,zone:0.75,effects:0.58,music:0.10}
 export type Mix = typeof MIX & {mute:boolean}
 export type Profile = 'Competitivo'|'Casual'|'Personalizado'
 export type Settings = {rules:Rules; profile:Profile; reduced:boolean; metrics:boolean; audio:Mix; slots:Slot[];
@@ -15,19 +15,19 @@ export const NUMBER_RULES = {
   das:['DAS (ms)',0,1000,1], arr:['ARR (ms)',0,500,1], soft:['Soft Drop (celdas/s)',0,120,1],
   lock:['Lock Delay (ms)',0,2000,1], resets:['Reinicios de bloqueo',0,30,1],
   buffer:['Búfer de entrada (ms)',0,300,1], garbageDelay:['Demora de basura (ms)',0,10000,1],
-  garbageCap:['Límite de basura por bloqueo',0,20,1], zoneSeconds:['Zone a carga completa (s)',1,60,0.5],
-  zoneQuarterLines:['Líneas por cuarto de Zone (0 = por fases)',0,100,1], zoneMinimum:['Carga mínima de Zone (%)',1,100,1],
+  garbageCap:['Límite de basura por bloqueo',0,20,1], zoneSeconds:['SURGE a carga completa (s)',1,60,0.5],
+  zoneQuarterLines:['Líneas por cuarto de SURGE (0 = por fases)',0,100,1], zoneMinimum:['Carga mínima de SURGE (%)',1,100,1],
 } as const
 export const BLITZ_NUMBERS = {
   turn:['Turno (segundos)',1,120], countdown:['Cuenta regresiva (segundos)',0,30],
   defenseCap:['Límite de defensa por turno',0,40], defensePercent:['Protección (%)',0,100],
-  revives:['Resurrecciones por equipo',0,2], zoneRescueCap:['Aporte máximo de Zone al rescate',0,40],
+  revives:['Resurrecciones por equipo',0,2], zoneRescueCap:['Aporte máximo de SURGE al rescate',0,40],
 } as const
 export const ATTACK_LABELS: Record<keyof Rules['attack'],string> = {
   double:'Double',triple:'Triple',quad:'Tetris',mini:'Mini Single',miniDouble:'Mini Double',
   tSingle:'T-Spin Single',tDouble:'T-Spin Double',tTriple:'T-Spin Triple',extraSpin:'Spin adicional',
   comboStep:'Intervalo del combo',comboMax:'Máximo del combo',backToBack:'Back-to-Back',
-  perfect:'Perfect Clear',zoneBonus:'Bonificación Zone',
+  perfect:'Perfect Clear',zoneBonus:'Bonificación SURGE',
 }
 export const freshRules = (profile: Profile = 'Competitivo') => structuredClone(profile === 'Casual' ? CASUAL_RULES : DEFAULT_RULES)
 export function loadSettings(): Settings {

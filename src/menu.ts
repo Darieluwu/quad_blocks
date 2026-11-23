@@ -4,13 +4,13 @@ import { actionNames, label, padBindings, standardPadLabel, type Inputs } from '
 import { ATTACK_LABELS, BLITZ_NUMBERS, MIX, NUMBER_RULES, type Settings } from './settings'
 import { COLORS, heroArt } from './render'
 import { BOT_LEVELS } from './engine/bot'
-import { teamForSlot } from './engine/match'
-
-import { characterPicker } from './characters/picker'
+import { lobbyEditors, lobbyFighter, lobbyLineup, seatEditor } from './lobby-view'
+import { artwork } from './characters/assets'
+import { CHARACTERS } from './characters/catalog'
 
 export type Mode = 'versus'|'teams'|'blitz'
 export const teamName = (team: number) => team===0 ? 'Equipo A' : 'Equipo B'
-export const modeName = (mode: Mode) => mode==='blitz' ? '2v2 Blitz' : mode==='teams' ? 'Equipos 2v2' : 'Versus Zone'
+export const modeName = (mode: Mode) => mode==='blitz' ? '2v2 Blitz' : mode==='teams' ? 'Equipos 2v2' : 'Versus SURGE'
 export const targetName = {manual:'Manual',random:'Aleatorio',counter:'Defensa'}
 const targetOptions = (value: Rules['target']) =>
   TARGETS.map(t=>`<option value="${t}" ${selected(t,value)}>${targetName[t]}</option>`).join('')
@@ -44,27 +44,45 @@ export function header(page: string, mute: boolean) {
 export const footer = `<footer class="footer"><span><i></i> LOCAL Y ONLINE</span><span>TETRAVOLT</span></footer>`
 
 export function home(profile: string) {
-  return `<main class="home">
-    <section class="hero">
-      <div class="hero-copy">
-        <div class="overline"><i></i> ARENA COMPETITIVA</div>
-        <h1>TETRA<br><span>VOLT</span><i>.</i></h1>
-        <p>Hasta cuatro jugadores en una pantalla. Compite por tu cuenta o en equipo y activa Zone para lanzar ataques.</p>
-        <div class="hero-actions"><button class="primary" data-page="online">${icon('play')} Jugar online</button><button class="secondary" data-page="lobby" data-mode="versus">Jugar Versus Zone</button><button class="secondary" data-page="controls">${icon('controls')} Ver controles</button></div>
-        <div class="hero-legend" aria-label="Hasta cuatro jugadores locales">${COLORS.map((color,i) => `<span style="--player:${color}"><i></i> J${i+1}</span>`).join('')}</div>
-      </div>
-      <div class="hero-visual"><canvas id="hero-art" width="700" height="460" aria-hidden="true"></canvas></div>
+  const volt = artwork(CHARACTERS.volt.assets.master)
+  const pix = artwork(CHARACTERS.pix.assets.master)
+  return `<main class="arcade-main home-menu" data-arcade-menu>
+    <div class="arcade-atmosphere" aria-hidden="true"><span class="energy-ring ring-a"></span><span class="energy-ring ring-b"></span>
+      <span class="block block-a"></span><span class="block block-b"></span><span class="block block-c"></span><span class="block block-d"></span></div>
+    <section class="arcade-character volt-character" aria-hidden="true">${volt?`<img src="${volt}" alt="">`:''}</section>
+    <section class="arcade-character pix-character" aria-hidden="true">${pix?`<img src="${pix}" alt="">`:''}</section>
+    <section class="arcade-menu-copy">
+      <div class="arcade-brand" aria-label="TETRAVOLT"><span>TETRA</span><strong>VOLT</strong><i></i></div>
+      <nav class="arcade-options" aria-label="Menú principal">
+        <button class="arcade-option is-selected" data-main-action="play" data-arcade-index="0"><span class="option-no">01</span><span class="option-label">JUGAR</span><span class="option-glyph">${icon('play')}</span></button>
+        <button class="arcade-option" data-main-action="online" data-arcade-index="1"><span class="option-no">02</span><span class="option-label">MULTIJUGADOR</span><small>ONLINE</small><span class="option-glyph">${icon('controls')}</span></button>
+        <button class="arcade-option" data-main-action="settings" data-arcade-index="2"><span class="option-no">03</span><span class="option-label">CONFIGURACIÓN</span><span class="option-glyph">${icon('settings')}</span></button>
+        <button class="arcade-option" data-main-action="controls" data-arcade-index="3"><span class="option-no">04</span><span class="option-label">CONTROLES</span><span class="option-glyph">${icon('controls')}</span></button>
+        <button class="arcade-option" data-main-action="credits" data-arcade-index="4"><span class="option-no">05</span><span class="option-label">CRÉDITOS</span><span class="option-glyph">${icon('credits')}</span></button>
+      </nav>
+      <div class="arcade-profile"><span>PERFIL</span><strong>${escape(profile)}</strong></div>
     </section>
-    <section class="modes" aria-label="Modos de juego">
-      <div class="section-line"><h2>Modos de juego</h2><span>${escape(profile)}</span></div>
-      <div class="mode-grid">
-        <button class="mode mode-live" data-page="lobby" data-mode="versus"><span class="mode-icon">${icon('play')}</span><span><strong>Versus Zone</strong><small>Todos contra todos · 2 a 4 plazas</small></span></button>
-        <button class="mode mode-live" data-page="lobby" data-mode="teams"><span class="mode-icon">${icon('controls')}</span><span><strong>Equipos 2v2</strong><small>Dos equipos · 4 plazas</small></span></button>
-        <button class="mode mode-live" data-page="lobby" data-mode="blitz"><span class="mode-icon">${icon('diag')}</span><span><strong>2v2 Blitz</strong><small>Relevos, defensa de equipo y rescates</small></span></button>
-      </div>
-    </section></main>`
+    <aside class="arcade-status"><span>ONLINE</span><i></i><b>4P</b></aside>
+  </main>`
 }
-export const paintHome = () => heroArt(document.querySelector<HTMLCanvasElement>('#hero-art')!)
+
+export function modeSelect(selected: Mode = 'versus') {
+  const modes: {id:Mode;no:string;name:string;players:string;copy:string;icon:string}[] = [
+    {id:'versus',no:'01',name:'VERSUS SURGE',players:'2-4 JUGADORES',copy:'Todos contra todos. Cada plaza carga SURGE y ataca al rival.',icon:'play'},
+    {id:'teams',no:'02',name:'EQUIPOS 2V2',players:'4 JUGADORES',copy:'Dos equipos. Coordinación, objetivos compartidos y presión competitiva.',icon:'controls'},
+    {id:'blitz',no:'03',name:'2V2 BLITZ',players:'2-4 JUGADORES',copy:'Relevos activos, defensa de equipo y rescates bajo presión.',icon:'diag'},
+  ]
+  return `<main class="arcade-main mode-menu" data-arcade-modes>
+    <header class="mode-menu-header"><button class="arcade-back" data-mode-back>${icon('back')} VOLVER</button><div><span>SELECCIÓN DE MODO</span><strong>TETRAVOLT</strong></div></header>
+    <section class="mode-arena" aria-label="Modos de juego">
+      ${modes.map(mode=>`<button class="arcade-mode ${mode.id===selected?'is-selected':''}" data-mode="${mode.id}" data-mode-index="${modes.indexOf(mode)}" aria-pressed="${mode.id===selected}">
+        <span class="mode-no">${mode.no}</span><span class="mode-visual mode-${mode.id}" aria-hidden="true"><i></i><i></i><i></i><i></i><b></b></span>
+        <span class="mode-info"><small>${mode.players}</small><strong>${mode.name}</strong><p>${mode.copy}</p></span>
+      </button>`).join('')}
+    </section>
+    <footer class="mode-menu-footer"><span><kbd>←</kbd><kbd>→</kbd> CAMBIAR</span><button class="arcade-confirm" data-mode-confirm>${icon('play')} CONFIRMAR</button><span><kbd>ESC</kbd> VOLVER</span></footer>
+  </main>`
+}
 
 const intro = (title: string, description: string, back: string) =>
   `<button class="back" data-page="${back}">${icon('back')} Volver</button><h1>${title}</h1><p class="desc">${description}</p>`
@@ -74,28 +92,35 @@ export function lobby(settings: Settings, inputs: Inputs, ready: boolean[], mode
   const description = mode==='blitz' ? 'Confirma las cuatro plazas. J1 y J2 se turnan por el Equipo A. J3 y J4 se turnan por el Equipo B.' :
     teams ? 'Confirma las cuatro plazas. J1 y J2 forman el Equipo A. J3 y J4 forman el Equipo B.' :
     'Marca entre dos y cuatro plazas como listas. Cada plaza puede ser una persona o una IA.'
-  return `<main class="panel">${intro('Sala '+modeName(mode),description,'home')}
-  <div class="lobby-grid">${settings.slots.map((slot,i) => {
+  const editors:string[] = []
+  const fighters = settings.slots.map((slot,i) => {
     const assigned = inputs.assigned[i]
     const controller = settings.controllers[i]
     const deviceOptions = inputs.devices.filter(pad => !inputs.assigned.some((other,j) => j!==i && other?.index===pad.index))
     const current = assigned?.index ?? slot.device?.index
-    return `<section class="slot" style="--player:${COLORS[i]}" data-slot="${i}"><div class="slot-title"><span class="player-tag">J${i+1}</span><strong>Jugador ${i+1}</strong>${teams?`<span class="team-tag" data-team="${teamForSlot(i)}">${teamName(teamForSlot(i))}</span>`:''}</div>
-      <label>Nombre<input data-name="${i}" value="${escape(slot.name)}" maxlength="20"></label>
+    editors.push(seatEditor(i,`<label>Nombre<input data-name="${i}" value="${escape(slot.name)}" maxlength="20"></label>
       <label>Participante<select data-controller="${i}"><option value="human" ${selected(false,controller.bot)}>Persona</option><option value="bot" ${selected(true,controller.bot)}>IA</option></select></label>
       ${controller.bot ? `<label>Dificultad<select data-level="${i}">${BOT_LEVELS.map((name,j)=>`<option value="${j+1}" ${selected(j+1,controller.level)}>${j+1} · ${name}</option>`).join('')}</select></label>` :
       `<label>Dispositivo<select data-device="${i}"><option value="">Teclado</option>
       ${slot.device && !assigned ? `<option value="missing" selected>${escape(slot.device.id)} · desconectado</option>` : ''}
       ${deviceOptions.map(pad => `<option value="${pad.index}" ${selected(pad.index,current)}>${escape(pad.id)} [${pad.index}]</option>`).join('')}</select></label>
       ${assigned && assigned.mapping !== 'standard' ? '<p class="hint">Perfil genérico. Puedes comprobarlo y ajustarlo en Controles.</p>' : ''}`}
-      ${characterPicker(i,settings.characters,ready,true)}
-      <button class="secondary ready ${ready[i]?'is-ready':''}" data-ready="${i}" aria-pressed="${ready[i]}" ${!controller.bot&&slot.device&&!assigned?'disabled':''}>${ready[i]?'Listo ✓':'Marcar listo'}</button></section>`
-  }).join('')}</div>
+      `,true))
+    const missing = !controller.bot && !!slot.device && !assigned
+    const details = controller.bot ? `IA · <span data-lobby-level="${i}">${controller.level} · ${BOT_LEVELS[controller.level-1]}</span>` :
+      'Persona · '+escape(assigned?.id ?? slot.device?.id ?? 'Teclado')
+    return lobbyFighter({slot:i,id:settings.characters[i],name:escape(slot.name),details,
+      state:missing?'SIN MANDO':ready[i]?'LISTO':'POR CONFIRMAR',ready:ready[i],editable:true,settings:true,
+      readyAction:`<button class="secondary ready ${ready[i]?'is-ready':''}" data-ready="${i}" aria-pressed="${ready[i]}" ${!controller.bot&&slot.device&&!assigned?'disabled':''}>${ready[i]?'Quitar listo':'Marcar listo'}</button>`})
+  })
+  return `<main class="panel match-lobby">${intro('Sala '+modeName(mode),description,'home')}
+  ${lobbyLineup(fighters,teams,ready.every(Boolean))}
   <div class="panel-actions"><button class="secondary" data-page="settings">${icon('settings')} Reglas de partida</button><button class="secondary" data-page="controls">${icon('controls')} Controles</button>
   ${mode==='blitz' ? '' : `<label class="lobby-target">Objetivos<select data-rule="target">${targetOptions(settings.rules.target)}</select></label>`}
   <span class="lobby-count" role="status">${ready.filter(Boolean).length} de 4 plazas listas</span>
   <button class="primary" data-do="start" ${canStart?'':'disabled'}>${icon('play')} Iniciar partida</button></div>
-  <p class="hint">Usa los controles asignados de izquierda, derecha y giro horario para elegir y confirmar.</p>
+  ${lobbyEditors(editors)}
+  <p class="hint">Izquierda y derecha para elegir, giro horario para confirmar y giro antihorario para volver. Usa los controles de tu plaza.</p>
   ${issue ? `<p class="lobby-issue" role="alert">${escape(issue)}</p>` : ''}
   ${mode==='blitz' ? blitzSettings(settings) : ''}</main>`
 }
@@ -103,12 +128,12 @@ function blitzSettings(settings: Settings) {
   return `<details class="settings-card attack-settings blitz-settings"><summary>Reglas de Blitz</summary>
     <div class="form-grid">${Object.entries(BLITZ_NUMBERS).map(([key,[label,min,max]])=>
       `<label>${label}<input type="number" min="${min}" max="${max}" step="1" data-blitz="${key}" value="${settings.blitz[key as keyof typeof BLITZ_NUMBERS]}"></label>`).join('')}
-      <label class="check"><input type="checkbox" data-blitz="zone" ${checked(settings.blitz.zone)}> Zone en Blitz</label>
+      <label class="check"><input type="checkbox" data-blitz="zone" ${checked(settings.blitz.zone)}> SURGE en Blitz</label>
       <label class="check"><input type="checkbox" data-blitz="effects" ${checked(settings.blitz.effects)}> Efectos de rotación</label>
     </div></details>`
 }
 const genName = {bag7:'7-Bag',random:'Random',history:'History Randomizer',bag14:'14-Bag'}
-const volumeNames = {master:'Maestro',move:'Movimientos',play:'Jugadas',attack:'Ataques',alert:'Alertas',zone:'Zone',music:'Música (Blitz)'}
+const volumeNames = {master:'Maestro',move:'Movimientos',play:'Jugadas',attack:'Ataques',alert:'Alertas',zone:'SURGE',effects:'Efectos',music:'Música (Blitz)'}
 export function configuration(settings: Settings, back: string) {
   const rules = settings.rules
   const numbered = (group: (keyof typeof NUMBER_RULES)[]) => group.map(key => {
@@ -128,8 +153,8 @@ export function configuration(settings: Settings, back: string) {
       </div></section>
       <section class="settings-card"><h2>Precisión</h2><div class="form-grid">${numbered(['das','arr','soft','lock','resets','buffer'])}</div>
       <p class="hint">ARR 0 mueve hasta el obstáculo después de DAS.</p></section>
-      <section class="settings-card"><h2>Zone y bonificaciones</h2><div class="form-grid">
-        ${check('zone','Activar Zone')}${check('extraSpins','Bonificar Spins adicionales')}${numbered(['zoneSeconds','zoneQuarterLines','zoneMinimum'])}</div></section>
+      <section class="settings-card"><h2>SURGE y bonificaciones</h2><div class="form-grid">
+        ${check('zone','Activar SURGE')}${check('extraSpins','Bonificar Spins adicionales')}${numbered(['zoneSeconds','zoneQuarterLines','zoneMinimum'])}</div></section>
       <section class="settings-card"><h2>Audio y pantalla</h2>
         ${Object.keys(MIX).map(raw=>{const k=raw as keyof typeof MIX;return `<label class="volume">${volumeNames[k]}<input type="range" min="0" max="1" step="0.01" data-volume="${k}" value="${settings.audio[k]}"></label>`}).join('')}
         <div class="form-grid">

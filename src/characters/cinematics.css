@@ -105,6 +105,39 @@
 .cinematic-edge i:nth-child(3) { inset:auto 6% -8px auto; rotate:180deg }
 .cinematic-edge i:nth-child(4) { inset:auto auto 22% -18px; rotate:-91deg }
 .cinematic-impact { animation-duration:280ms }
+.cinematic-scene.cinematic-digital { background:radial-gradient(ellipse at 52% 56%,#18524e,#21132c 64%,#0b1322); }
+.cinematic-digital .cinematic-grid { background:linear-gradient(0deg,#101328 1%,transparent 36%),
+  repeating-linear-gradient(0deg,transparent 0 6px,#36f5e333 6px 7px) }
+.cinematic-digital .cinematic-title { color:#eaffff; text-shadow:3px 2px #6335a7,0 0 18px #08352d }
+.cinematic-digital .cinematic-pose { animation-name:cinematic-decode; animation-timing-function:steps(13,end) }
+.cinematic-digital .cinematic-sparks i { width:8px; height:8px; border-radius:0 }
+.cinematic-digital .cinematic-beam { color:#4be0ff; filter:drop-shadow(0 0 8px #aa63ff) }
+.cinematic-digital .cinematic-electricity { animation-timing-function:steps(12,end) }
+.cinematic-edge.cinematic-digital { border-style:double; box-shadow:0 0 17px #a867ff; animation-timing-function:steps(16,end) }
+.cinematic-edge.cinematic-digital i { width:15px; height:11px; background:#b9fc79; clip-path:polygon(0 0,61% 0,61% 38%,100% 38%,100% 100%,0 100%) }
+.cinematic-edge.cinematic-digital i:nth-child(even) { background:#a163ef }
+.cinematic-charge.cinematic-digital { animation-name:cinematic-hack; animation-duration:660ms }
+.cinematic-charge.cinematic-digital img {
+  position:absolute; inset:4px 5px auto auto; width:min(27%,86px); height:64px; object-fit:cover; object-position:center 9%;
+  mask-image:linear-gradient(90deg,transparent,#000 48%); opacity:.7
+}
+.cinematic-charge.cinematic-digital::after { content:""; position:absolute; inset:0; border-top:3px solid #43ffd296;
+  background:repeating-linear-gradient(0deg,transparent 0 10px,#5df6ed1c 10px 11px);
+  mask-image:linear-gradient(#000,transparent 22%) }
+@keyframes cinematic-decode {
+  0% { opacity:0; transform:translateX(calc(-50% + var(--scene-entry)*90px)); clip-path:inset(7% 0 59%) }
+  12% { opacity:.75; clip-path:inset(18% 0 0); transform:translateX(-46%) }
+  21%,77% { opacity:1; clip-path:inset(0); transform:translateX(-50%) }
+  88% { opacity:.7; clip-path:inset(7% 0 32%); transform:translateX(-55%) }
+  100% { opacity:0; clip-path:inset(41% 0); transform:translateX(-45%) }
+}
+@keyframes cinematic-hack {
+  0%,100% { opacity:0 }
+  12% { opacity:.8 }
+  27% { opacity:.5 }
+  38% { opacity:1 }
+  74% { opacity:.6 }
+}
 @keyframes cinematic-edge {
   from { opacity:1 }
   to { opacity:0 }

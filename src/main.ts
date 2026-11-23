@@ -3,16 +3,17 @@ import { Match, teamForSlot, type Participant } from './engine/match'
 import { BlitzMatch } from './engine/blitz'
 import { HZ, PLAYERS, SETTINGS } from './engine/rules'
 import { ACTIONS, NO_INPUT, type Action } from './engine/player'
-import { botLevel } from './engine/bot'
+import { BOT_LEVELS, botLevel } from './engine/bot'
 import { Inputs, automaticPadMap, conflict, defaultMap, keyboardClashes, label, padBindings, pressedButtons } from './input'
 import { Sound, type DialogueState } from './audio'
 import { mountArena } from './render'
 import { ATTACK_LABELS, BLITZ_NUMBERS, NUMBER_RULES, freshRules, loadSettings, saveSettings, type Mix, type Profile } from './settings'
-import { configuration, controls, credits, diagnostic, diagnosticsPage, escape, footer, header, home, icon, lobby, modeName, paintHome, teamName, type Mode } from './menu'
+import { configuration, controls, credits, diagnostic, diagnosticsPage, escape, footer, header, home, icon, lobby, modeName, modeSelect, teamName, type Mode } from './menu'
 import { RoomClient, inviteCode } from './online/client'
 import { onlineMenu } from './online/menu'
 import { OnlineMatch, randomId, type LobbyState, type ServerMessage } from './online/protocol'
-import { CHARACTERS, chooseCharacter, isCharacterId, uniqueCharacters, type CharacterId, type CharacterOptions, type VoiceEvent } from './characters/catalog'
+import { CHARACTERS, CHARACTER_IDS, chooseCharacter, isCharacterId, uniqueCharacters, type CharacterId, type CharacterOptions, type VoiceEvent } from './characters/catalog'
+import { ArcadePicker } from './characters/picker'
 import { japaneseVoice, subtitleFor } from './characters/assets'
 import { isAttackVoice } from './characters/presentation'
 
@@ -22,11 +23,16 @@ const settings = loadSettings()
 const ready = settings.slots.map(() => false)
 let page: Page = 'home'
 let mode: Mode = 'versus'
+let modeMenuIndex = 0
+let arcadeMenuIndex = 0
+let modeMenuOpen = false
+const arcadePadPrior = new Map<number,{up:boolean;down:boolean;left:boolean;right:boolean;confirm:boolean;cancel:boolean}>()
 let returnPage: 'home'|'lobby' = 'home'
 let controlPlayer = 0
 let controlType: 'keys'|'pad' = 'keys'
 let status = ''
 let lobbyIssue = ''
+let lobbyEditor:number|null = null
 let match: Match | null = null
 let arena: ReturnType<typeof mountArena> | null = null
 let phase: 'countdown'|'live'|'paused'|'results' = 'countdown'
@@ -38,7 +44,16 @@ let finalFallen: number[] = []
 let matchCharacters = [...settings.characters]
 let lobbyPadPrior: (ReadonlySet<Action>|undefined)[] = []
 const selectionCaptions = new Map<number,{id:CharacterId;text:string}>()
-let onlineConfirm = false
+const picker = new ArcadePicker()
+const pickerDrafts = new Map<number,CharacterId>()
+const pickerConfirmed = new Map<number,CharacterId>()
+const pickerPending = new Map<number,{id:CharacterId;request:number}>()
+let pickerSlot:number|null = null
+let pickerNotice = ''
+let selectionRequest = 0
+const simpleAttackVariant = new Map<number,0|1>()
+const simpleAttackLast = new Map<number,number>()
+let onlineConnected = false
 let online: RoomClient|null = null
 let onlineLobby: LobbyState|null = null
 let onlineSeat = -1
@@ -54,7 +69,12 @@ const isHuman = (i: number) => !settings.controllers[i].bot
 const inputs = new Inputs(settings.slots,() => page === 'game' && phase !== 'results',i=>online && (page==='game' || page==='online') ? i===0 : isHuman(i))
 inputs.onWake = () => audio.wake()
 app.addEventListener('error',event=>{
-  if (event.target instanceof HTMLImageElement && event.target.closest('.character-preview')) event.target.hidden = true
+  const image = event.target
+  if (!(image instanceof HTMLImageElement) || image.dataset.artFallback===undefined) return
+  const fallback = image.dataset.artFallback
+  image.removeAttribute('data-full-art')
+  if (fallback && image.getAttribute('src')!==fallback) image.src = fallback
+  else image.hidden = true
 },true)
 inputs.onBlur = () => { if (online) online.input(NO_INPUT); else if (page === 'game') pause('La ventana perdió el foco.') }
 document.addEventListener('pointerdown', () => audio.wake())
@@ -101,23 +121,41 @@ function muteButton() {
 }
 
 function render() {
-  const characterFocus = (document.activeElement as HTMLElement|null)?.dataset.character
+  audio.setMusic(page==='lobby' || page==='online' && onlineLobby?.phase==='lobby' ? 'selection' :
+    page==='home' ? 'menu' : undefined)
+  const focused = (document.activeElement as HTMLElement|null)?.dataset
+  const characterFocus = focused?.character
+  const editorField = (['controller','device','level','onlineBot'] as const).find(key=>focused?.[key]!==undefined)
+  const preceding = new Map([...app.querySelectorAll<HTMLElement>('.lobby-fighter')].map(card=>[card.dataset.slot,card.dataset]))
+  const allReady = app.querySelector('.lobby-lineup')?.getAttribute('data-all-ready')
   app.classList.toggle('reduced',settings.reduced)
-  const body = page === 'home' ? home(settings.profile) : page === 'lobby' ? lobby(settings,inputs,ready,mode,canStart(),lobbyIssue) :
+  const body = page === 'home' ? (modeMenuOpen ? modeSelect(mode) : home(settings.profile)) : page === 'lobby' ? lobby(settings,inputs,ready,mode,canStart(),lobbyIssue) :
     page === 'online' ? onlineMenu(onlineLobby,onlineSeat,onlineLink,onlineName,onlineNotice,onlineWaiting,onlineRetry) :
     page === 'settings' ? configuration(settings,returnPage) : page === 'controls' ?
       controls(settings,inputs,controlPlayer,controlType,status,returnPage) : page === 'diag' ?
       diagnosticsPage(diagnostic(inputs,settings),returnPage) : credits()
-  app.innerHTML = header(page,settings.audio.mute)+body+footer
+  app.innerHTML = (page==='home' ? '' : header(page,settings.audio.mute))+body+(page==='home'?'':footer)
   if (page==='lobby' || page==='online') {
+    syncLobbyEditor()
+    const lineupView = app.querySelector('.lobby-lineup')
+    if (allReady==='false' && lineupView?.getAttribute('data-all-ready')==='true') lineupView.classList.add('just-ready')
+    for (const card of app.querySelectorAll<HTMLElement>('.lobby-fighter')) {
+      const old = preceding.get(card.dataset.slot)
+      if (old && old.fighter!==card.dataset.fighter) card.classList.add('is-new-fighter')
+      if (old?.readyState==='false' && card.dataset.readyState==='true') card.classList.add('just-ready')
+    }
     const lineup = page==='online' ? onlineLineup() : settings.characters
     for (const [slot,caption] of selectionCaptions) {
       if (lineup[slot]===caption.id) showSelectionCaption(slot,caption.text)
       else selectionCaptions.delete(slot)
     }
   }
-  if (characterFocus!==undefined) app.querySelector<HTMLSelectElement>(`[data-character="${characterFocus}"]`)?.focus()
-  if (page === 'home') paintHome()
+  if (characterFocus!==undefined) app.querySelector<HTMLButtonElement>(`[data-character="${characterFocus}"]`)?.focus()
+  if (editorField && focused && Number(focused[editorField])===lobbyEditor) {
+    const attr = editorField==='onlineBot' ? 'online-bot' : editorField
+    app.querySelector<HTMLSelectElement>(`[data-${attr}="${lobbyEditor}"]`)?.focus({preventScroll:true})
+  }
+  refreshPicker()
 }
 
 function go(next: Page) {
@@ -126,7 +164,7 @@ function go(next: Page) {
     online.close()
     online = null; onlineLobby = null; onlineNames = null; onlineSeat = -1
     onlineLink = onlineNotice = ''; onlineWaiting = onlineRetry = false
-    onlineConfirm = false
+    onlineConnected = false
     roomUrl('')
   }
   if (next === 'settings' || next === 'controls' || next === 'diag') {
@@ -135,7 +173,9 @@ function go(next: Page) {
   }
   audio.stopCharacterVoices()
   selectionCaptions.clear()
-  if (page === 'game') { audio.stopMusic(); match = null; arena = null; inputs.clear() }
+  resetPicker()
+  lobbyEditor = null
+  if (page === 'game') { match = null; arena = null; inputs.clear() }
   lobbyPadPrior = []
   page = next
   inputs.capture = null
@@ -158,12 +198,14 @@ function start(roster: readonly Participant[]) {
 function mountGame(current: Match, initialCountdown: number = SETTINGS.countdown) {
   const {seed,roster} = current
   if (page==='game') audio.stopCharacterVoices()
-  if (mode==='blitz') audio.startBlitzMusic()
+  audio.setMusic(mode==='blitz' ? 'blitz' : undefined)
   const format = mode==='blitz' ? 'BLITZ' : current.teams ? '2v2' : roster.length===PLAYERS ? 'VS4' : roster.map(()=>1).join('v')
   page = 'game'
   phase = initialCountdown ? 'countdown' : 'live'
   countdown = initialCountdown
   selectionCaptions.clear()
+  resetPicker()
+  lobbyEditor = null
   overlayState = ''
   finalFallen = []
   inputs.clear()
@@ -272,24 +314,26 @@ function receiveOnline(message: ServerMessage) {
       if (page==='online') render()
       break
     case 'welcome':
+      onlineConnected = true
       onlineSeat = message.slot
       onlineNotice = ''
       onlineWaiting = onlineRetry = false
       onlineLink = roomUrl(online!.code)
       break
     case 'lobby': {
+    const previousReady = onlineLobby?.seats.map(seat=>seat.ready) ?? []
       onlineLobby = message.lobby
+    if (page==='online') {
+      for (let seat=0;seat<onlineLobby.seats.length;seat++) {
+        if (!previousReady[seat] && onlineLobby.seats[seat].ready) audio.playEffect('player-ready')
+      }
+    }
       if (message.lobby.phase==='lobby') {
         if (page==='game') { audio.stopCharacterVoices(); lobbyPadPrior = [] }
-        audio.stopMusic()
         match = arena = null
         onlineNames = null
         page = 'online'
         render()
-        if (onlineConfirm && message.lobby.seats[onlineSeat]?.ready) {
-          onlineConfirm = false
-          showSelection(onlineLineup()[onlineSeat],onlineSeat)
-        }
       } else if (message.lobby.phase==='paused' && page==='game') {
         phase = 'paused'
         onlineNotice = `Esperando que vuelva ${message.lobby.missing.join(', ')}.`
@@ -299,6 +343,19 @@ function receiveOnline(message: ServerMessage) {
       } else if (page==='game' && message.lobby.phase!=='results') {
         phase = message.lobby.phase==='countdown' ? 'countdown' : 'live'
         audio.resumeMusic()
+      }
+      break
+    }
+    case 'characterConfirmed': {
+      const pending = pickerPending.get(message.slot)
+      if (pending?.request!==message.request || pending.id!==message.id) break
+      pickerPending.delete(message.slot)
+      if (message.accepted && page==='online' && onlineLineup()[message.slot]===message.id) {
+        pickerDrafts.delete(message.slot)
+        completeSelection(message.slot,message.id)
+      } else if (pickerSlot===message.slot) {
+        pickerNotice = 'La sala no pudo confirmar ese personaje.'
+        refreshPicker()
       }
       break
     }
@@ -344,6 +401,8 @@ app.addEventListener('submit',event=>{
   online?.close(online.code!==code || create)
   onlineNotice = ''
   online = new RoomClient(code,onlineName,create,receiveOnline,state=>{
+    onlineConnected = false
+    pickerPending.clear()
     onlineWaiting = state==='connecting'
     if (state==='connecting') onlineNotice = 'Conectando…'
     else if (state==='lost') onlineNotice = 'Conexión perdida. Reconectando…'
@@ -375,13 +434,59 @@ app.addEventListener('change',event=>{
 app.addEventListener('click',event => {
   const button = (event.target as HTMLElement).closest<HTMLButtonElement>('button')
   if (!button || button.disabled) return
+  if (button.hasAttribute('data-mode-back')) {
+    modeMenuOpen=false
+    audio.playEffect('character-confirm')
+    render()
+    return
+  }
+  if (button.dataset.mode!==undefined) {
+    mode=button.dataset.mode as Mode
+    modeMenuIndex=['versus','teams','blitz'].indexOf(mode)
+    app.querySelectorAll('.arcade-mode').forEach((node,i)=>{
+      node.classList.toggle('is-selected',i===modeMenuIndex)
+      node.setAttribute('aria-pressed',String(i===modeMenuIndex))
+    })
+    audio.playEffect('character-hover')
+    return
+  }
+  if (button.hasAttribute('data-mode-confirm')) {
+    modeMenuOpen=false
+    audio.playEffect('character-confirm')
+    go('lobby')
+    return
+  }
+  if (button.dataset.mainAction!==undefined) {
+    const action=button.dataset.mainAction
+    audio.playEffect(action==='play'?'character-confirm':'character-hover')
+    if (action==='play') { modeMenuOpen=true; modeMenuIndex=['versus','teams','blitz'].indexOf(mode); render(); return }
+    if (action==='online') { go('online'); return }
+    if (action==='settings') { go('settings'); return }
+    if (action==='controls') { go('controls'); return }
+    if (action==='credits') { go('credits'); return }
+  }
+  if (button.dataset.seatSettings!==undefined) {
+    const slot = Number(button.dataset.seatSettings)
+    if (lobbyEditor===slot) toggleLobbyEditor(null)
+    else toggleLobbyEditor(slot)
+    return
+  }
+  if (button.hasAttribute('data-seat-close')) { toggleLobbyEditor(null); return }
+  if (button.dataset.seatAction && lobbyEditor!==null) {
+    const card = app.querySelector(`.lobby-fighter[data-slot="${lobbyEditor}"]`)
+    card?.querySelector<HTMLButtonElement>(button.dataset.seatAction==='character'?'[data-character]':'[data-ready]')?.click()
+    return
+  }
   if (online && button.dataset.online) {
     switch (button.dataset.online) {
       case 'start': online.send({type:'start'}); break
       case 'lobby': online.send({type:'lobby'}); break
       case 'ready':
-        onlineConfirm = !onlineLobby?.seats[onlineSeat]?.ready
-        online.send({type:'ready',value:onlineConfirm})
+        if (pickerPending.has(onlineSeat)) break
+        if (onlineLobby?.seats[onlineSeat]?.ready) {
+          pickerConfirmed.delete(onlineSeat)
+          online.send({type:'ready',value:false})
+        } else confirmCharacter(onlineSeat,onlineLineup()[onlineSeat])
         break
       case 'copy': {
         const field = document.querySelector<HTMLInputElement>('#online-link')!
@@ -395,6 +500,10 @@ app.addEventListener('click',event => {
     return
   }
   const {page:next,do:action,ready:index,controlPlayer:player,controlType:type,action:bind} = button.dataset
+  if (button.dataset.character!==undefined) {
+    openPicker(Number(button.dataset.character))
+    return
+  }
   if (next) {
     if (button.dataset.mode==='teams' || button.dataset.mode==='versus' || button.dataset.mode==='blitz') mode = button.dataset.mode
     go(next as Page)
@@ -403,9 +512,12 @@ app.addEventListener('click',event => {
   if (index !== undefined) {
     const i = Number(index)
     lobbyIssue = !ready[i] && isHuman(i) && !settings.slots[i].device ? keyboardIssue(i) : ''
-    if (!lobbyIssue) ready[i] = !ready[i]
+    if (!lobbyIssue && !ready[i]) { confirmCharacter(i,settings.characters[i]); if (ready[i]) audio.playEffect('player-ready'); return }
+    if (!lobbyIssue) {
+      ready[i] = false
+      pickerConfirmed.delete(i)
+    }
     render()
-    if (ready[i] && !lobbyIssue && isHuman(i)) showSelection(settings.characters[i],i)
     return
   }
   if (player !== undefined || type) {
@@ -522,6 +634,8 @@ app.addEventListener('input',event => {
   if (el.dataset.name !== undefined) {
     const i = Number(el.dataset.name)
     settings.slots[i].name = el.value.trim() || 'Jugador '+(i+1)
+    const name = app.querySelector(`[data-lobby-name="${i}"]`)
+    if (name) name.textContent = settings.slots[i].name
     store()
   }
   if (el.dataset.volume) {
@@ -532,11 +646,6 @@ app.addEventListener('input',event => {
 })
 app.addEventListener('change',event => {
   const el = event.target as HTMLInputElement | HTMLSelectElement
-  const characterSlot = el.dataset.character
-  if (characterSlot!==undefined && isCharacterId(el.value)) {
-    selectCharacter(Number(characterSlot),el.value)
-    return
-  }
   const option = el.dataset.characterOption
   if (option && option in settings.characterOptions && el instanceof HTMLInputElement) {
     settings.characterOptions[option as keyof CharacterOptions] = el.checked
@@ -568,7 +677,9 @@ app.addEventListener('change',event => {
     app.querySelector<HTMLSelectElement>(`[data-controller="${i}"]`)?.focus()
   }
   if (level!==undefined) {
-    settings.controllers[Number(level)].level = botLevel(Number(el.value))
+    const next = settings.controllers[Number(level)].level = botLevel(Number(el.value))
+    const badge = app.querySelector(`[data-lobby-level="${level}"]`)
+    if (badge) badge.textContent = `${next} · ${BOT_LEVELS[next-1]}`
     store()
   }
   if (el.id === 'profile') {
@@ -641,49 +752,210 @@ function formatTime(ticks: number) {
 
 function onlineLineup() { return uniqueCharacters(onlineLobby?.seats.map(seat=>seat.character)) }
 
-function selectCharacter(slot:number,id:CharacterId) {
+function syncLobbyEditor() {
+  const tray = app.querySelector<HTMLElement>('#lobby-seat-editor')
+  const active = tray?.querySelector<HTMLElement>(`[data-seat-editor="${lobbyEditor}"]`)
+  if (!active) lobbyEditor = null
+  if (tray) tray.hidden = !active
+  for (const editor of tray?.querySelectorAll<HTMLElement>('[data-seat-editor]') ?? []) editor.hidden = editor!==active
+  for (const button of app.querySelectorAll<HTMLButtonElement>('[data-seat-settings]')) {
+    button.setAttribute('aria-expanded',String(Number(button.dataset.seatSettings)===lobbyEditor))
+  }
+  return active
+}
+
+function toggleLobbyEditor(slot:number|null) {
+  const previous = lobbyEditor
+  lobbyEditor = slot
+  const editor = syncLobbyEditor()
+  if (editor) {
+    editor.scrollIntoView({block:'nearest'})
+    editor.querySelector<HTMLElement>('input,select')?.focus({preventScroll:true})
+  } else if (previous!==null) app.querySelector<HTMLButtonElement>(`[data-seat-settings="${previous}"]`)?.focus()
+}
+
+const pickerLineup = () => page==='online' ? onlineLineup() : settings.characters
+const pickerReservations = () => page==='online' ? onlineLobby?.seats.map(seat=>seat.characterConfirmed ?? seat.ready) ?? [] : ready
+const editablePickerSeats = () => page==='lobby' ? [0,1,2,3] : page==='online' && onlineLobby ?
+  onlineLobby.seats.flatMap((seat,slot)=>slot===onlineSeat || onlineSeat===onlineLobby?.host && !seat.name ? [slot] : []) : []
+
+function refreshPicker() {
+  if (pickerSlot===null) return
+  const seats = editablePickerSeats()
+  if (!seats.includes(pickerSlot)) { closePicker(); return }
+  const lineup = pickerLineup()
+  const id = pickerDrafts.get(pickerSlot) ?? lineup[pickerSlot]
+  const caption = selectionCaptions.get(pickerSlot)
+  picker.update({slot:pickerSlot,id,lineup,seats,drafts:pickerDrafts,reserved:pickerReservations(),
+    pending:pickerPending.has(pickerSlot) || page==='online' && !onlineConnected,
+    confirmed:pickerConfirmed.get(pickerSlot)===id && lineup[pickerSlot]===id && !!pickerReservations()[pickerSlot],
+    reduced:settings.reduced || matchMedia('(prefers-reduced-motion: reduce)').matches,
+    caption:caption?.id===id ? caption.text : '',notice:page==='online' && !onlineConnected ? 'Esperando conexión con la sala.' : pickerNotice})
+}
+
+function openPicker(slot:number) {
+  if (!editablePickerSeats().includes(slot)) return
+  pickerSlot = slot
+  pickerNotice = ''
+  if (!pickerDrafts.has(slot)) pickerDrafts.set(slot,pickerLineup()[slot])
+  refreshPicker()
+}
+
+function closePicker() {
+  const slot = pickerSlot
+  pickerSlot = null
+  pickerNotice = ''
+  picker.close()
+  if (slot!==null) {
+    pickerDrafts.delete(slot)
+    app.querySelector<HTMLButtonElement>(`[data-character="${slot}"]`)?.focus({preventScroll:true})
+  }
+}
+
+function resetPicker() {
+  closePicker()
+  pickerDrafts.clear()
+  pickerConfirmed.clear()
+  pickerPending.clear()
+}
+
+function previewCharacter(slot:number,id:CharacterId) {
+  const previous = pickerDrafts.get(slot) ?? pickerLineup()[slot]
+  pickerDrafts.set(slot,id)
+  if (previous!==id) audio.playEffect('character-hover')
+  if (slot===pickerSlot) pickerNotice = ''
+  refreshPicker()
+  if (slot===pickerSlot) {
+    picker.focus(id)
+  }
+}
+
+function confirmCharacter(slot:number,id:CharacterId) {
+  if (!editablePickerSeats().includes(slot) || pickerPending.has(slot)) return
+  const next = chooseCharacter(pickerLineup(),slot,id,pickerReservations())
+  if (!next) {
+    if (pickerSlot===slot) pickerNotice = 'Ese personaje ya está ocupado.'
+    refreshPicker()
+    return
+  }
   if (page==='online' && online) {
-    online.send({type:'character',slot,id})
+    if (!onlineConnected) return
+    const request = ++selectionRequest
+    pickerPending.set(slot,{id,request})
+    refreshPicker()
+    online.send({type:'character',slot,id,request})
     return
   }
   if (page!=='lobby') return
-  const next = chooseCharacter(settings.characters,slot,id,ready)
-  if (!next) lobbyIssue = 'Ese personaje ya está confirmado por otro participante.'
-  else {
-    if (settings.characters[slot]!==id && isHuman(slot)) ready[slot] = false
+  lobbyIssue = isHuman(slot) ? settings.slots[slot].device ?
+    inputs.assigned[slot] ? '' : 'Reconecta el mando para marcar listo.' : keyboardIssue(slot) : ''
+  if (!lobbyIssue) {
     settings.characters = next
-    lobbyIssue = ''
+    const wasReady = ready[slot]
+    ready[slot] = true
+    if (!wasReady) audio.playEffect('player-ready')
+    pickerDrafts.delete(slot)
     store()
   }
+  if (pickerSlot===slot) pickerNotice = lobbyIssue
   render()
+  if (!lobbyIssue) completeSelection(slot,id)
 }
 
-const selectionActions = ['left','right','cw'] as const
+function completeSelection(slot:number,id:CharacterId) {
+  pickerConfirmed.set(slot,id)
+  audio.playEffect('character-confirm')
+  if (pickerSlot===slot) pickerNotice = ''
+  refreshPicker()
+  app.querySelector(`.lobby-fighter[data-slot="${slot}"]`)?.classList.add('picker-confirmed')
+  if (pickerSlot===slot) {
+    picker.focus(id)
+    picker.flash(id)
+  }
+  showSelection(id,slot)
+}
+
+picker.node.addEventListener('click',event=>{
+  const button = (event.target as HTMLElement).closest('button')
+  if (!button || button.disabled || pickerSlot===null) return
+  const {pickerSeat,pickerId} = button.dataset
+  if (button.hasAttribute('data-picker-close')) closePicker()
+  else if (pickerSeat!==undefined) openPicker(Number(pickerSeat))
+  else if (isCharacterId(pickerId)) previewCharacter(pickerSlot,pickerId)
+  else if (button.hasAttribute('data-picker-confirm')) confirmCharacter(pickerSlot,pickerDrafts.get(pickerSlot) ?? pickerLineup()[pickerSlot])
+})
+picker.node.addEventListener('cancel',event=>{ event.preventDefault(); closePicker() })
+
+const selectionActions = ['left','right','cw','ccw'] as const
 type SelectionAction = typeof selectionActions[number]
 const characterSeats = () => page==='lobby' ? settings.slots.flatMap((_,i)=>isHuman(i)?[i]:[]) :
   page==='online' && onlineLobby && onlineSeat>=0 ? [onlineSeat] : []
 
 function characterInput(slot:number,action:SelectionAction) {
-  const selection = app.querySelector<HTMLSelectElement>(`[data-character="${slot}"]`)
-  if (!selection) return
-  if (action==='cw') {
-    const confirmed = page==='online' ? onlineLobby?.seats[slot]?.ready : ready[slot]
-    if (!confirmed) app.querySelector<HTMLButtonElement>(page==='online'?'[data-online="ready"]':`[data-ready="${slot}"]`)?.click()
+  if (!editablePickerSeats().includes(slot)) return
+  if (action==='ccw') {
+    if (pickerSlot===slot) closePicker()
+    else if (pickerDrafts.delete(slot)) refreshPicker()
     return
   }
-  const options = [...selection.options].filter(option=>!option.disabled)
-  const current = options.findIndex(option=>option.value===selection.value)
+  const lineup = pickerLineup()
+  if (action==='cw') {
+    if (pickerSlot===slot || pickerDrafts.has(slot) || !pickerReservations()[slot]) confirmCharacter(slot,pickerDrafts.get(slot) ?? lineup[slot])
+    return
+  }
+  if (pickerSlot===null) openPicker(slot)
+  const reserved = pickerReservations()
+  const options = CHARACTER_IDS.filter(id=>{
+    const owner = lineup.indexOf(id)
+    return owner<0 || owner===slot || !reserved[owner]
+  })
+  const current = options.indexOf(pickerDrafts.get(slot) ?? lineup[slot])
   const direction = action==='right' ? 1 : -1
-  const next = options[(current+direction+options.length)%options.length]?.value
-  if (isCharacterId(next)) { selection.focus(); selectCharacter(slot,next) }
+  previewCharacter(slot,options[(current+direction+options.length)%options.length])
 }
 
 window.addEventListener('keydown',event=>{
   if (event.repeat || event.altKey || event.ctrlKey || event.metaKey || event.defaultPrevented) return
   const target = event.target
   if (!(target instanceof HTMLElement)) return
+  if (page==='home') {
+    const action = modeMenuOpen ? (
+      event.key==='ArrowLeft'?'left':event.key==='ArrowRight'?'right':event.key==='ArrowUp'?'up':
+      event.key==='ArrowDown'?'down':event.key==='Enter'?'confirm':event.key==='Escape'?'cancel':''
+    ) : (
+      event.key==='ArrowUp'?'up':event.key==='ArrowDown'?'down':event.key==='Enter'?'confirm':
+      event.key==='Escape'?'cancel':''
+    )
+    if (action) {
+      event.preventDefault()
+      if (action==='cancel') {
+        if (modeMenuOpen) { modeMenuOpen=false; render(); audio.playEffect('character-hover') }
+        return
+      }
+      if (modeMenuOpen) {
+        if (action==='left'||action==='right') {
+          modeMenuIndex=(modeMenuIndex+(action==='right'?1:-1)+3)%3
+          mode=['versus','teams','blitz'][modeMenuIndex] as Mode
+          render()
+        } else if (action==='confirm') {
+          modeMenuOpen=false
+          audio.playEffect('character-confirm')
+          go('lobby')
+        }
+        return
+      }
+      if (action==='up'||action==='down') {
+        arcadeMenuIndex=(arcadeMenuIndex+(action==='down'?1:-1)+5)%5
+        app.querySelectorAll('.arcade-option').forEach((node,i)=>node.classList.toggle('is-selected',i===arcadeMenuIndex))
+        audio.playEffect('character-hover')
+        return
+      }
+      if (action==='confirm') app.querySelector<HTMLButtonElement>(`.arcade-option[data-arcade-index="${arcadeMenuIndex}"]`)?.click()
+    }
+  }
+  const inside = picker.node.contains(target)
   const focused = target.dataset.character
-  if (focused===undefined && target.closest('input,select,textarea,button,a,[contenteditable]')) return
+  if (!inside && focused===undefined && target.closest('input,select,textarea,button,a,[contenteditable]')) return
   for (const slot of characterSeats()) {
     if (focused!==undefined && focused!==String(slot)) continue
     const config = settings.slots[page==='online' ? 0 : slot]
@@ -692,11 +964,42 @@ window.addEventListener('keydown',event=>{
     if (!action) continue
     event.preventDefault()
     characterInput(slot,action)
-    break
+    return
+  }
+  if (inside && pickerSlot!==null && (event.code==='ArrowLeft' || event.code==='ArrowRight')) {
+    event.preventDefault()
+    characterInput(pickerSlot,event.code==='ArrowLeft'?'left':'right')
   }
 })
 
 function pollCharacterPads() {
+  if (page==='home') {
+    for (const pad of inputs.devices) {
+      const bindings=padBindings(pad)
+      const up=bindings.includes('B12')||(pad.mapping==='standard'&&pad.buttons[12]?.pressed)
+      const down=bindings.includes('B13')||(pad.mapping==='standard'&&pad.buttons[13]?.pressed)
+      const left=bindings.includes('B14')||(pad.mapping==='standard'&&pad.buttons[14]?.pressed)
+      const right=bindings.includes('B15')||(pad.mapping==='standard'&&pad.buttons[15]?.pressed)
+      const confirm=bindings.includes('B0')||(pad.mapping==='standard'&&pad.buttons[0]?.pressed)
+      const cancel=bindings.includes('B1')||(pad.mapping==='standard'&&pad.buttons[1]?.pressed)
+      const prior=arcadePadPrior.get(pad.index)??{up:false,down:false,left:false,right:false,confirm:false,cancel:false}
+      arcadePadPrior.set(pad.index,{up,down,left,right,confirm,cancel})
+      if (modeMenuOpen && (left&&!prior.left||right&&!prior.right)) {
+        modeMenuIndex=(modeMenuIndex+(right&&!prior.right?1:-1)+3)%3
+        mode=['versus','teams','blitz'][modeMenuIndex] as Mode
+        render()
+      } else if (!modeMenuOpen && (up&&!prior.up||down&&!prior.down)) {
+        arcadeMenuIndex=(arcadeMenuIndex+(down&&!prior.down?1:-1)+5)%5
+        app.querySelectorAll('.arcade-option').forEach((node,i)=>node.classList.toggle('is-selected',i===arcadeMenuIndex))
+        audio.playEffect('character-hover')
+      }
+      if (confirm&&!prior.confirm) app.querySelector<HTMLButtonElement>(modeMenuOpen?'.arcade-confirm':`.arcade-option[data-arcade-index="${arcadeMenuIndex}"]`)?.click()
+      if (cancel&&!prior.cancel) {
+        if (modeMenuOpen) { modeMenuOpen=false; render() }
+        else if (page==='home') go('home')
+      }
+    }
+  }
   for (const slot of characterSeats()) {
     const local = page==='online' ? 0 : slot
     const pad = inputs.assigned[local]
@@ -711,7 +1014,7 @@ function pollCharacterPads() {
   }
 }
 
-function speak(id:CharacterId,event:VoiceEvent,seat:number,caption:(text:string|undefined,timed:boolean,state:DialogueState)=>void) {
+function speak(id:CharacterId,event:VoiceEvent,seat:number,caption:(text:string|undefined,timed:boolean,state:DialogueState)=>void,priority=1) {
   const voiceEnabled = settings.characterOptions.attackVoices || !isAttackVoice(event)
   const clip = voiceEnabled ? japaneseVoice(id,event) : undefined
   const text = settings.characterOptions.subtitles ? subtitleFor(id,event) : undefined
@@ -720,12 +1023,16 @@ function speak(id:CharacterId,event:VoiceEvent,seat:number,caption:(text:string|
   caption(undefined,false,'waiting')
   audio.playCharacterVoice(clip,seat,state=>{
     caption(state==='playing' || state==='fallback' ? text : undefined,state==='fallback',state)
-  })
+  },priority)
 }
 
 function showSelectionCaption(seat:number,text:string) {
   const caption = app.querySelector(`[data-selection-caption="${seat}"]`)
   if (caption) caption.textContent = text
+  if (seat===pickerSlot) {
+    const id = pickerDrafts.get(seat) ?? pickerLineup()[seat]
+    picker.setCaption(selectionCaptions.get(seat)?.id===id ? text : '')
+  }
 }
 
 function showSelection(id:CharacterId,seat:number) {
@@ -751,16 +1058,31 @@ function showSelection(id:CharacterId,seat:number) {
 function presentCharacter(index:number,event:Match['players'][number]['events'][number],current:Match) {
   const view = arena
   const cue = view?.characterEvent(index,event,current.now)
+  if (event.type==='simpleAttack') {
+    const seat = current.roster[index].slot
+    const id = matchCharacters[seat]
+    const now = performance.now()
+    if (now-(simpleAttackLast.get(seat) ?? -2500)>=2500) {
+      simpleAttackLast.set(seat,now)
+      const variant = simpleAttackVariant.get(seat) ?? 0
+      simpleAttackVariant.set(seat,variant===0?1:0)
+      speak(id,variant===0?'simpleAttack1':'simpleAttack2',seat,(text,timed,state)=>{
+        view?.subtitle(index,text,timed,state==='ended',false)
+      },1)
+    }
+  }
   if (!cue?.voice) return
   const seat = current.roster[index].slot
   speak(matchCharacters[seat],cue.voice,seat,(text,timed,state)=>
-    view?.subtitle(index,text,timed,state==='ended',cue.voice==='zoneFinish'))
+    view?.subtitle(index,text,timed,state==='ended',cue.voice==='zoneFinish'),cue.priority)
 }
 
 function playEvent(activeMatch: Match, i: number, event: Match['players'][number]['events'][number]) {
   const activeArena = arena
   const player = activeMatch.players[i]
   presentCharacter(i,event,activeMatch)
+  if (event.type==='send') audio.playEffect('attack-send')
+  if (event.type==='zoneStart') audio.playEffect('surge-activate')
   if (activeMatch instanceof BlitzMatch && (event.type==='eliminated' || event.type==='blitzRevived')) {
     const teammate = activeMatch.roster.findIndex((p,j)=>j!==i && p.team===activeMatch.roster[i].team && !activeMatch.players[j].dead)
     if (teammate>=0) presentCharacter(teammate,{type:event.type==='eliminated'?'teammateDown':'teammateRevived'},activeMatch)
@@ -770,6 +1092,7 @@ function playEvent(activeMatch: Match, i: number, event: Match['players'][number
     activeArena.attack(event.source,i,activeMatch.now,() => {
       if (match!==activeMatch || arena!==activeArena || player.dead) return
       activeArena.note(i,'impact',undefined,activeMatch.now)
+      audio.playEffect('damage-impact',Math.min(1,0.55+Number(event.detail)*0.07))
       audio.play(event,activeMatch.roster[i].slot)
     })
   } else if (!(activeMatch instanceof BlitzMatch && event.type==='eliminated')) audio.play(event,activeMatch.roster[i].slot)

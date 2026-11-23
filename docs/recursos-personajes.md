@@ -13,7 +13,7 @@ Los ID son `volt`, `nix`, `pix`, `astra`, `blaze` y `pengu`. Coloca cada recurso
 | `master` | Ilustración maestra de cuerpo completo, preferiblemente con transparencia |
 | `portraits/neutral`, `blink`, `attack`, `danger`, `damage`, `victory`, `defeat`, `support`, `zone` | Nueve retratos con encuadre coherente |
 | `pose-attack` y `pose-zone` | Poses especiales independientes |
-| `zone-background` | Fondo temático de presentación para Zone |
+| `zone-background` | Fondo temático de presentación para SURGE |
 | `attacks/tetris`, `spin`, `combo`, `zoneFinish` | Acentos visuales opcionales para ataques, confinados al marco del personaje |
 
 Puedes incorporar los archivos de a uno. El selector usa la ilustración maestra o el retrato neutral. Durante el juego, una expresión ausente recurre al retrato neutral y, si este falta, se muestran las iniciales del personaje. Entrega la ilustración original de **Pengu** en un archivo separado para integrar el diseño sin alterarlo.
@@ -27,11 +27,11 @@ selection tetris spin combo zoneStart zoneFinish danger victory defeat
 teamDefense teammateDown teammateRevived
 ```
 
-La voz de selección se dispara al confirmar. Durante la partida, `combo` empieza en el tercer combo y `danger` se dispara al entrar en peligro crítico. La alarma competitiva puede repetirse mientras dure el peligro. En Blitz, el compañero vivo presenta las líneas de caída y rescate. El mezclador admite hasta cuatro voces simultáneas, una por plaza. El evento vocal más reciente sustituye de inmediato al anterior de esa plaza. Las voces tienen un compresor y un ajuste de ganancia según su solapamiento. Los buses de peligro y Zone siguen separados del compresor de diálogos.
+La voz de selección se dispara al confirmar. Durante la partida, `combo` empieza en el tercer combo y `danger` se dispara al entrar en peligro crítico. La alarma competitiva puede repetirse mientras dure el peligro. En Blitz, el compañero vivo presenta las líneas de caída y rescate. El mezclador admite hasta cuatro voces simultáneas, una por plaza. El evento vocal más reciente sustituye de inmediato al anterior de esa plaza. Las voces tienen un compresor y un ajuste de ganancia según su solapamiento. Los buses de peligro y SURGE siguen separados del compresor de diálogos.
 
 Las 72 traducciones españolas están en `src/characters/subtitles/es.json`, organizadas por ID de personaje y evento. `en.json` puede añadirse con el mismo esquema. El catálogo de audio apunta siempre a `ja/`. El subtítulo aparece al reproducirse la voz y se retira al terminarla o interrumpirla. Si la voz está desactivada o el archivo falla, el texto se muestra temporalmente y el siguiente evento lo reemplaza. Los recursos nuevos se incorporan al volver a ejecutar `npm run build`.
 
-Las preferencias de animaciones de ataques, voces de ataques y subtítulos están en **Configuración → Audio y pantalla**. El ajuste general **Reducir efectos** también se aplica a los retratos. La posición de piezas y los avisos de peligro y Zone se mantienen visibles.
+Las preferencias de animaciones de ataques, voces de ataques y subtítulos están en **Configuración → Audio y pantalla**. El ajuste general **Reducir efectos** también se aplica a los retratos. La posición de piezas y los avisos de peligro y SURGE se mantienen visibles.
 
 Los subtítulos aparecen junto a la selección y debajo del tablero correspondiente durante la partida. Si el tablero se retira en el cierre, los subtítulos pendientes pasan a la fila de ese jugador en la clasificación.
 

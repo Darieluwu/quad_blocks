@@ -1,0 +1,125 @@
+.arcade-picker {
+  --accent:#abf3df;
+  position:fixed;
+  width:min(1080px,calc(100% - 32px));
+  max-height:calc(100svh - 28px);
+  padding:0;
+  background:#101624;
+  color:#f3f6fc;
+  border:1px solid #41516a;
+  border-radius:13px;
+  box-shadow:0 26px 100px #000a;
+}
+.arcade-picker::backdrop { background:#070a12bf; backdrop-filter:blur(5px) }
+.arcade-picker-inner { padding:clamp(10px,2vw,23px); display:grid; gap:11px }
+.arcade-picker-header,.arcade-actions { display:flex; justify-content:space-between; align-items:center; gap:12px }
+.arcade-picker-header h2 {
+  margin:0;
+  font:900 italic clamp(19px,3.2vw,32px)/1 system-ui,sans-serif;
+  letter-spacing:-.04em;
+}
+.arcade-picker-header button,.arcade-actions button { flex:none }
+.arcade-seats { display:flex; gap:6px; flex-wrap:wrap; order:0 }
+.arcade-seats button { min-height:28px; padding:4px 12px; font:800 12px Consolas,monospace; border:1px solid #35425e; background:#172031 }
+.arcade-seats button[aria-pressed="true"] { color:#b6ffe6; border-color:#6be1b3; background:#17332e }
+
+.arcade-showcase {
+  min-height:0;
+  height:clamp(270px,48svh,514px);
+  overflow:hidden;
+  position:relative;
+  isolation:isolate;
+  border:1px solid #38465e;
+  border-radius:10px 10px 2px 2px;
+  background:#111926;
+}
+.arcade-scene {
+  position:absolute;
+  inset:0;
+  display:grid;
+  grid-template-columns:minmax(0,.92fr) minmax(0,1.08fr);
+  background:
+    repeating-linear-gradient(124deg,transparent 0 35px,#e2f6ff0e 35px 36px),
+    radial-gradient(ellipse at 73% 65%,color-mix(in srgb,var(--fighter) 51%,#101624),#101624 62%);
+}
+.arcade-scene.outgoing { z-index:1; pointer-events:none }
+.arcade-identity { align-self:center; padding:clamp(14px,4vw,48px); z-index:1 }
+.arcade-element {
+  color:color-mix(in srgb,var(--fighter) 72%,white);
+  border-block-end:2px solid var(--fighter);
+  padding-block-end:6px;
+  font:850 clamp(10px,1.4vw,17px)/1 Consolas,monospace;
+  text-transform:uppercase;
+  letter-spacing:.13em;
+}
+.arcade-identity h3 {
+  color:#fbfcff;
+  margin:11px 0 5px;
+  font:1000 italic clamp(32px,8vw,112px)/.9 system-ui,sans-serif;
+  letter-spacing:-.085em;
+  text-shadow:3px 3px 0 color-mix(in srgb,var(--fighter) 53%,#101624);
+}
+.arcade-identity p { max-width:33ch; margin:13px 0 0; color:#e0e8f5; font-size:clamp(12px,1.55vw,17px); line-height:1.45 }
+.arcade-figure {
+  min-width:0;
+  min-height:0;
+  position:relative;
+  display:grid;
+  place-items:center;
+}
+.arcade-figure::before {
+  content:"";
+  position:absolute;
+  inset:50% auto auto 51%;
+  width:min(84%,390px);
+  aspect-ratio:1;
+  transform:translate(-50%,-50%);
+  border:1px solid color-mix(in srgb,var(--fighter) 55%,transparent);
+  border-radius:50%;
+  box-shadow:0 0 0 23px #d1d7ed16,0 0 0 45px #d1d7ed0d;
+}
+.arcade-figure > span { color:color-mix(in srgb,var(--fighter) 52%,#d4ddee); font:900 italic clamp(45px,11vw,148px)/1 system-ui,sans-serif; letter-spacing:-.1em }
+.arcade-figure:has(.arcade-master:not([hidden])) > span { visibility:hidden }
+.arcade-master,.arcade-confirm-pose {
+  position:absolute;
+  inset:10px 0 0;
+  width:100%;
+  height:calc(100% - 14px);
+  object-fit:contain;
+  object-position:50% 100%;
+  filter:drop-shadow(0 8px 16px #08101e99);
+}
+.arcade-confirm-pose { inset:auto 5% 8% auto; width:34%; height:43%; object-position:bottom right; filter:drop-shadow(0 0 14px var(--fighter)) }
+.arcade-roster { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:8px }
+.arcade-fighter {
+  position:relative;
+  min-width:0;
+  display:grid;
+  justify-items:center;
+  gap:4px;
+  padding:6px;
+  border:1px solid #3a465b;
+  border-bottom:2px solid color-mix(in srgb,var(--fighter) 75%,#252d3f);
+  background:linear-gradient(145deg,color-mix(in srgb,var(--fighter) 12%,#1b2434),#101622);
+}
+.arcade-fighter .character-portrait { inline-size:clamp(35px,6svh,76px); font-size:clamp(13px,2vw,22px) }
+.arcade-fighter strong { font:900 italic clamp(11px,1.8vw,19px)/1 system-ui,sans-serif }
+.arcade-fighter small { min-height:1em; color:#ffcba9; font:800 clamp(8px,1vw,11px)/1.15 Consolas,monospace }
+.arcade-fighter[data-occupied] .character-portrait { opacity:.48 }
+.arcade-fighter[aria-pressed="true"] { border-color:var(--fighter); box-shadow:inset 0 0 16px color-mix(in srgb,var(--fighter) 25%,transparent) }
+.arcade-fighter[aria-pressed="true"] .character-portrait { box-shadow:0 0 11px color-mix(in srgb,var(--fighter) 62%,transparent) }
+.arcade-actions { min-height:47px }
+.arcade-feedback,.arcade-caption { margin:0; font-size:clamp(11px,1.4vw,15px); line-height:1.3 }
+.arcade-feedback.confirmed { color:#9cf6d3; font:850 clamp(10px,1.45vw,14px)/1.2 Consolas,monospace; letter-spacing:.08em }
+.arcade-caption { color:#ffe8c6; margin-top:3px }
+@media (max-width:620px) {
+  .arcade-picker { width:calc(100% - 14px) }
+  .arcade-picker-inner { gap:7px }
+  .arcade-picker-header button,.arcade-actions button { padding:6px 8px; font-size:12px }
+  .arcade-seats { gap:4px; padding:0 }
+  .arcade-seats button { padding-inline:7px; font-size:10px }
+  .arcade-roster { grid-template-columns:repeat(3,minmax(0,1fr)); gap:5px }
+  .arcade-showcase { height:clamp(205px,37svh,330px) }
+  .arcade-identity { padding:10px }
+  .arcade-fighter { padding:4px; gap:3px }
+}

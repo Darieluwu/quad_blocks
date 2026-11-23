@@ -1,17 +1,7 @@
 import { artwork } from './assets'
 import { CHARACTERS, type CharacterId } from './catalog'
+import { characterVisuals as scenes, type CharacterVisual as Scene } from './visuals'
 import './cinematics.css'
-
-type Scene = {
-  title:readonly [string,string]
-  color:string
-  light:string
-  particles:keyof typeof particles
-  entry:'caster'|'opponent'
-}
-const scenes:Partial<Record<CharacterId,Scene>> = {
-  volt:{title:['THUNDER','OVERDRIVE'],color:'#ffb72e',light:'#fff5a4',particles:'electric',entry:'caster'},
-}
 const DURATION = 1100
 
 const electricity = `<svg class="cinematic-electricity" viewBox="0 0 320 440" preserveAspectRatio="none" aria-hidden="true">
@@ -23,7 +13,15 @@ const beam = `<svg class="cinematic-beam" viewBox="0 0 320 72" preserveAspectRat
   <path class="beam-main" d="M0 42L32 27 55 46 80 29 111 42 140 15 169 39 195 25 219 43 244 34 264 51 286 29 320 36"/>
   <path class="beam-branch" d="M30 27L48 9 73 19M141 16L168 3 189 14M219 43L229 61 260 64M285 29L297 14 320 17"/>
 </svg>`
-const particles = {electric:{aura:electricity,discharge:beam}}
+const digitalGrid = `<svg class="cinematic-electricity" viewBox="0 0 320 440" preserveAspectRatio="none" aria-hidden="true">
+  <path d="M4 95h92v58H4zM219 31h98v49h-98zM204 155h114v105H204zM12 273h105v65H12z"/>
+  <path d="M10 110h78m-78 10h50m168-73h70M215 170h89v22h-89zM20 289h83M20 303h39"/>
+</svg>`
+const digitalBeam = `<svg class="cinematic-beam" viewBox="0 0 320 72" preserveAspectRatio="none" aria-hidden="true">
+  <path d="M0 27h40v-7h45v14h39v-13h54v12h39v-8h70v8h33M0 53h67v-6h84v11h51v-16h49v11h69"/>
+  <path d="M13 31h66v9H13zM97 30h69v13H97zM192 25h73v18h-73zM275 29h36v14h-36z" fill="currentColor"/>
+</svg>`
+const particles = {electric:{aura:electricity,discharge:beam},digital:{aura:digitalGrid,discharge:digitalBeam}}
 
 function place(node:HTMLElement,x:number,y:number,width:number,height:number) {
   Object.assign(node.style,{left:`${x}px`,top:`${y}px`,width:`${width}px`,height:`${height}px`})
@@ -61,13 +59,14 @@ export class ZoneCinematics {
 
   charge(id:CharacterId,origin:HTMLElement) {
     const scene = scenes[id]
-    if (scene && this.enabled) this.edge(origin,scene,'charge')
+    if (scene && this.enabled) this.edge(origin,scene,'charge',artwork(CHARACTERS[id].assets.zonePose))
   }
 
   accent(id:CharacterId) { return scenes[id]?.color }
 
   stop() {
     cancelAnimationFrame(this.request)
+    this.request = 0
     this.life?.cancel()
     this.life = undefined
     this.active?.remove()
@@ -77,21 +76,31 @@ export class ZoneCinematics {
   finish(id:CharacterId,origin:HTMLElement,tick:number) {
     const scene = scenes[id]
     if (!scene || !this.enabled) return
-    this.stop()
+    if (this.request || this.active) {
+      requestAnimationFrame(()=>{
+        if (!this.enabled || !origin.isConnected) return
+        this.edge(origin,scene,'charge')
+        const victim = this.receipts.findLast(receipt=>receipt.origin===origin && receipt.tick===tick)?.target
+        if (victim?.isConnected && victim.dataset.featured!=='false') this.edge(victim,scene,'impact')
+      })
+      return
+    }
     // Wait for the frame to publish the relay state and any real garbage delivery.
     this.request = requestAnimationFrame(()=>{
+      this.request = 0
       if (!this.enabled || !origin.isConnected) return
       const receipt = this.receipts.findLast(receipt=>receipt.origin===origin && receipt.tick===tick)
       this.play(id,scene,origin,receipt?.target)
     })
   }
 
-  private edge(player:HTMLElement,scene:Scene,kind:'charge'|'impact') {
+  private edge(player:HTMLElement,scene:Scene,kind:'charge'|'impact',pose?:string) {
     const edge = document.createElement('span')
-    edge.className = `cinematic-edge cinematic-${kind}`
+    edge.className = `cinematic-edge cinematic-${kind} cinematic-${scene.theme}`
     edge.setAttribute('aria-hidden','true')
     edge.style.setProperty('--scene-color',scene.color)
     edge.innerHTML = '<i></i><i></i><i></i><i></i>'
+    if (pose && scene.theme==='digital') edge.append(Object.assign(new Image(),{src:pose,alt:''}))
     player.append(edge)
     edge.addEventListener('animationend',event=>{
       if (event.target===edge) edge.remove()
@@ -138,7 +147,7 @@ export class ZoneCinematics {
 
     const stage = document.createElement('div')
     const entry = scene.entry==='caster' ? clockwise : !clockwise
-    stage.className = `cinematic-scene cinematic-${scene.particles}`
+    stage.className = `cinematic-scene cinematic-${scene.theme}`
     stage.dataset.character = id
     stage.dataset.direction = clockwise ? 'right' : 'left'
     stage.dataset.layout = central ? 'center' : 'side'
@@ -147,7 +156,7 @@ export class ZoneCinematics {
     stage.style.setProperty('--scene-light',scene.light)
     stage.style.setProperty('--scene-entry',entry?'-1':'1')
     stage.style.setProperty('--scene-time',`${DURATION}ms`)
-    const fx = particles[scene.particles]
+    const fx = particles[scene.theme]
     stage.innerHTML = `<img class="cinematic-background" src="${background}" alt="">
       <span class="cinematic-grid" aria-hidden="true"></span>${fx.aura}
       <img class="cinematic-pose" src="${pose}" alt="">

@@ -50,7 +50,7 @@
     grid-template-columns:minmax(0,1fr);
   }
   .blitz-stack .player[data-featured="true"] .player-profile { grid-area:1/1; padding-inline:8px }
-  .blitz-stack .player[data-featured="true"] .volt-showcase { inset:8px 8px auto auto; width:calc(100% - 16px) }
+  .blitz-stack .player[data-featured="true"] .character-showcase { inset:8px 8px auto auto; width:calc(100% - 16px) }
   .blitz-stack .player[data-featured="true"] .hud-portrait {
     position:absolute;
     grid-area:auto;

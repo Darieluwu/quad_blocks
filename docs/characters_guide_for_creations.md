@@ -114,7 +114,7 @@ Diseño maestro: imagen original proporcionada
 
 También debemos preservar su estilo de sombreado original, más suave y volumétrico que el cel shading de los personajes humanos.
 
-Una precisión artística: los efectos nuevos no deben imponer cambios permanentes a su diseño. Por ejemplo, durante Zone podemos iluminar sus ojos y su gema, pero no transformar su sombrero o añadirle armadura.
+Una precisión artística: los efectos nuevos no deben imponer cambios permanentes a su diseño. Por ejemplo, durante SURGE podemos iluminar sus ojos y su gema, pero no transformar su sombrero o añadirle armadura.
 
 4. Expresiones y poses definitivas
 Cada personaje tendrá nueve retratos, todos con el mismo encuadre de busto: cabeza, hombros y pecho. En PengU, el encuadre se adaptará a su cuerpo compacto para que el sombrero y la gema sigan siendo visibles.
@@ -127,15 +127,15 @@ damage.png	Reacción a impacto	Basura recibida
 victory.png	Alegría o satisfacción	Victoria
 defeat.png	Frustración o resignación	Eliminación
 support.png	Protección o ánimo	Defensa y rescate Blitz
-zone.png	Expresión poderosa y seria	Zone activa
+zone.png	Expresión poderosa y seria	SURGE activa
 
 La posición de la cabeza y los hombros debe mantenerse estable entre expresiones para evitar saltos al cambiar de imagen.
 
-Además, cada personaje tendrá una ilustración de cuerpo completo, una pose de ataque y una pose definitiva de Zone.
+Además, cada personaje tendrá una ilustración de cuerpo completo, una pose de ataque y una pose definitiva de SURGE.
 
 5. Identidad visual de los ataques
 Los seis personajes comparten las mismas reglas de juego. Sus efectos se diferencian solamente por presentación.
-Personaje	Tetris	Spin	Defensa Blitz	Zone definitiva
+Personaje	Tetris	Spin	Defensa Blitz	SURGE definitiva
 Volt	Lightning Strike	Volt Spiral	Static Guard	Thunder Overdrive
 Nix	Frost Edge	Crystal Break	Ice Shield	Absolute Zero
 Pix	Pixel Crash	Glitch Drive	Support Link	System Override
@@ -160,15 +160,15 @@ Proyectil elemental que viaja entre tableros, con un breve efecto de impacto.
 
 Poderoso
 
-Pose especial, mayor cantidad de partículas y un efecto de impacto destacado. Si corresponde a Zone, se reproduce su cinemática.
+Pose especial, mayor cantidad de partículas y un efecto de impacto destacado. Si corresponde a SURGE, se reproduce su cinemática.
 
 
 
 Los efectos deben aparecer dentro de regiones visuales seguras. Si cuatro ataques coinciden, todos podrán reproducirse, pero las piezas, el Ghost Piece y los indicadores críticos siempre estarán por encima de los efectos decorativos.
 
-6. Cinemáticas definitivas de Zone
+6. Cinemáticas definitivas de SURGE
 Cada personaje tendrá una cinemática única de aproximadamente un segundo, con entrada lateral y fondo temático propio.
-Personaje	Fondo de Zone	Momento culminante
+Personaje	Fondo de SURGE	Momento culminante
 Volt	Tormenta eléctrica rojiza	Gran descarga frontal
 Nix	Cristales y niebla glacial	Fragmentación de cristal
 Pix	Cuadrícula digital holográfica	Explosión de píxeles
@@ -185,7 +185,7 @@ Importante: la lógica del ataque se ejecutará independientemente de la cinemá
 7. Sonido, voces y subtítulos
 El primer paquete de audio tendrá doce frases japonesas por personaje, para un total de 72 clips.
 
-Las frases que ya diseñamos cubren selección, Tetris, Spin, combo alto, activación y finalización de Zone, peligro, victoria, derrota, defensa, compañero caído y resurrección.
+Las frases que ya diseñamos cubren selección, Tetris, Spin, combo alto, activación y finalización de SURGE, peligro, victoria, derrota, defensa, compañero caído y resurrección.
 Personaje	Dirección vocal
 Volt	Masculina juvenil, competitiva y desafiante
 Nix	Femenina serena, elegante y precisa
@@ -248,7 +248,7 @@ Retratos de expresión
 Ilustraciones de cuerpo y poses
 
 6
-Fondos de Zone
+Fondos de SURGE
 
 72
 Clips japoneses
@@ -263,7 +263,7 @@ Convenciones de entrega
 - PNG con fondo transparente para personajes, retratos y poses.
 - Dimensiones estandarizadas para cada categoría.
 - Nombres de archivo consistentes y en minúsculas.
-- Fondos de Zone separados de los personajes.
+- Fondos de SURGE separados de los personajes.
 - Audios separados por evento.
 - Metadatos de personajes independientes del motor competitivo.
 - Sin incrustar textos dentro de las ilustraciones, para permitir traducciones.
@@ -282,7 +282,7 @@ Aunque diseñaremos los seis personajes desde el principio, conviene producir su
 4. Poses y cuerpos completos
    
    Crear las ilustraciones para selección, ataques y cinemáticas.
-5. Fondos de Zone
+5. Fondos de SURGE
    
    Diseñar los seis fondos temáticos sin personajes ni texto.
 6. Voces

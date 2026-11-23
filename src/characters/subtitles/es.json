@@ -1,6 +1,8 @@
 {
   "volt": {
     "selection": "¿Puedes seguirme el ritmo?",
+    "simpleAttack1": "¡Toma esto!",
+    "simpleAttack2": "¡Demasiado lento!",
     "tetris": "¡Toma esta descarga!",
     "spin": "¡Todavía puedo dar más!",
     "combo": "¡No hay quien me detenga!",
@@ -15,6 +17,8 @@
   },
   "nix": {
     "selection": "Mantengamos la calma.",
+    "simpleAttack1": "Recibe esto.",
+    "simpleAttack2": "Ahí estás.",
     "tetris": "Congélate.",
     "spin": "No escaparás.",
     "combo": "Justo como lo calculé.",
@@ -29,6 +33,8 @@
   },
   "pix": {
     "selection": "¡Je, vamos a divertirnos!",
+    "simpleAttack1": "¡Allá va!",
+    "simpleAttack2": "¡Un clic y listo!",
     "tetris": "¡Pixel Crash!",
     "spin": "¡Vamos, a fallar!",
     "combo": "¡Este combo no para!",
@@ -43,6 +49,8 @@
   },
   "astra": {
     "selection": "Las estrellas nos guiarán.",
+    "simpleAttack1": "Ve.",
+    "simpleAttack2": "Que las estrellas te guíen.",
     "tetris": "Estrellas, caigan sobre ellos.",
     "spin": "Distorsionaré el espacio.",
     "combo": "El curso de los acontecimientos no cambiará.",
@@ -57,6 +65,8 @@
   },
   "blaze": {
     "selection": "¡Je, eso me gusta! ¡Subamos la temperatura!",
+    "simpleAttack1": "¡Arde!",
+    "simpleAttack2": "¡Más calor!",
     "tetris": "¡Arde! ¡Flare Impact!",
     "spin": "¡Gira y arde!",
     "combo": "¡Ja, ja! ¡Las llamas no paran!",
@@ -71,6 +81,8 @@
   },
   "pengu": {
     "selection": "Aún tengo sueño... pero bueno, vamos.",
+    "simpleAttack1": "Ahí va...",
+    "simpleAttack2": "Bueno, toma esto...",
     "tetris": "Estrellas, caigan...",
     "spin": "Es magia lunar...",
     "combo": "Buaah... ¿Todavía seguimos?",

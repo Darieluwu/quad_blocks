@@ -13,12 +13,12 @@ export const actionMask = (actions: ReadonlySet<Action>) =>
   PLAY_ACTIONS.reduce((mask,action,i)=>actions.has(action) ? mask | (1<<i) : mask,0)
 export const heldActions = (mask: number) => new Set(PLAY_ACTIONS.filter((_,i)=>mask & (1<<i)))
 
-export type Seat = {name:string; connected:boolean; ready:boolean; botLevel:number; character?:CharacterId}
+export type Seat = {name:string; connected:boolean; ready:boolean; botLevel:number; character?:CharacterId; characterConfirmed?:boolean}
 export type LobbyState = {host:number; seats:Seat[]; phase:'lobby'|'countdown'|'playing'|'paused'|'results'; missing:string[]}
 export type ClientMessage =
   | {type:'join'; token:string; name:string; create:boolean}
   | {type:'ready'; value:boolean}
-  | {type:'character'; slot:number; id:CharacterId}
+  | {type:'character'; slot:number; id:CharacterId; request?:number}
   | {type:'bot'; slot:number; level:number}
   | {type:'start'|'lobby'|'leave'}
   | {type:'input'; held:number; pressed:Action[]}
@@ -32,7 +32,8 @@ export function parseClient(raw: unknown): ClientMessage | null {
       case 'join': return typeof message.token==='string' && ROOM_ID.test(message.token) &&
         typeof message.name==='string' && message.name.trim().length>0 && message.name.length<=24 && typeof message.create==='boolean' ? message : null
       case 'ready': return typeof message.value==='boolean' ? message : null
-      case 'character': return Number.isInteger(message.slot) && message.slot>=0 && message.slot<4 && isCharacterId(message.id) ? message : null
+      case 'character': return Number.isInteger(message.slot) && message.slot>=0 && message.slot<4 && isCharacterId(message.id) &&
+        (message.request===undefined || Number.isSafeInteger(message.request) && message.request>0) ? message : null
       case 'bot': return Number.isInteger(message.slot) && message.slot>=0 && message.slot<4 &&
         Number.isInteger(message.level) && message.level>=1 && message.level<=10 ? message : null
       case 'input': return Number.isInteger(message.held) && message.held>=0 && message.held<(1<<PLAY_ACTIONS.length) &&
@@ -65,6 +66,7 @@ export type Snapshot = ReturnType<typeof snapshot>
 export type MatchStart = {seed:string; names:string[]; levels:(number|null)[]; countdown:number; characters?:CharacterId[]}
 export type Frame = {type:'frame'; state:Snapshot; events:{slot:number; event:GameEvent}[]; fallen:number[]}
 export type ServerMessage = {type:'welcome'; slot:number} | {type:'lobby'; lobby:LobbyState} |
+  {type:'characterConfirmed'; slot:number; id:CharacterId; request:number; accepted:boolean} |
   ({type:'start'} & MatchStart) | {type:'countdown'; left:number} | Frame | {type:'error'; message:string; fatal?:boolean}
 
 export class OnlineMatch extends BlitzMatch {

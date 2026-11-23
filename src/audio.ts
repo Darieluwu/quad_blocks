@@ -1,6 +1,12 @@
 import type { Mix } from './settings'
 import type { GameEvent } from './engine/player'
 import blitzTrack from './music/blitz.mp3?url'
+type Music = 'blitz'|'selection'|'menu'
+const optionalTracks = import.meta.glob<string>('./music/selection.mp3',{eager:true,import:'default',query:'?url&no-inline'})
+const optionalMenu = import.meta.glob<string>('./music/menu.mp3',{eager:true,import:'default',query:'?url&no-inline'})
+const tracks:Record<Music,string|undefined> = {blitz:blitzTrack,selection:optionalTracks['./music/selection.mp3'],menu:optionalMenu['./music/menu.mp3']}
+const optionalEffects = import.meta.glob<string>('./music/sfx/*.{mp3,ogg,wav}',{eager:true,import:'default',query:'?url&no-inline'})
+const MUSIC_FADE = .24
 type Bus = Exclude<keyof Mix,'master'|'mute'|'music'>
 type Patch = [Bus, OscillatorType, number[], number, number]
 const PATCHES: Record<string,Patch> = {
@@ -42,7 +48,7 @@ const SIGNAL_VOICES = 40
 const CHARACTER_LEVEL = .42
 type Voice = {osc:OscillatorNode; gain:GainNode; priority:number}
 export type DialogueState = 'playing'|'waiting'|'fallback'|'stopped'|'ended'
-type Dialogue = {notify:(state:DialogueState)=>void; media?:{gain:GainNode;dispose:()=>void}}
+type Dialogue = {notify:(state:DialogueState)=>void; priority:number; media?:{gain:GainNode;dispose:()=>void}}
 export class Sound {
   private context?: AudioContext
   private master?: GainNode
@@ -50,9 +56,14 @@ export class Sound {
   private voices = new Set<Voice>()
   private signals = new Set<Voice>()
   private last = new Map<string,number>()
-  private music?: {track:HTMLAudioElement; gain:GainNode}
+  private music?: {kind:Music;track:HTMLAudioElement;gain:GainNode;envelope:GainNode;source:MediaElementAudioSourceNode}
+  private requestedMusic?:Music
+  private musicSwitch = 0
+  private musicPaused = false
   private dialogue = new Map<number,Dialogue>()
   private dialogueBus?: GainNode
+  private effectInstances = new Map<string,HTMLAudioElement[]>()
+  private effectLast = new Map<string,number>()
 
   constructor(private mix: Mix) {}
 
@@ -79,7 +90,7 @@ export class Sound {
         dialogueLimiter.release.value = .15
         this.dialogueBus = this.context.createGain()
         this.dialogueBus.connect(dialogueLimiter).connect(this.master)
-        for (const key of ['move','play','attack','alert','zone'] as const) {
+        for (const key of ['move','play','attack','alert','zone','effects'] as const) {
           const bus = this.context.createGain()
           bus.connect(key==='alert' || key==='zone' ? this.master : limiter)
           this.buses.set(key,bus)
@@ -87,6 +98,10 @@ export class Sound {
         this.update()
       }
       if (this.context.state === 'suspended') void this.context.resume().catch(() => {})
+      if (!this.musicSwitch) {
+        if (!this.music && this.requestedMusic) this.switchMusic()
+        else if (this.music?.kind==='selection' && this.music.track.paused) this.resumeMusic()
+      }
     } catch { /* Audio is optional on unsupported devices. */ }
   }
 
@@ -99,36 +114,91 @@ export class Sound {
     this.dialogueBus?.gain.setTargetAtTime(this.mix.play,now,.018)
   }
 
-  startBlitzMusic() {
-    if (!this.context || !this.master) return
-    if (!this.music) {
-      const track = new Audio(blitzTrack)
-      track.loop = true
-      const gain = this.context.createGain()
-      gain.gain.value = this.mix.music
-      this.context.createMediaElementSource(track).connect(gain).connect(this.master)
-      this.music = {track,gain}
+  setMusic(kind?:Music) {
+    if (kind===this.requestedMusic) return
+    this.requestedMusic = kind
+    this.musicPaused = false
+    window.clearTimeout(this.musicSwitch)
+    this.musicSwitch = 0
+    if (this.music?.kind==='selection' && !this.music.track.paused && this.context && kind!=='selection') {
+      this.fadeMusic(0)
+      this.musicSwitch = window.setTimeout(()=>this.switchMusic(),MUSIC_FADE*1000+20)
+      return
     }
-    this.stopMusic()
-    this.resumeMusic()
+    this.switchMusic()
+  }
+
+  private fadeMusic(value:number) {
+    if (!this.music || !this.context) return
+    const param = this.music.envelope.gain
+    const now = this.context.currentTime
+    if (typeof param.cancelAndHoldAtTime==='function') param.cancelAndHoldAtTime(now)
+    else {
+      const current = param.value
+      param.cancelScheduledValues(now)
+      param.setValueAtTime(current,now)
+    }
+    param.linearRampToValueAtTime(value,now+MUSIC_FADE)
+  }
+
+  private switchMusic() {
+    this.musicSwitch = 0
+    const kind = this.requestedMusic
+    if (this.music?.kind===kind) {
+      if (kind==='selection') this.fadeMusic(1)
+      return
+    }
+    if (this.music) {
+      const {track,source,gain,envelope} = this.music
+      track.pause()
+      track.currentTime = 0
+      track.removeAttribute('src')
+      track.load()
+      source.disconnect()
+      gain.disconnect()
+      envelope.disconnect()
+      this.music = undefined
+    }
+    if (!kind || !tracks[kind] || !this.context || !this.master) return
+    const track = new Audio(tracks[kind])
+    track.loop = true
+    const gain = this.context.createGain()
+    const envelope = this.context.createGain()
+    gain.gain.value = this.mix.music
+    envelope.gain.value = kind==='selection' ? 0 : 1
+    const source = this.context.createMediaElementSource(track)
+    source.connect(gain).connect(envelope).connect(this.master)
+    this.music = {kind,track,gain,envelope,source}
+    if (kind==='selection') track.addEventListener('playing',()=>{
+      if (this.music?.track===track && this.requestedMusic===kind) this.fadeMusic(1)
+    },{once:true})
+    this.playMusic()
   }
 
   resumeMusic() {
-    if (this.music) void this.music.track.play().catch(() => {})
+    this.musicPaused = false
+    this.playMusic()
   }
 
-  pauseMusic() { this.music?.track.pause() }
+  private playMusic() {
+    if (!this.musicPaused && this.music?.kind===this.requestedMusic && this.music) void this.music.track.play().catch(() => {})
+  }
+
+  pauseMusic() {
+    this.musicPaused = true
+    this.music?.track.pause()
+  }
 
   stopMusic() {
-    if (!this.music || !this.context) return
-    this.music.track.pause()
-    this.music.track.currentTime = 0
+    this.setMusic()
   }
 
-  playCharacterVoice(src:string|undefined,player:number,notify:Dialogue['notify']) {
+  playCharacterVoice(src:string|undefined,player:number,notify:Dialogue['notify'],priority=1) {
     if (!Number.isInteger(player) || player<0 || player>3) return
+    const previous = this.dialogue.get(player)
+    if (previous && priority<previous.priority) { notify('waiting'); return }
     this.stopCharacterVoice(player)
-    const line: Dialogue = {notify}
+    const line: Dialogue = {notify,priority}
     this.dialogue.set(player,line)
     const context = this.context
     const bus = this.dialogueBus
@@ -187,6 +257,38 @@ export class Sound {
 
   stopCharacterVoices() {
     for (const player of this.dialogue.keys()) this.stopCharacterVoice(player)
+  }
+
+  playEffect(name:'character-hover'|'character-confirm'|'player-ready'|'attack-send'|'damage-impact'|'surge-activate',intensity=1) {
+    if (!this.context || this.mix.mute) return
+    const src = optionalEffects[`./music/sfx/${name}.mp3`] ?? optionalEffects[`./music/sfx/${name}.ogg`] ?? optionalEffects[`./music/sfx/${name}.wav`]
+    if (!src) return
+    const now = this.context.currentTime
+    const cooldown = name==='damage-impact' ? .12 : name==='character-hover' ? .18 : .06
+    if ((this.effectLast.get(name) ?? -Infinity)+cooldown>now) return
+    this.effectLast.set(name,now)
+    const active = (this.effectInstances.get(name) ?? []).filter(clip=>!clip.paused)
+    if (active.length>=2) return
+    const clip = new Audio(src)
+    const gain = this.context.createGain()
+    const source = this.context.createMediaElementSource(clip)
+    gain.gain.value = Math.min(1,Math.max(.35,intensity))*0.72
+    source.connect(gain).connect(this.buses.get('effects') ?? this.master!)
+    const dispose = () => {
+      clip.pause()
+      clip.removeAttribute('src')
+      clip.load()
+      source.disconnect()
+      gain.disconnect()
+      const remaining = (this.effectInstances.get(name) ?? []).filter(item=>item!==clip)
+      if (remaining.length) this.effectInstances.set(name,remaining)
+      else this.effectInstances.delete(name)
+    }
+    active.push(clip)
+    this.effectInstances.set(name,active)
+    clip.addEventListener('ended',dispose,{once:true})
+    clip.addEventListener('error',dispose,{once:true})
+    void clip.play().catch(dispose)
   }
 
   play(event: GameEvent, player: number) {

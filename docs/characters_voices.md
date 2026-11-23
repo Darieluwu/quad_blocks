@@ -4,8 +4,8 @@ Evento	Frase japonesa	Traducción al español
 2. Tetris	くらえ、電撃！	¡Toma esta descarga!
 3. Spin	まだまだ行くぜ！	¡Todavía puedo dar más!
 4. Combo alto	止まらねえぜ！	¡No hay quien me detenga!
-5. Activación Zone	ここから本気だ！	¡Ahora voy en serio!
-6. Zone definitiva	サンダー・オーバードライブ！	¡Thunder Overdrive!
+5. Activación SURGE	ここから本気だ！	¡Ahora voy en serio!
+6. SURGE definitiva	サンダー・オーバードライブ！	¡Thunder Overdrive!
 7. Peligro crítico	ちっ、やばいな…！	Tch... ¡Esto se complica!
 8. Victoria	へっ、俺の勝ちだ！	¡Je, gané yo!
 9. Derrota	くそっ、次は負けねえ！	¡Maldita sea, la próxima no pierdo!
@@ -21,8 +21,8 @@ Evento	Japonés	Subtítulo en español
 2. Tetris	凍りなさい。	Congélate.
 3. Spin	逃がさないわ。	No escaparás.
 4. Combo alto	計算通りね。	Justo como lo calculé.
-5. Activación Zone	少し本気を出すわ。	Me pondré un poco más seria.
-6. Zone definitiva	アブソリュート・ゼロ！	¡Absolute Zero!
+5. Activación SURGE	少し本気を出すわ。	Me pondré un poco más seria.
+6. SURGE definitiva	アブソリュート・ゼロ！	¡Absolute Zero!
 7. Peligro crítico	これは少し厄介ね…。	Esto es un poco problemático...
 8. Victoria	当然の結果ね。	Era el resultado esperado.
 9. Derrota	私の計算が甘かったわ…。	Mis cálculos no fueron suficientes...
@@ -37,8 +37,8 @@ Evento	Frase japonesa	Subtítulo en español
 2. Tetris	ピクセル・クラッシュ！	¡Pixel Crash!
 3. Spin	ほら、バグっちゃえ！	¡Vamos, a fallar!
 4. Combo alto	コンボ、止まんないよ！	¡Este combo no para!
-5. Activación Zone	システム、乗っ取っちゃお！	¡Voy a tomar el control del sistema!
-6. Zone definitiva	システム・オーバーライド！	¡System Override!
+5. Activación SURGE	システム、乗っ取っちゃお！	¡Voy a tomar el control del sistema!
+6. SURGE definitiva	システム・オーバーライド！	¡System Override!
 7. Peligro crítico	えっ、ちょっと待って！？	¡¿Eh?! ¡Espera un momento!
 8. Victoria	やったぁ！ あたしの勝ち！	¡Siii! ¡Gané yo!
 9. Derrota	うそぉ！ そんなのアリ！？	¡No puede ser! ¡¿Eso vale?!
@@ -54,8 +54,8 @@ Evento	Frase japonesa	Subtítulo en español
 2. Tetris	星よ、降り注いで。	Estrellas, caigan sobre ellos.
 3. Spin	空間を歪めるわ。	Distorsionaré el espacio.
 4. Combo alto	流れは変わらないわ。	El curso de los acontecimientos no cambiará.
-5. Activación Zone	宇宙の深淵を見せてあげる。	Te mostraré las profundidades del cosmos.
-6. Zone definitiva	イベント・ホライズン！	¡Event Horizon!
+5. Activación SURGE	宇宙の深淵を見せてあげる。	Te mostraré las profundidades del cosmos.
+6. SURGE definitiva	イベント・ホライズン！	¡Event Horizon!
 7. Peligro crítico	これは…予想外ね。	Esto... no lo esperaba.
 8. Victoria	星は私に微笑んだわ。	Las estrellas me han sonreído.
 9. Derrota	運命は、まだ変えられる…。	El destino todavía puede cambiarse...
@@ -69,8 +69,8 @@ Evento	Japonés	Subtítulo en español
 2. Tetris	燃え上がれ！フレア・インパクト！	¡Arde! ¡Flare Impact!
 3. Spin	ぐるぐる燃えろぉ！	¡Gira y arde!
 4. Combo alto	ハハッ！炎が止まんねぇ！	¡Ja, ja! ¡Las llamas no paran!
-5. Activación Zone	さあ、火をつけようぜ…！	Vamos a encender esto...
-6. Zone definitiva	インフェルノ・ブレイク！！	¡Inferno Break!
+5. Activación SURGE	さあ、火をつけようぜ…！	Vamos a encender esto...
+6. SURGE definitiva	インフェルノ・ブレイク！！	¡Inferno Break!
 7. Peligro crítico	おっと！ちょっと燃えすぎたか！？	¡Ups! ¿Me habré pasado con el fuego?
 8. Victoria	ハハハッ！最高に燃えたぜ！	¡Ja, ja, ja! ¡Eso sí que estuvo ardiente!
 9. Derrota	くそっ！まだ燃え足りねぇ！	¡Rayos! ¡Todavía me faltaba fuego!
@@ -88,8 +88,8 @@ Evento	Frase japonesa	Subtítulo en español
 2. Tetris	星よ、降れ…。	Estrellas, caigan...
 3. Spin	月の魔法だよ…。	Es magia lunar...
 4. Combo alto	ふぁぁ…まだ続くの？	Buaah... ¿Todavía seguimos?
-5. Activación Zone	ちょっと本気出すか…。	Supongo que me pondré un poco serio...
-6. Zone definitiva	ミッドナイト・レヴェリー…。	Midnight Reverie...
+5. Activación SURGE	ちょっと本気出すか…。	Supongo que me pondré un poco serio...
+6. SURGE definitiva	ミッドナイト・レヴェリー…。	Midnight Reverie...
 7. Peligro crítico	ん…まずいかも。	Mmm... esto podría ponerse feo.
 8. Victoria	もう寝てもいい？	¿Ya puedo dormir?
 9. Derrota	今日はもう寝よう…。	Mejor me voy a dormir por hoy...
