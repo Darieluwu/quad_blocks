@@ -108,14 +108,14 @@ export function lobby(settings: Settings, inputs: Inputs, ready: boolean[], mode
     editors.push(seatEditor(i,`<label>Nombre<input data-name="${i}" value="${escape(slot.name)}" maxlength="20"></label>
       <label>Participante<select data-controller="${i}"><option value="human" ${selected(false,controller.bot)}>Persona</option><option value="bot" ${selected(true,controller.bot)}>IA</option></select></label>
       ${controller.bot ? `<label>Dificultad<select data-level="${i}">${BOT_LEVELS.map((name,j)=>`<option value="${j+1}" ${selected(j+1,controller.level)}>${j+1} · ${name}</option>`).join('')}</select></label>` :
-      `<label>Dispositivo<select data-device="${i}"><option value="">Teclado</option>
+      `<label>Dispositivo<select data-device="${i}"><option value="keyboard" ${slot.deviceType==='keyboard'?'selected':''}>Teclado</option><option value="none" ${slot.deviceType===null?'selected':''}>Sin dispositivo</option>
       ${slot.device && !assigned ? `<option value="missing" selected>${escape(slot.device.id)} · desconectado</option>` : ''}
       ${deviceOptions.map(pad => `<option value="${pad.index}" ${selected(pad.index,current)}>${escape(pad.id)} [${pad.index}]</option>`).join('')}</select></label>
       ${assigned && assigned.mapping !== 'standard' ? '<p class="hint">Perfil genérico. Puedes comprobarlo y ajustarlo en Controles.</p>' : ''}`}
       `,true))
     const missing = !controller.bot && !!slot.device && !assigned
     const details = controller.bot ? `IA · <span data-lobby-level="${i}">${controller.level} · ${BOT_LEVELS[controller.level-1]}</span>` :
-      'Persona · '+escape(assigned?.id ?? slot.device?.id ?? 'Teclado')
+      'Persona · '+escape(assigned?.id ?? (slot.deviceType==='keyboard'?'Teclado':slot.device?.id ?? 'Sin dispositivo'))
     return lobbyFighter({slot:i,id:settings.characters[i],name:escape(slot.name),details,
       state:missing?'SIN MANDO':ready[i]?'LISTO':'POR CONFIRMAR',ready:ready[i],editable:true,settings:true,
       readyAction:`<button class="secondary ready ${ready[i]?'is-ready':''}" data-ready="${i}" aria-pressed="${ready[i]}" ${!controller.bot&&slot.device&&!assigned?'disabled':''}>${ready[i]?'Quitar listo':'Marcar listo'}</button>`})
@@ -180,13 +180,41 @@ export function configuration(settings: Settings, back: string) {
     </div></main>`
 }
 
-export function controls(settings: Settings, inputs: Inputs, i: number, type:'keys'|'pad', status: string, back: string) {
+export function controls(settings: Settings, inputs: Inputs, i: number, type:'keys'|'pad', status: string, back: string,
+  context:'online'|'local'='local') {
+  if (context==='online') {
+    const online=settings.online
+    const map=type==='keys'?online.keyboard:online.pad
+    const pad=inputs.assigned[0]
+    const deviceName=online.device==='pad' ? pad?.id ?? (online.padId?'Mando preferido: '+escape(online.padId.id)+' · desconectado':'Ningún mando conectado') : 'Teclado'
+    return `<main class="panel">${intro('Controles','Configura únicamente los dispositivos de este cliente.',back)}
+      <div class="control-section-tabs" role="tablist"><button class="secondary chosen" data-control-context="online">ONLINE</button><button class="secondary" data-control-context="local">LOCAL</button></div>
+      <section class="settings-card online-controls">
+        <div class="online-heading"><div><span class="online-kicker">MIS CONTROLES ONLINE</span><h2>Tu dispositivo</h2></div><span class="device-status ${type==='pad'&&pad?'connected':''}">${type==='pad'?(pad?'Conectado':'Desconectado'):'Listo'}</span></div>
+        <label class="online-device-label">Dispositivo
+          <span class="segmented"><button data-online-device="keyboard" class="${online.device==='keyboard'?'chosen':''}">Teclado</button><button data-online-device="pad" class="${online.device==='pad'?'chosen':''}">Mando</button></span>
+        </label>
+        <div class="device-summary"><b>${deviceName}</b>${online.device==='pad'&&!pad?'<span class="hint">Conecta un mando y pulsa su botón de asignación. Puedes seguir configurando la interfaz.</span>':''}</div>
+        ${online.device==='pad'?`<div class="pair-actions">${inputs.pairing?'<button class="secondary" data-do="cancel">Cancelar asignación</button>':'<button class="primary" data-do="pair-online">Seleccionar mando</button>'}</div>`:''}
+      </section>
+      <div class="control-toolbar"><b>${type==='keys'?'Asignaciones de teclado':'Asignaciones de mando'}</b><button class="secondary" data-do="reset-online">Restaurar predeterminados</button></div>
+      <p id="status" role="status">${escape(status)}</p>
+      <div class="bindings">${ACTIONS.map(action=>`<div><span>${actionNames[action]}</span><button class="binding" data-action="${action}" data-online-action="${action}" ${type==='pad'&&!pad?'disabled':''}>${escape(type==='pad'&&pad?.mapping==='standard'?standardPadLabel(map[action]):label(map[action]))}</button></div>`).join('')}</div>
+      ${inputs.capture?'<button class="secondary" data-do="cancel">Cancelar captura</button>':''}
+    </main>`
+  }
   const slot = settings.slots[i]
   const pad = inputs.assigned[i]
   const bot = settings.controllers[i].bot
   const buttonLabel = (action: Action) => type === 'pad' && pad?.mapping === 'standard' ? standardPadLabel(slot.pad[action]) : label(slot[type][action])
-  return `<main class="panel">${intro('Controles','Elige un jugador y selecciona una acción para cambiar su asignación.',back)}
-    <div class="control-tabs">${settings.slots.map((s,j)=>`<button class="secondary ${i===j?'chosen':''}" data-control-player="${j}" style="--player:${COLORS[j]}">J${j+1} · ${escape(s.name)}</button>`).join('')}</div>
+  return `<main class="panel">${intro('Controles','Asigna dispositivos a las plazas locales y personaliza sus perfiles.',back)}
+    <div class="control-section-tabs" role="tablist"><button class="secondary" data-control-context="online">ONLINE</button><button class="secondary chosen" data-control-context="local">LOCAL</button></div>
+    <div class="local-seat-grid">${settings.slots.map((s,j)=>{
+      const bot=settings.controllers[j].bot
+      const pad=inputs.assigned[j]
+      const device=bot?'IA':s.deviceType==='keyboard'?'Teclado':s.device?`Mando · ${pad?.id?escape(pad.id):escape(s.device.id)+(inputs.missing.includes(j)?' · desconectado':'')}`:'Sin dispositivo'
+      return `<button class="local-seat ${i===j?'chosen':''}" data-control-player="${j}" style="--player:${COLORS[j]}"><b>J${j+1}</b><span>${escape(s.name)}</span><strong>${device}</strong></button>`
+    }).join('')}</div>
     <section class="settings-card pairing"><div><h2>Asignación rápida de mando</h2>
     <p>${bot ? 'Plaza de IA' : pad ? escape(pad.id) : slot.device ? escape(slot.device.id)+' · desconectado' : 'Dispositivo actual: teclado'}</p>
     <p class="hint">${bot ? 'Elige Persona en la sala para activar los controles de esta plaza.' : `Pulsa un botón del mando que quieras usar. Se aplicará su perfil de controles a J${i+1}.`}</p></div>

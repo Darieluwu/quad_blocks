@@ -1,5 +1,5 @@
 import { CASUAL_RULES, DEFAULT_RULES, GENERATORS, TARGETS, type Rules } from './engine/rules'
-import { conflict, defaultSlot, type Slot } from './input'
+import { conflict, defaultMap, defaultSlot, type MapFor, type Slot } from './input'
 import { botLevel } from './engine/bot'
 import { DEFAULT_BLITZ, type BlitzRules } from './engine/blitz'
 import { CHARACTER_OPTIONS, uniqueCharacters, type CharacterId, type CharacterOptions } from './characters/catalog'
@@ -7,7 +7,9 @@ import { isBattleIntroPreference, type BattleIntroPreference } from './battle-in
 export const MIX = {master:0.72,music:0.10,voices:0.85,move:0.52,play:0.8,attack:0.64,alert:0.55,zone:0.75,effects:0.58}
 export type Mix = typeof MIX & {mute:boolean}
 export type Profile = 'Competitivo'|'Casual'|'Personalizado'
+export type OnlineDevice = 'keyboard'|'pad'
 export type Settings = {rules:Rules; profile:Profile; reduced:boolean; metrics:boolean; audio:Mix; slots:Slot[];
+  online: {device:OnlineDevice; keyboard:MapFor; pad:MapFor; padId:{id:string;index:number}|null};
   controllers: {bot:boolean; level:number}[]; blitz:BlitzRules; characters:CharacterId[]; characterOptions:CharacterOptions;
   battleIntro:BattleIntroPreference}
 type StoredSettings = Partial<Omit<Settings,'rules'>> & {rules?:Partial<Rules> & {charge?:number}}
@@ -35,6 +37,7 @@ export const freshRules = (profile: Profile = 'Competitivo') => structuredClone(
 export function loadSettings(): Settings {
   const defaults: Settings = {rules:freshRules(),profile:'Competitivo',reduced:false,metrics:false,
     audio:{...MIX,mute:false},slots:Array.from({length:4},(_,i) => defaultSlot(i)),
+    online:{device:'keyboard',keyboard:defaultMap(0,'keys'),pad:defaultMap(0,'pad'),padId:null},
     controllers:Array.from({length:4},()=>({bot:false,level:5})),blitz:{...DEFAULT_BLITZ},
     characters:uniqueCharacters(null),characterOptions:{...CHARACTER_OPTIONS},battleIntro:'full'}
   try {
@@ -56,8 +59,31 @@ export function loadSettings(): Settings {
     if (!TARGETS.includes(rules.target)) rules.target = DEFAULT_RULES.target
     const controllers = defaults.controllers.map((_,i)=>({bot:value.controllers?.[i]?.bot===true,
       level:botLevel(value.controllers?.[i]?.level ?? 5)}))
-    const slots = defaults.slots.map((slot,i) => ({...slot,...value.slots?.[i],
-      keys:{...slot.keys,...value.slots?.[i]?.keys},pad:{...slot.pad,...value.slots?.[i]?.pad}}))
+    const slots = defaults.slots.map((slot,i) => {
+      const saved=value.slots?.[i]
+      return ({...slot,...saved,
+        deviceType:saved?.device ? 'pad' as const : saved?.deviceType!==undefined ? saved.deviceType : i===0?'keyboard' as const:null,
+        keys:{...slot.keys,...saved?.keys},pad:{...slot.pad,...saved?.pad}})
+    })
+    const savedOnline = (value as StoredSettings & {online?:Partial<Settings['online']>}).online
+    const online = {
+      device:savedOnline?.device==='pad' ? 'pad' as const : 'keyboard' as const,
+      keyboard:{...defaults.online.keyboard,...savedOnline?.keyboard},
+      pad:{...defaults.online.pad,...savedOnline?.pad},
+      padId:savedOnline?.padId?.id ? {id:savedOnline.padId.id,index:savedOnline.padId.index ?? -1} : null,
+    }
+    const keyboardOwners=slots.flatMap((slot,i)=>slot.deviceType==='keyboard'&&!controllers[i].bot?[i]:[])
+    if (keyboardOwners.length>1) for (const i of keyboardOwners.slice(1)) slots[i].deviceType=null
+    for (let i=1;i<slots.length;i++) {
+      if (slots[i].device===null) continue
+      const device=slots[i].device
+      if (device) {
+        for (let j=i-1;j>=0;j--) if (slots[j].device?.id===device.id && slots[j].device?.index===device.index) {
+          slots[j].device=null
+          slots[j].deviceType=null
+        }
+      }
+    }
     slots.forEach((slot,i)=>{
       for (const type of ['keys','pad'] as const) {
         if (value.slots?.[i]?.[type]?.stance!==undefined) continue
@@ -79,7 +105,7 @@ export function loadSettings(): Settings {
     if (typeof savedAudio?.voices!=='number') {
       audio.voices=.85
     }
-    return {...defaults,...value,rules,audio,controllers,slots,blitz,
+    return {...defaults,...value,rules,audio,controllers,slots,online,blitz,
       battleIntro:isBattleIntroPreference(value.battleIntro) ? value.battleIntro : defaults.battleIntro,
       characters:uniqueCharacters(value.characters),characterOptions}
   } catch { return defaults }

@@ -4,7 +4,7 @@ import { BlitzMatch } from './engine/blitz'
 import { HZ, PLAYERS, SETTINGS } from './engine/rules'
 import { ACTIONS, NO_INPUT, type Action } from './engine/player'
 import { BOT_LEVELS, botLevel } from './engine/bot'
-import { Inputs, automaticPadMap, conflict, defaultMap, keyboardClashes, label, padBindings, pressedButtons } from './input'
+import { Inputs, actionNames as actionNamesOnline, automaticPadMap, conflict, defaultMap, keyboardClashes, label, padBindings, pressedButtons } from './input'
 import { Sound, comboRisePlaybackRate, type DialogueState } from './audio'
 import { mountArena } from './render'
 import { ATTACK_LABELS, BLITZ_NUMBERS, NUMBER_RULES, freshRules, loadSettings, saveSettings, type Mix, type Profile } from './settings'
@@ -39,6 +39,7 @@ const perfectSeen = new Map<number,number>()
 let returnPage: 'home'|'lobby' = 'home'
 let controlPlayer = 0
 let controlType: 'keys'|'pad' = 'keys'
+let controlContext:'online'|'local'='local'
 let status = ''
 let lobbyIssue = ''
 let lobbyEditor:number|null = null
@@ -85,6 +86,10 @@ const audio = new Sound(settings.audio)
 const isHuman = (i: number) => !settings.controllers[i].bot
 const inputs = new Inputs(settings.slots,() => page === 'game' && phase !== 'results',i=>online && (page==='game' || page==='online') ? i===0 : isHuman(i))
 inputs.onWake = () => audio.wake()
+const syncOnlineProfile=()=>inputs.setOnlineProfile(page==='online'||page==='game'&&!!online ? {
+  name:onlineName,device:settings.online.device==='pad'&&settings.online.padId?{id:settings.online.padId.id,index:settings.online.padId.index}:null,
+  deviceType:settings.online.device==='keyboard'?'keyboard':'pad',keys:settings.online.keyboard,pad:settings.online.pad
+}:null)
 app.addEventListener('error',event=>{
   const image = event.target
   if (!(image instanceof HTMLImageElement) || image.dataset.artFallback===undefined) return
@@ -115,7 +120,7 @@ const disconnected = (roster: readonly Participant[]) => inputs.missing.filter(s
 function canStart() {
   const roster = lobbyRoster()
   return roster.length >= (mode!=='versus' ? PLAYERS : 2) && !disconnected(roster).length &&
-    roster.every(({slot})=>!isHuman(slot) || settings.slots[slot].device || !keyboardClashes(settings.slots,slot,isHuman).length)
+    roster.every(({slot})=>!isHuman(slot) || settings.slots[slot].deviceType!==null)
 }
 function keyboardIssue(i: number) {
   const clashes = keyboardClashes(settings.slots,i,isHuman)
@@ -149,7 +154,7 @@ function render() {
   const body = page === 'home' ? (modeMenuOpen ? modeSelect(mode) : home(settings.profile)) : page === 'lobby' ? lobby(settings,inputs,ready,mode,canStart(),lobbyIssue) :
     page === 'online' ? onlineMenu(onlineLobby,onlineSeat,onlineLink,onlineName,onlineNotice,onlineWaiting,onlineRetry) :
     page === 'settings' ? configuration(settings,returnPage) : page === 'controls' ?
-      controls(settings,inputs,controlPlayer,controlType,status,returnPage) : page === 'diag' ?
+      controls(settings,inputs,controlPlayer,controlType,status,returnPage,controlContext) : page === 'diag' ?
       diagnosticsPage(diagnostic(inputs,settings),returnPage) : credits()
   app.innerHTML = (page==='home' ? '' : header(page,settings.audio.mute))+body+(page==='home'?'':footer)
   if (page==='lobby' || page==='online') {
@@ -205,6 +210,7 @@ function go(next: Page) {
   inputs.pairing = null
   status = ''
   lobbyIssue = ''
+  syncOnlineProfile()
   render()
 }
 
@@ -619,6 +625,41 @@ app.addEventListener('click',event => {
     return
   }
   const {page:next,do:action,ready:index,controlPlayer:player,controlType:type,action:bind} = button.dataset
+  if (button.dataset.controlContext) {
+    controlContext = button.dataset.controlContext as typeof controlContext
+    inputs.capture=null
+    inputs.pairing=null
+    status=''
+    controlType=controlContext==='online' ? (settings.online.device==='pad'?'pad':'keys') : controlType
+    render()
+    return
+  }
+  if (button.dataset.onlineDevice) {
+    settings.online.device=button.dataset.onlineDevice as typeof settings.online.device
+    controlType=settings.online.device==='pad'?'pad':'keys'
+    status=storeResult(settings.online.device==='pad'?'Modo mando seleccionado.':'Modo teclado seleccionado.')
+    inputs.capture=null
+    syncOnlineProfile()
+    render()
+    return
+  }
+  if (button.dataset.onlineAction) {
+    const binding=button.dataset.onlineAction as Action
+    const map=controlType==='keys'?settings.online.keyboard:settings.online.pad
+    const device=inputs.assigned[0]
+    if (controlType==='pad'&&!device) return
+    status=controlType==='pad'?'Pulsa un botón o mueve un eje del mando.':'Pulsa la nueva tecla. Esc cancela.'
+    inputs.pairing=null
+    inputs.capture={player:0,type:controlType,baseline:new Set(device?padBindings(device):[]),done(value){
+      const duplicate=ACTIONS.find(action=>action!==binding&&map[action]===value)
+      if (duplicate) status='Conflicto: '+label(value)+' ya está asignado a '+actionNamesOnline[duplicate]+'.'
+      else { map[binding]=value; status=storeResult('Asignación online guardada: '+label(value)+'.'); syncOnlineProfile() }
+      render()
+      app.querySelector<HTMLButtonElement>(`[data-online-action="${binding}"]`)?.focus()
+    }}
+    render()
+    return
+  }
   if (button.dataset.character!==undefined) {
     openPicker(Number(button.dataset.character))
     return
@@ -670,19 +711,46 @@ app.addEventListener('click',event => {
     return
   }
   if (action === 'start' && canStart()) start(lobbyRoster())
+  if (action === 'pair-online') {
+    inputs.capture=null
+    status='Pulsa un botón del mando que quieres usar online.'
+    inputs.pairing={baseline:pressedButtons(inputs.devices),accept(device){
+      settings.online.padId={index:device.index,id:device.id}
+      settings.online.device='pad'
+      settings.online.pad=automaticPadMap(device)
+      inputs.assigned[0]=device
+      inputs.pairing=null
+      controlType='pad'
+      status=storeResult('Mando online seleccionado: '+device.id+'.')
+      syncOnlineProfile()
+      render()
+      return true
+    }}
+    render()
+  }
+  if (action === 'reset-online') {
+    const map=controlType==='pad'&&inputs.assigned[0]?automaticPadMap(inputs.assigned[0]):defaultMap(0,controlType)
+    const clashes=ACTIONS.flatMap(a=>ACTIONS.find(other=>other!==a&&map[other]===map[a])?[label(map[a])]:[])
+    if (clashes.length) status='Hay asignaciones duplicadas: '+clashes.join(', ')+'.'
+    else {
+      if (controlType==='keys') settings.online.keyboard=map
+      else settings.online.pad=map
+      status=storeResult('Controles online predeterminados restaurados.')
+      syncOnlineProfile()
+    }
+    render()
+  }
   if (action === 'pair') {
     const i = controlPlayer
     inputs.capture = null
     status = 'Esperando un botón del mando para J'+(i+1)+'.'
     inputs.pairing = {baseline:pressedButtons(inputs.devices),accept(device) {
-      const owner = inputs.assigned.findIndex(pad => pad?.index === device.index)
-      if (owner >= 0 && owner !== i) {
-        status = 'Ese mando ya pertenece a J'+(owner+1)+'. Pulsa un botón de otro mando.'
-        render()
-        return false
-      }
+      const owner = settings.slots.findIndex((slot,j) => j!==i && slot.device?.index===device.index && slot.device.id===device.id)
+      if (owner >= 0) settings.slots[owner].device=null
       releaseBotReservation(device)
+      settings.slots.forEach((slot,j)=>{ if (j!==i && slot.device?.index===device.index && slot.device.id===device.id) { slot.device=null; slot.deviceType=null } })
       settings.slots[i].device = {index:device.index,id:device.id}
+      settings.slots[i].deviceType='pad'
       settings.slots[i].pad = automaticPadMap(device)
       inputs.assigned[i] = device
       inputs.pairing = null
@@ -699,7 +767,9 @@ app.addEventListener('click',event => {
   if (action === 'keyboard') {
     const issue = keyboardIssue(controlPlayer)
     if (issue) { controlType = 'keys'; status = issue; render(); return }
+    settings.slots.forEach((slot,i)=>{ if (i!==controlPlayer && slot.deviceType==='keyboard') { slot.device=null; slot.deviceType=null } })
     settings.slots[controlPlayer].device = null
+    settings.slots[controlPlayer].deviceType='keyboard'
     inputs.assigned[controlPlayer] = null
     ready[controlPlayer] = false
     controlType = 'keys'
@@ -797,6 +867,12 @@ app.addEventListener('change',event => {
     lobbyIssue = !bot && !settings.slots[i].device ? keyboardIssue(i) : ''
     if (lobbyIssue) { render(); return }
     settings.controllers[i].bot = bot
+    if (bot) {
+      settings.slots[i].device=null
+      settings.slots[i].deviceType=null
+    } else if (settings.slots[i].deviceType===null) {
+      lobbyIssue='Selecciona un dispositivo válido para esta plaza.'
+    }
     ready[i] = bot
     inputs.poll()
     store(); render()
@@ -815,14 +891,35 @@ app.addEventListener('change',event => {
   }
   if (device !== undefined && el.value !== 'missing') {
     const i = Number(device)
+    if (el.value==='keyboard') {
+      settings.slots.forEach((slot,j)=>{ if (j!==i && slot.deviceType==='keyboard') slot.deviceType=null })
+      settings.slots[i].device=null
+      settings.slots[i].deviceType='keyboard'
+      ready[i]=false
+      lobbyIssue=keyboardIssue(i)
+      inputs.assigned[i]=null
+      inputs.poll()
+      store(); render()
+      return
+    }
+    if (el.value==='none') {
+      settings.slots[i].device=null
+      settings.slots[i].deviceType=null
+      ready[i]=false
+      inputs.assigned[i]=null
+      lobbyIssue=''
+      inputs.poll(); store(); render(); return
+    }
     const pad = inputs.devices.find(p => p.index === Number(el.value) && el.value !== '')
     lobbyIssue = !pad ? keyboardIssue(i) : ''
     if (lobbyIssue) { render(); return }
     if (pad) {
       releaseBotReservation(pad)
+      settings.slots.forEach((slot,j)=>{ if (j!==i && slot.device?.index===pad.index && slot.device.id===pad.id) { slot.device=null; slot.deviceType=null } })
       if (settings.slots[i].device?.id !== pad.id) settings.slots[i].pad = automaticPadMap(pad)
     }
     settings.slots[i].device = pad ? {index:pad.index,id:pad.id} : null
+    settings.slots[i].deviceType=pad?'pad':null
     ready[i] = false
     inputs.assigned[i] = null
     inputs.poll()

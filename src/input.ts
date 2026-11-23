@@ -7,9 +7,9 @@ export const actionNames: Record<Action,string> = {
   prev:'Objetivo anterior',next:'Objetivo siguiente',pause:'Pausa',
   stance:'Cambiar postura',
 }
-type MapFor = Record<Action,string>
+export type MapFor = Record<Action,string>
 export type Device = {id:string; index:number}
-export type Slot = {name:string; device:Device|null; keys:MapFor; pad:MapFor}
+export type Slot = {name:string; device:Device|null; deviceType:'keyboard'|'pad'|null; keys:MapFor; pad:MapFor}
 const keys = [
   ['KeyA','KeyD','KeyS','KeyW','KeyE','KeyQ','KeyR','KeyF','KeyC','KeyZ','KeyX','Digit1','KeyT'],
   ['KeyJ','KeyL','KeyK','KeyI','KeyO','KeyU','KeyP','KeyH','KeyN','KeyB','KeyM','Digit2','KeyV'],
@@ -24,7 +24,7 @@ export const standardPadLabel = (binding: string) => ({
   B0:'A / ×',B2:'X / □',B1:'B / ○',B3:'Y / △',B4:'LB / L1',B5:'RB / R1',B6:'LT / L2',B7:'RT / R2',B9:'Start / Options',
 }[binding] ?? binding)
 export const defaultSlot = (i: number): Slot => ({
-  name:'Jugador '+(i+1),device:null,keys:defaultMap(i,'keys'),pad:defaultMap(i,'pad'),
+  name:'Jugador '+(i+1),device:i===0?null:null,deviceType:i===0?'keyboard':null,keys:defaultMap(i,'keys'),pad:defaultMap(i,'pad'),
 })
 
 export function label(binding: string) {
@@ -40,9 +40,9 @@ export function label(binding: string) {
 export function conflict(slots: Slot[], i: number, type: 'keys'|'pad', action: Action, value: string,
   isHuman = (_slot: number) => true) {
   if (!value) return null
-  const keyboard = type==='keys' && isHuman(i) && !slots[i].device
+  const keyboard = type==='keys' && isHuman(i) && slots[i].deviceType==='keyboard'
   for (const [j,slot] of slots.entries()) {
-    if (i!==j && (!keyboard || !isHuman(j) || slot.device)) continue
+    if (i!==j && (!keyboard || !isHuman(j) || slot.device!==null)) continue
     for (const other of ACTIONS) {
       if ((i !== j || other !== action) && slot[type][other] === value) return `J${j+1} · ${actionNames[other]}`
     }
@@ -51,7 +51,7 @@ export function conflict(slots: Slot[], i: number, type: 'keys'|'pad', action: A
 }
 
 export function keyboardClashes(slots: Slot[], i: number, isHuman: (slot: number)=>boolean) {
-  const keyboard = slots.map((slot,j)=>i===j ? {...slot,device:null} : slot)
+  const keyboard = slots.map((slot,j)=>i===j ? {...slot,device:null,deviceType:'keyboard' as const} : slot)
   return ACTIONS.flatMap(action => {
     const value = keyboard[i].keys[action]
     const clash = conflict(keyboard,i,'keys',action,value,j=>j===i || isHuman(j))
@@ -123,6 +123,10 @@ export class Inputs {
   pairing: {baseline:Set<string>; accept:(device:Gamepad)=>boolean}|null = null
   onBlur: () => void = () => {}
   onWake: () => void = () => {}
+  private onlineSlot: Slot|null=null
+
+  setOnlineProfile(slot:Slot|null) { this.onlineSlot=slot }
+  private activeSlots() { return this.onlineSlot?[this.onlineSlot,...this.slots.slice(1)]:this.slots }
 
   constructor(readonly slots: Slot[], private isGame: () => boolean, private isHuman = (_slot: number) => true) {
     window.addEventListener('keydown',event => {
@@ -136,13 +140,14 @@ export class Inputs {
         return
       }
       if (!this.isGame() || event.ctrlKey || event.metaKey || event.altKey || event.code === 'Tab') return
-      const player = this.slots.findIndex((slot,i) => this.isHuman(i) && !slot.device && ACTIONS.some(a => slot.keys[a] === event.code))
+      const slots=this.activeSlots()
+      const player = slots.findIndex((slot,i) => this.isHuman(i) && slot.deviceType==='keyboard' && ACTIONS.some(a => slot.keys[a] === event.code))
       if (player < 0) return
       event.preventDefault()
       if (event.repeat || this.down.has(event.code)) return
       this.onWake()
       this.down.add(event.code)
-      const action = ACTIONS.find(a => this.slots[player].keys[a] === event.code)!
+      const action = ACTIONS.find(a => this.activeSlots()[player].keys[a] === event.code)!
       this.pending[player].push(action)
     })
     window.addEventListener('keyup',event => this.down.delete(event.code))
@@ -152,7 +157,7 @@ export class Inputs {
   clear() {
     this.down.clear()
     this.pending.forEach(queue => { queue.length = 0 })
-    this.held.forEach((set,i) => { if (!this.slots[i].device) set.clear() })
+    this.held.forEach((set,i) => { if (this.activeSlots()[i]?.deviceType==='keyboard') set.clear() })
   }
 
   poll() {
@@ -161,7 +166,7 @@ export class Inputs {
     } catch {
       this.devices = []
     }
-    this.assigned = resolvePads(this.slots,this.devices,this.assigned,this.isHuman)
+    this.assigned = resolvePads(this.activeSlots(),this.devices,this.assigned,this.isHuman)
     if (this.pairing) {
       const {baseline,accept} = this.pairing
       const current = pressedButtons(this.devices)
@@ -170,7 +175,7 @@ export class Inputs {
       const device = edge && this.devices.find(p => p.index === Number(edge.split(':')[0]))
       if (device && accept(device)) this.pairing = null
     }
-    this.slots.forEach((slot,i) => {
+    this.activeSlots().forEach((slot,i) => {
       const device = this.assigned[i]
       const bindings = device ? new Set(padBindings(device)) : new Set<string>()
       if (this.capture?.type === 'pad' && this.capture.player === i) {
@@ -181,7 +186,7 @@ export class Inputs {
       }
       const set = this.held[i]
       for (const action of ACTIONS) {
-        const active = this.isHuman(i) && (slot.device ? bindings.has(slot.pad[action]) : this.down.has(slot.keys[action]))
+        const active = this.isHuman(i) && (slot.deviceType==='pad' ? bindings.has(slot.pad[action]) : slot.deviceType==='keyboard' ? this.down.has(slot.keys[action]) : false)
         if (active && !set.has(action)) {
           set.add(action)
           if (slot.device && this.isGame()) {
@@ -197,5 +202,5 @@ export class Inputs {
   consume(): Input[] {
     return this.held.map((held,i) => ({held,pressed:this.pending[i].splice(0)}))
   }
-  get missing() { return this.slots.flatMap((slot,i) => this.isHuman(i) && slot.device && !this.assigned[i] ? [i] : []) }
+  get missing() { return this.activeSlots().flatMap((slot,i) => this.isHuman(i) && slot.deviceType==='pad' && slot.device && !this.assigned[i] ? [i] : []) }
 }

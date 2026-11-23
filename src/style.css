@@ -186,6 +186,23 @@ input[type=checkbox],input[type=range] { accent-color:#8eeec4 }
 .pairing h2,.pairing p { margin:0 0 5px }
 .pair-actions { display:flex; flex-wrap:wrap; gap:8px }
 .control-toolbar { margin:18px 0; justify-content:space-between }
+.control-section-tabs { display:flex; gap:8px; margin:0 0 16px }
+.control-section-tabs .secondary { min-width:110px }
+.control-section-tabs .chosen { border-color:var(--accent); color:var(--accent); background:#182b29 }
+.local-seat-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px }
+.local-seat { display:grid; gap:5px; text-align:left; min-height:94px; border:1px solid var(--line); border-radius:10px; background:#121824; color:#c3ccdc; padding:13px }
+.local-seat b { color:var(--player); font:800 18px Consolas,monospace }
+.local-seat span { font-size:13px }
+.local-seat strong { color:#edf2fb; font-size:14px; overflow-wrap:anywhere }
+.local-seat.chosen { border-color:var(--player); background:color-mix(in srgb,var(--player) 10%,#121824) }
+.online-controls { display:grid; gap:14px }
+.online-heading { display:flex; justify-content:space-between; align-items:center }
+.online-heading h2 { margin:3px 0 0 }
+.online-kicker { color:var(--accent); font:800 12px Consolas,monospace; letter-spacing:.12em }
+.device-status { border:1px solid #46546d; border-radius:999px; padding:6px 10px; color:#b8c3d6; font-size:13px }
+.device-status.connected { border-color:#396252; color:#a1f5d1 }
+.online-device-label { max-width:420px }
+.device-summary { display:grid; gap:5px }
 .bindings { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px 16px }
 .bindings > div { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:7px 9px 7px 14px; background:#121824; border:1px solid var(--line); border-radius:8px }
 .binding { min-width:112px; min-height:36px; padding:5px 10px; color:var(--accent) }
@@ -700,6 +717,7 @@ dd { margin:0; overflow-wrap:anywhere }
   .zone-result small { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%) }
   .mode { min-height:74px }
   .config-grid,.bindings { grid-template-columns:1fr }
+  .local-seat-grid { grid-template-columns:repeat(2,minmax(0,1fr)) }
   .attack-settings .form-grid { grid-template-columns:repeat(2,minmax(0,1fr)) }
   .game { width:calc(100% - 12px); padding-top:12px }
   .arena-grid { gap:4px }
