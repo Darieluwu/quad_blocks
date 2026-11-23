@@ -14,7 +14,7 @@ test('dos navegadores comparten Blitz online por enlace y recuperan su plaza',as
       if (message.type==='frame') latest = message
     }))
     await page.goto('/')
-    await page.getByRole('button',{name:'Jugar online'}).click()
+    await page.locator('[data-main-action="online"]').click()
     await page.getByLabel('Nombre').fill('Anfitrión de prueba')
     await page.getByRole('button',{name:'Crear sala'}).click()
     const link = page.getByLabel('Enlace de invitación')

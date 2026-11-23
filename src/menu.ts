@@ -67,20 +67,26 @@ export function home(profile: string) {
 }
 
 export function modeSelect(selected: Mode = 'versus') {
-  const modes: {id:Mode;no:string;name:string;players:string;copy:string;icon:string}[] = [
-    {id:'versus',no:'01',name:'VERSUS SURGE',players:'2-4 JUGADORES',copy:'Todos contra todos. Cada plaza carga SURGE y ataca al rival.',icon:'play'},
-    {id:'teams',no:'02',name:'EQUIPOS 2V2',players:'4 JUGADORES',copy:'Dos equipos. Coordinación, objetivos compartidos y presión competitiva.',icon:'controls'},
-    {id:'blitz',no:'03',name:'2V2 BLITZ',players:'2-4 JUGADORES',copy:'Relevos activos, defensa de equipo y rescates bajo presión.',icon:'diag'},
+  const modes: {id:Mode;no:string;name:string;players:string;copy:string;poster:string}[] = [
+    {id:'versus',no:'01',name:'VERSUS SURGE',players:'2-4 JUGADORES',copy:'Todos contra todos. Cada plaza carga SURGE y ataca al rival.',poster:artwork('vs4') ?? ''},
+    {id:'teams',no:'02',name:'EQUIPOS 2V2',players:'4 JUGADORES',copy:'Dos equipos. Coordinación, objetivos compartidos y presión competitiva.',poster:artwork('2v2') ?? ''},
+    {id:'blitz',no:'03',name:'2V2 BLITZ',players:'2-4 JUGADORES',copy:'Relevos activos, defensa de equipo y rescates bajo presión.',poster:artwork('2v2blitz') ?? ''},
   ]
+  const active=modes.find(mode=>mode.id===selected) ?? modes[0]
   return `<main class="arcade-main mode-menu" data-arcade-modes>
     <header class="mode-menu-header"><button class="arcade-back" data-mode-back>${icon('back')} VOLVER</button><div><span>SELECCIÓN DE MODO</span><strong>TETRAVOLT</strong></div></header>
-    <section class="mode-arena" aria-label="Modos de juego">
+    <section class="mode-arena" aria-label="Modos de juego" data-selected="${selected}">
       ${modes.map(mode=>`<button class="arcade-mode ${mode.id===selected?'is-selected':''}" data-mode="${mode.id}" data-mode-index="${modes.indexOf(mode)}" aria-pressed="${mode.id===selected}">
-        <span class="mode-no">${mode.no}</span><span class="mode-visual mode-${mode.id}" aria-hidden="true"><i></i><i></i><i></i><i></i><b></b></span>
-        <span class="mode-info"><small>${mode.players}</small><strong>${mode.name}</strong><p>${mode.copy}</p></span>
+        <span class="mode-no">${mode.no}</span>
+        <span class="mode-cover" aria-label="${escape(mode.name)}">${mode.poster?`<img src="${mode.poster}" alt="${escape(mode.name)}" draggable="false">`:'<span class="mode-cover-fallback"></span>'}</span>
       </button>`).join('')}
     </section>
-    <footer class="mode-menu-footer"><span><kbd>←</kbd><kbd>→</kbd> CAMBIAR</span><button class="arcade-confirm" data-mode-confirm>${icon('play')} CONFIRMAR</button><span><kbd>ESC</kbd> VOLVER</span></footer>
+    <footer class="mode-menu-footer">
+      <span class="mode-nav-label"><kbd>←</kbd><kbd>→</kbd> CAMBIAR</span>
+      <div class="mode-selection-info" aria-live="polite"><small>${active.players}</small><strong>${active.name}</strong><p>${active.copy}</p></div>
+      <button class="arcade-confirm" data-mode-confirm>${icon('play')} CONFIRMAR</button>
+      <span class="mode-back-label"><kbd>ESC</kbd> VOLVER</span>
+    </footer>
   </main>`
 }
 

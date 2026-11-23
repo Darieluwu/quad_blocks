@@ -1,0 +1,62 @@
+.fire-portrait,.fire-impact {
+  position:absolute; inset:0; z-index:2; border-radius:inherit; pointer-events:none;
+  border:2px solid #ff853a; color:#ffc179; box-shadow:0 0 17px #ff6c2b,inset 0 0 10px #f4531a91;
+  animation:fire-fade 550ms ease-out both;
+}
+.fire-portrait::before {
+  content:""; position:absolute; inset:-6px; border:3px solid #ffad56; border-radius:46%;
+  box-shadow:0 0 9px #ff4924; animation:fire-shock 470ms ease-out both;
+}
+.fire-portrait i,.fire-impact i {
+  position:absolute; left:var(--ember-x); top:var(--ember-y); width:9px; height:12px;
+  background:linear-gradient(#ffeeb4,#ff852e 70%,#ea4429); border-radius:70% 28%;
+  transform:rotate(27deg); animation:fire-ember 500ms ease-out both;
+}
+.fire-portrait i:nth-child(1),.fire-impact i:nth-child(1) { --ember-x:7%; --ember-y:9%; --drift:-13px }
+.fire-portrait i:nth-child(2),.fire-impact i:nth-child(2) { --ember-x:41%; --ember-y:0%; --drift:4px }
+.fire-portrait i:nth-child(3),.fire-impact i:nth-child(3) { --ember-x:88%; --ember-y:10%; --drift:14px }
+.fire-portrait i:nth-child(4),.fire-impact i:nth-child(4) { --ember-x:3%; --ember-y:86%; --drift:-9px }
+.fire-portrait i:nth-child(5),.fire-impact i:nth-child(5) { --ember-x:80%; --ember-y:93%; --drift:14px }
+.fire-portrait i:nth-child(6),.fire-impact i:nth-child(6) { --ember-x:95%; --ember-y:73%; --drift:8px }
+.fire-portrait[data-effect="tetris"] { border-width:3px; box-shadow:0 0 26px #ff742d,inset 0 0 14px #ffc070 }
+.fire-portrait[data-effect="spin"]::before {
+  border:4px solid transparent; border-top-color:#ffe38a; border-inline-end-color:#f95b21;
+  animation:fire-sweep 510ms ease-out both;
+}
+.fire-portrait[data-effect="combo"] { box-shadow:0 0 21px #fe682d,inset 0 0 18px #ff792c78 }
+.fire-portrait[data-effect="combo"] i:nth-child(even) { animation-delay:55ms }
+.fire-portrait[data-effect="damage"] { animation-name:fire-jolt; box-shadow:0 0 17px #655458 }
+.fire-portrait[data-effect="shield"] { border:4px double #ffd486; background:linear-gradient(135deg,#ff9c3b50,transparent 55%,#ca32115e) }
+.fire-portrait[data-effect="down"] { border-color:#ae5751; box-shadow:0 0 9px #b3483a }
+.fire-portrait[data-effect="danger"] { border-color:#ff614f }
+.fire-portrait:is([data-effect="down"],[data-effect="danger"]) i,
+.fire-portrait[data-effect="simple"] i:nth-child(n+4) { display:none }
+.fire-portrait[data-effect="reboot"] { border-width:3px; box-shadow:0 0 24px #ffba75,0 0 16px #f75420 inset }
+.fire-portrait:is([data-effect="tetris"],[data-effect="spin"],[data-effect="combo"],[data-effect="shield"])::after {
+  position:absolute; inset:auto 0 2px; padding:3px 2px;
+  color:#fff5e3; text-align:center; font:850 clamp(8px,.65vw,12px)/1 system-ui,sans-serif;
+  background:linear-gradient(90deg,transparent,#531704f0 20% 80%,transparent);
+}
+.fire-portrait[data-effect="tetris"]::after { content:"FLARE IMPACT" }
+.fire-portrait[data-effect="spin"]::after { content:"BLAZE FANG" }
+.fire-portrait[data-effect="combo"]::after { content:"WILDFIRE RUSH" }
+.fire-portrait[data-effect="shield"]::after { content:"BURNING GUARD" }
+.fire-impact { animation-duration:360ms; border:3px double #ffb569 }
+.projectile-fire::before {
+  width:73px; height:19px; top:-9px; left:-67px; transform-origin:67px 9px;
+  clip-path:polygon(0 67%,28% 38%,48% 48%,54% 20%,71% 32%,100% 4%,97% 92%,60% 81%,35% 94%);
+  background:linear-gradient(90deg,transparent,#e83a1e 38%,#ff9135 60%,#fff3b5);
+}
+.projectile-fire::after { background:radial-gradient(circle at 51% 44%,#fff5c7 13%,#ffbb54 42%,#f7591b 71%); inset:-9px }
+.projectile-fire[data-strike="tetris"]::after { inset:-12px }
+.projectile-fire[data-strike="spin"]::before { width:31px; height:28px; left:-15px; top:-13px;
+  clip-path:none; border-radius:50%; background:conic-gradient(transparent 5%,#f3512c,#ffb559 40%,#fff3a6 66%,transparent 83%);
+  mask-image:radial-gradient(transparent 41%,#000 57%); }
+.blaze-showcase .character-cut-in { object-position:53% 4%; mask-image:linear-gradient(90deg,transparent,#000 32%) }
+.reduced :is(.fire-portrait,.fire-impact),.no-attack-animation :is(.fire-portrait,.fire-impact) { visibility:hidden }
+@media (prefers-reduced-motion:reduce) { .fire-portrait,.fire-impact { visibility:hidden } }
+@keyframes fire-fade { 0%,100% { opacity:0 } 19% { opacity:1 } 55% { opacity:.7 } }
+@keyframes fire-shock { from { opacity:.9; transform:scale(.83) } to { opacity:0; transform:scale(1.17) } }
+@keyframes fire-ember { from { opacity:.9; scale:.45 } 32% { opacity:1 } to { opacity:0; transform:translate(var(--drift),-23px) rotate(62deg) scale(.65) } }
+@keyframes fire-sweep { from { transform:rotate(-62deg) scale(.83) } 65% { opacity:.9 } to { transform:rotate(228deg) scale(1.13); opacity:0 } }
+@keyframes fire-jolt { 0%,100% { opacity:0 } 19% { opacity:1; transform:translateX(4px) } 45% { opacity:.85; transform:translateX(-3px) } }

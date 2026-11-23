@@ -21,7 +21,39 @@ const digitalBeam = `<svg class="cinematic-beam" viewBox="0 0 320 72" preserveAs
   <path d="M0 27h40v-7h45v14h39v-13h54v12h39v-8h70v8h33M0 53h67v-6h84v11h51v-16h49v11h69"/>
   <path d="M13 31h66v9H13zM97 30h69v13H97zM192 25h73v18h-73zM275 29h36v14h-36z" fill="currentColor"/>
 </svg>`
-const particles = {electric:{aura:electricity,discharge:beam},digital:{aura:digitalGrid,discharge:digitalBeam}}
+const frostCrystals = `<svg class="cinematic-electricity" viewBox="0 0 320 440" preserveAspectRatio="none" aria-hidden="true">
+  <g><path d="M16 86l27-47 9 34-19 42zM243 34l27 9 15 78-34-33zM17 299l45-39-7 44-39 34zM271 231l29-39 5 45-28 38z"/>
+  <path d="M43 39l-10 76m237-72 15 78M62 260l-46 78m284-146-23 83"/></g>
+</svg>`
+const frostBurst = `<svg class="cinematic-beam" viewBox="0 0 320 72" preserveAspectRatio="none" aria-hidden="true">
+  <path d="M0 35L55 34 96 21 186 28 213 15 269 22 320 36 259 49 212 46 154 56 84 43z"/>
+  <path d="M1 36h313M92 36l68-31m28 31 66 27M235 36l39-31M41 36l65 28" class="beam-branch"/>
+</svg>`
+const cosmicOrbit = `<svg class="cinematic-electricity cinematic-orbits" viewBox="0 0 320 440" preserveAspectRatio="none" aria-hidden="true">
+  <g transform="translate(168 180)">
+    <ellipse rx="143" ry="49" transform="rotate(-31)"/>
+    <ellipse rx="117" ry="31" transform="rotate(24)"/>
+    <path d="M-105-79v13m-6-6.5h12M126 41v14m-7-7h14M-128 64v12m-6-6h12M30-100v18m-9-9h18"/>
+  </g>
+</svg>`
+const cosmicWave = `<svg class="cinematic-beam" viewBox="0 0 320 72" preserveAspectRatio="none" aria-hidden="true">
+  <path d="M0 36Q130 4 320 36Q146 70 0 36Z"/>
+  <path class="beam-branch" d="M0 36Q155 23 320 36M8 34Q150 50 310 35M128 15Q152 36 128 57M198 10Q227 36 198 62M261 6Q301 36 261 66"/>
+</svg>`
+const combustion = `<svg class="cinematic-electricity cinematic-flames" viewBox="0 0 320 440" preserveAspectRatio="none" aria-hidden="true">
+  <path d="M0 323Q65 270 37 193Q89 223 84 314Q119 285 113 248Q161 289 130 375L0 399zM320 182Q256 246 279 283Q244 273 242 221Q204 272 220 316Q186 295 169 255Q149 356 320 385z"/>
+</svg>`
+const flameWave = `<svg class="cinematic-beam" viewBox="0 0 320 72" preserveAspectRatio="none" aria-hidden="true">
+  <path d="M0 44Q56 26 80 39Q120 17 104 8Q154 29 175 29Q202 10 210 4Q208 23 232 25L320 33Q291 52 256 50Q215 54 175 58Q121 42 138 65Q68 61 0 44z"/>
+  <path class="beam-branch" d="M0 44Q106 33 176 44T319 33"/>
+</svg>`
+const particles = {
+  electric:{aura:electricity,discharge:beam},
+  digital:{aura:digitalGrid,discharge:digitalBeam},
+  frost:{aura:frostCrystals,discharge:frostBurst},
+  cosmic:{aura:cosmicOrbit,discharge:cosmicWave},
+  fire:{aura:combustion,discharge:flameWave},
+}
 
 function place(node:HTMLElement,x:number,y:number,width:number,height:number) {
   Object.assign(node.style,{left:`${x}px`,top:`${y}px`,width:`${width}px`,height:`${height}px`})
@@ -30,9 +62,12 @@ function place(node:HTMLElement,x:number,y:number,width:number,height:number) {
 export class ZoneCinematics {
   private readonly layer:HTMLElement
   private readonly receipts:{origin:HTMLElement;target:HTMLElement;tick:number}[] = []
-  private active?:HTMLElement
-  private life?:Animation
-  private request = 0
+  private readonly active = new Map<0|1,HTMLElement>()
+  private readonly life = new Map<0|1,Animation>()
+  private readonly requests = new Map<0|1,number>()
+  private activeVS4?:HTMLElement
+  private lifeVS4?:Animation
+  private requestVS4=0
 
   constructor(private arena:HTMLElement,characters:readonly CharacterId[]) {
     this.layer = document.createElement('div')
@@ -65,18 +100,26 @@ export class ZoneCinematics {
   accent(id:CharacterId) { return scenes[id]?.color }
 
   stop() {
-    cancelAnimationFrame(this.request)
-    this.request = 0
-    this.life?.cancel()
-    this.life = undefined
-    this.active?.remove()
-    this.active = undefined
+    for (const request of this.requests.values()) cancelAnimationFrame(request)
+    this.requests.clear()
+    for (const life of this.life.values()) life.cancel()
+    this.life.clear()
+    for (const stage of this.active.values()) stage.remove()
+    this.active.clear()
+    cancelAnimationFrame(this.requestVS4)
+    this.requestVS4=0
+    this.lifeVS4?.cancel()
+    this.lifeVS4=undefined
+    this.activeVS4?.remove()
+    this.activeVS4=undefined
   }
 
   finish(id:CharacterId,origin:HTMLElement,tick:number) {
     const scene = scenes[id]
     if (!scene || !this.enabled) return
-    if (this.request || this.active) {
+    const teamNode = origin.closest<HTMLElement>('.blitz-team')
+    const team = teamNode?.dataset.side === '0' ? 0 : teamNode?.dataset.side === '1' ? 1 : undefined
+    if (team!==undefined && (this.requests.has(team) || this.active.has(team))) {
       requestAnimationFrame(()=>{
         if (!this.enabled || !origin.isConnected) return
         this.edge(origin,scene,'charge')
@@ -86,8 +129,25 @@ export class ZoneCinematics {
       return
     }
     // Wait for the frame to publish the relay state and any real garbage delivery.
-    this.request = requestAnimationFrame(()=>{
-      this.request = 0
+    if (team!==undefined) {
+      const request=requestAnimationFrame(()=>{
+        this.requests.delete(team)
+        if (!this.enabled || !origin.isConnected) return
+        const receipt = this.receipts.findLast(receipt=>receipt.origin===origin && receipt.tick===tick)
+        this.play(id,scene,origin,receipt?.target,team)
+      })
+      this.requests.set(team,request)
+      return
+    }
+    if (this.requestVS4 || this.activeVS4) {
+      requestAnimationFrame(()=>{
+        if (!this.enabled || !origin.isConnected) return
+        this.edge(origin,scene,'charge')
+      })
+      return
+    }
+    this.requestVS4=requestAnimationFrame(()=>{
+      this.requestVS4=0
       if (!this.enabled || !origin.isConnected) return
       const receipt = this.receipts.findLast(receipt=>receipt.origin===origin && receipt.tick===tick)
       this.play(id,scene,origin,receipt?.target)
@@ -100,19 +160,19 @@ export class ZoneCinematics {
     edge.setAttribute('aria-hidden','true')
     edge.style.setProperty('--scene-color',scene.color)
     edge.innerHTML = '<i></i><i></i><i></i><i></i>'
-    if (pose && scene.theme==='digital') edge.append(Object.assign(new Image(),{src:pose,alt:''}))
+    if (pose && scene.theme!=='electric') edge.append(Object.assign(new Image(),{src:pose,alt:''}))
     player.append(edge)
     edge.addEventListener('animationend',event=>{
       if (event.target===edge) edge.remove()
     })
   }
 
-  private play(id:CharacterId,scene:Scene,origin:HTMLElement,target:HTMLElement|undefined) {
+  private play(id:CharacterId,scene:Scene,origin:HTMLElement,target:HTMLElement|undefined,team?:0|1) {
     const {zonePose,zoneBackground} = CHARACTERS[id].assets
     const pose = artwork(zonePose)
     const background = artwork(zoneBackground)
-    const team = origin.closest<HTMLElement>('.blitz-team')
-    const clockwise = team ? team.dataset.side==='0' : !target || target.offsetLeft>origin.offsetLeft
+    const teamNode = origin.closest<HTMLElement>('.blitz-team')
+    const clockwise = teamNode ? teamNode.dataset.side==='0' : !target || target.offsetLeft>origin.offsetLeft
     const arena = this.arena.getBoundingClientRect()
     const fields = [...this.arena.querySelectorAll<HTMLElement>('.blitz-stack .player[data-featured="true"]')]
     const [left,right] = fields.map(field=>{
@@ -121,22 +181,31 @@ export class ZoneCinematics {
       return {left,right:left+field.offsetWidth}
     })
     const clock = this.arena.querySelector<HTMLElement>('.blitz-clock')
-    const centre = left && right && right.left-left.right>=220
-    const top = 8
-    const centralHeight = Math.min(500,(clock && !clock.hidden ? arena.height/2-62 : arena.height*.56)-top)
-    const central = !!centre && centralHeight>=265
+    const clockBox = clock && !clock.hidden && !clock.dataset.transition ? clock.getBoundingClientRect() : undefined
+    const split = arena.height/2
+    const central = team!==undefined && !!left && !!right && right.left-left.right>=220 && innerWidth>=1600
 
     let box:{x:number;y:number;width:number;height:number}|undefined
     let sidePanels:HTMLElement[] = []
-    const sideTop = () => Math.max(...sidePanels.map(panel=>panel.getBoundingClientRect().bottom))-arena.top+18
+    const sideTop = () => Math.max(team===1?split+8:8,
+      Math.max(...sidePanels.map(panel=>panel.getBoundingClientRect().bottom))-arena.top+18)
+    const sideHeight = (y:number)=>Math.min(480,(team===0?split:arena.height)-y-12)
     if (central) {
-      box = {x:left.right-arena.left+7,y:top,width:right.left-left.right-14,height:centralHeight}
-    } else if (team && left && right && innerWidth>950) {
-      sidePanels = [...team.querySelectorAll<HTMLElement>('.blitz-summary,.player[data-featured="false"]')]
+      const margin=8
+      const clockReserve=clockBox ? Math.ceil(Math.max(clockBox.width,clockBox.height)+24) : 118
+      const slotHeight=(arena.height-margin*2-clockReserve)/2
+      if (slotHeight>=150) box = {
+        x:left.right-arena.left+7,
+        y:team===0 ? margin : margin+slotHeight+clockReserve,
+        width:right.left-left.right-14,
+        height:slotHeight,
+      }
+    } else if (teamNode && left && right && innerWidth>950) {
+      sidePanels = [...teamNode.querySelectorAll<HTMLElement>('.blitz-summary,.player[data-featured="false"]')]
       const y = sideTop()
       const width = Math.min(340,clockwise ? left.left-arena.left-22 : arena.right-right.right-22)
-      const height = Math.min(480,arena.height-y-12)
-      if (width>=180 && height>=250) box = {x:clockwise?left.left-arena.left-width-14:right.right-arena.left+14,y,width,height}
+      const height = sideHeight(y)
+      if (width>=180 && height>=150) box = {x:clockwise?left.left-arena.left-width-14:right.right-arena.left+14,y,width,height}
     }
 
     if (!box || !pose || !background) {
@@ -151,6 +220,7 @@ export class ZoneCinematics {
     stage.dataset.character = id
     stage.dataset.direction = clockwise ? 'right' : 'left'
     stage.dataset.layout = central ? 'center' : 'side'
+    if (team!==undefined) stage.dataset.channel=team===0?'team-a':'team-b'
     stage.dataset.delivery = String(!!target)
     stage.style.setProperty('--scene-color',scene.color)
     stage.style.setProperty('--scene-light',scene.light)
@@ -162,15 +232,17 @@ export class ZoneCinematics {
       <img class="cinematic-pose" src="${pose}" alt="">
       <div class="cinematic-sparks" aria-hidden="true">${Array.from({length:14},(_,i)=>
         `<i style="--angle:${i*137.5}deg;--distance:${48+(i%5)*23}px;--delay:${i%4*19}ms"></i>`).join('')}</div>
-      ${fx.discharge}<div class="cinematic-title"><small>${CHARACTERS[id].name} · ZONE</small>
+      ${fx.discharge}<div class="cinematic-title"><small>${CHARACTERS[id].name} · SURGE</small>
       <strong>${scene.title.join('<br>')}</strong></div>`
     place(stage,box.x,box.y,box.width,box.height)
     this.layer.append(stage)
-    this.active = stage
+    if (team!==undefined) this.active.set(team,stage)
+    else this.activeVS4=stage
 
     const life = stage.animate([{opacity:0},{opacity:1,offset:.14},{opacity:1,offset:.83},{opacity:0}],
       {duration:DURATION,easing:'linear'})
-    this.life = life
+    if (team!==undefined) this.life.set(team,life)
+    else this.lifeVS4=life
     const listener = new AbortController()
     // The staging coordinates belong to this viewport only.
     window.addEventListener('resize',()=>life.cancel(),{once:true,signal:listener.signal})
@@ -179,14 +251,14 @@ export class ZoneCinematics {
       const {x,width} = box
       panels = new ResizeObserver(()=>{
         const y = sideTop()
-        const height = Math.min(480,arena.height-y-12)
-        if (height<250) life.cancel()
+        const height = sideHeight(y)
+        if (height<150) life.cancel()
         else place(stage,x,y,width,height)
       })
       for (const panel of sidePanels) panels.observe(panel,{box:'border-box'})
     }
     const impact = target ? window.setTimeout(()=>{
-      if (this.active===stage && this.enabled && target.isConnected && target.dataset.featured!=='false' &&
+      if (this.enabled && target.isConnected && target.dataset.featured!=='false' &&
           !target.classList.contains('dead')) this.edge(target,scene,'impact')
     },DURATION*.72) : undefined
     const cleanup = () => {
@@ -194,9 +266,13 @@ export class ZoneCinematics {
       listener.abort()
       panels?.disconnect()
       stage.remove()
-      if (this.active!==stage) return
-      this.active = undefined
-      this.life = undefined
+      if (team!==undefined) {
+        if (this.active.get(team)===stage) this.active.delete(team)
+        if (this.life.get(team)===life) this.life.delete(team)
+      } else {
+        if (this.activeVS4===stage) this.activeVS4=undefined
+        if (this.lifeVS4===life) this.lifeVS4=undefined
+      }
     }
     life.onfinish = life.oncancel = cleanup
   }

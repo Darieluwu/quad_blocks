@@ -136,7 +136,7 @@ Además, cada personaje tendrá una ilustración de cuerpo completo, una pose de
 5. Identidad visual de los ataques
 Los seis personajes comparten las mismas reglas de juego. Sus efectos se diferencian solamente por presentación.
 Personaje	Tetris	Spin	Defensa Blitz	SURGE definitiva
-Volt	Lightning Strike	Volt Spiral	Static Guard	Thunder Overdrive
+Volt	Lightning Strike	Volt Spiral	Static Guard	THUNDER BREAKER
 Nix	Frost Edge	Crystal Break	Ice Shield	Absolute Zero
 Pix	Pixel Crash	Glitch Drive	Support Link	System Override
 Astra	Starfall Arc	Nebula Twist	Astral Veil	Event Horizon

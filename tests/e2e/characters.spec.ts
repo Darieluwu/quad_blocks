@@ -1,3 +1,4 @@
+import { openLobby } from './navigation'
 import { expect, test } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { defaultSlot } from '../../src/input'
@@ -6,7 +7,7 @@ const subtitles = JSON.parse(readFileSync(new URL('../../src/characters/subtitle
 
 test('usa la maestra y el retrato de Volt tanto en una plaza humana como de IA',async ({page})=>{
   await page.goto('/')
-  await page.getByRole('button',{name:'Jugar Versus Zone'}).click()
+  await openLobby(page,'versus')
   await page.getByRole('button',{name:'Personaje de J1'}).click()
   const picker = page.getByRole('dialog')
   await expect(picker.locator('[data-picker-id]')).toHaveCount(6)
@@ -53,7 +54,7 @@ test('elige personajes con mando y teclado y los conserva al entrar a VS4',async
   const errors:string[] = []
   page.on('pageerror',error=>errors.push(error.message))
   await page.goto('/')
-  await page.getByRole('button',{name:'Jugar Versus Zone'}).click()
+  await openLobby(page,'versus')
   const j1 = page.locator('[data-character="0"]')
   const j2 = page.locator('[data-character="1"]')
   const picker = page.getByRole('dialog')
@@ -92,12 +93,12 @@ test('elige personajes con mando y teclado y los conserva al entrar a VS4',async
 
 test('persiste las preferencias de personajes al recargar',async ({page})=>{
   await page.goto('/')
-  await page.getByRole('button',{name:'Configuración'}).click()
+  await page.locator('[data-main-action="settings"], .bar [data-page="settings"]').click()
   const preferences = ['Reducir efectos','Animaciones de ataques','Voces de ataques','Subtítulos de personajes']
   await page.getByLabel(preferences[0]).check()
   for (const label of preferences.slice(1)) await page.getByLabel(label).uncheck()
   await page.reload()
-  await page.getByRole('button',{name:'Configuración'}).click()
+  await page.locator('[data-main-action="settings"], .bar [data-page="settings"]').click()
   await expect(page.getByLabel(preferences[0])).toBeChecked()
   for (const label of preferences.slice(1)) await expect(page.getByLabel(label)).not.toBeChecked()
 })

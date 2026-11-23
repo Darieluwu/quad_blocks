@@ -6,6 +6,9 @@ const optionalTracks = import.meta.glob<string>('./music/selection.mp3',{eager:t
 const optionalMenu = import.meta.glob<string>('./music/menu.mp3',{eager:true,import:'default',query:'?url&no-inline'})
 const tracks:Record<Music,string|undefined> = {blitz:blitzTrack,selection:optionalTracks['./music/selection.mp3'],menu:optionalMenu['./music/menu.mp3']}
 const optionalEffects = import.meta.glob<string>('./music/sfx/*.{mp3,ogg,wav}',{eager:true,import:'default',query:'?url&no-inline'})
+export type CinematicEffect =
+  'battle-start'|'countdown-tick'|'battle-go'|'combo-rise'|'perfect-clear'|'danger-alert'|'surge-ready'|
+  'surge-activate'|'surge-finish'|'blitz-swap-warning'|'blitz-swap'|'teammate-down'|'teammate-revive'|'victory-stinger'
 const MUSIC_FADE = .24
 type Bus = Exclude<keyof Mix,'master'|'mute'|'music'>
 type Patch = [Bus, OscillatorType, number[], number, number]
@@ -64,6 +67,9 @@ export class Sound {
   private dialogueBus?: GainNode
   private effectInstances = new Map<string,HTMLAudioElement[]>()
   private effectLast = new Map<string,number>()
+  private duckUntil = 0
+  private duckLevel = 1
+  private duckTimer = 0
 
   constructor(private mix: Mix) {}
 
@@ -110,7 +116,8 @@ export class Sound {
     const now = this.context.currentTime
     this.master.gain.setTargetAtTime(this.mix.mute ? 0 : this.mix.master,now,0.018)
     for (const [key,bus] of this.buses) bus.gain.setTargetAtTime(this.mix[key],now,0.018)
-    this.music?.gain.gain.setTargetAtTime(this.mix.music,now,0.032)
+    const duck = this.context.currentTime<this.duckUntil ? this.duckLevel : 1
+    this.music?.gain.gain.setTargetAtTime(this.mix.music*duck,now,0.032)
     this.dialogueBus?.gain.setTargetAtTime(this.mix.play,now,.018)
   }
 
@@ -196,7 +203,8 @@ export class Sound {
   playCharacterVoice(src:string|undefined,player:number,notify:Dialogue['notify'],priority=1) {
     if (!Number.isInteger(player) || player<0 || player>3) return
     const previous = this.dialogue.get(player)
-    if (previous && priority<previous.priority) { notify('waiting'); return }
+    // Routine attack chatter must not cut a named reaction. All other valid events replace the previous line.
+    if (previous?.media && priority===1 && previous.priority>1) return
     this.stopCharacterVoice(player)
     const line: Dialogue = {notify,priority}
     this.dialogue.set(player,line)
@@ -259,17 +267,41 @@ export class Sound {
     for (const player of this.dialogue.keys()) this.stopCharacterVoice(player)
   }
 
-  playEffect(name:'character-hover'|'character-confirm'|'player-ready'|'attack-send'|'damage-impact'|'surge-activate',intensity=1) {
+  duckMusic(amount=.72,duration=1.8) {
+    if (!this.music || !this.context) return
+    const now=this.context.currentTime
+    this.duckUntil=Math.max(this.duckUntil,now+duration)
+    this.duckLevel=amount
+    this.music.gain.gain.setTargetAtTime(this.mix.music*amount,now,.035)
+    window.clearTimeout(this.duckTimer)
+    this.duckTimer=window.setTimeout(()=>this.restoreMusicDuck(),duration*1000)
+  }
+
+  private restoreMusicDuck() {
+    if (!this.music || !this.context) return
+    const remaining=this.duckUntil-this.context.currentTime
+    if (remaining>0) {
+      this.duckTimer=window.setTimeout(()=>this.restoreMusicDuck(),Math.ceil(remaining*1000))
+      return
+    }
+    this.duckLevel=1
+    this.music.gain.gain.setTargetAtTime(this.mix.music,this.context.currentTime,.12)
+    this.duckTimer=0
+  }
+
+  playEffect(name:CinematicEffect|'character-hover'|'character-confirm'|'player-ready'|'attack-send'|'damage-impact'|'surge-ready',intensity=1,playbackRate=1) {
     if (!this.context || this.mix.mute) return
     const src = optionalEffects[`./music/sfx/${name}.mp3`] ?? optionalEffects[`./music/sfx/${name}.ogg`] ?? optionalEffects[`./music/sfx/${name}.wav`]
     if (!src) return
     const now = this.context.currentTime
-    const cooldown = name==='damage-impact' ? .12 : name==='character-hover' ? .18 : .06
+    const cooldown = name==='damage-impact' ? .12 : name==='character-hover' ? .18 :
+      name==='countdown-tick'||name==='blitz-swap-warning' ? .75 : .06
     if ((this.effectLast.get(name) ?? -Infinity)+cooldown>now) return
     this.effectLast.set(name,now)
     const active = (this.effectInstances.get(name) ?? []).filter(clip=>!clip.paused)
     if (active.length>=2) return
     const clip = new Audio(src)
+    clip.playbackRate = Math.min(1.18,Math.max(.92,playbackRate))
     const gain = this.context.createGain()
     const source = this.context.createMediaElementSource(clip)
     gain.gain.value = Math.min(1,Math.max(.35,intensity))*0.72

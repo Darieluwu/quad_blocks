@@ -14,7 +14,7 @@ import { onlineMenu } from './online/menu'
 import { OnlineMatch, randomId, type LobbyState, type ServerMessage } from './online/protocol'
 import { CHARACTERS, CHARACTER_IDS, chooseCharacter, isCharacterId, uniqueCharacters, type CharacterId, type CharacterOptions, type VoiceEvent } from './characters/catalog'
 import { ArcadePicker } from './characters/picker'
-import { japaneseVoice, subtitleFor } from './characters/assets'
+import { artwork, japaneseVoice, subtitleFor } from './characters/assets'
 import { isAttackVoice } from './characters/presentation'
 
 type Page = 'home'|'lobby'|'settings'|'controls'|'diag'|'credits'|'game'|'online'
@@ -27,6 +27,13 @@ let modeMenuIndex = 0
 let arcadeMenuIndex = 0
 let modeMenuOpen = false
 const arcadePadPrior = new Map<number,{up:boolean;down:boolean;left:boolean;right:boolean;confirm:boolean;cancel:boolean}>()
+const criticalSeen = new Set<number>()
+const surgeReadySeen = new Set<number>()
+let countdownShown = 0
+let battleGoPlayed = false
+let victoryPlayed = false
+let blitzWarningSent = false
+const perfectSeen = new Map<number,number>()
 let returnPage: 'home'|'lobby' = 'home'
 let controlPlayer = 0
 let controlType: 'keys'|'pad' = 'keys'
@@ -42,6 +49,14 @@ let pauseReason = ''
 let overlayState = ''
 let finalFallen: number[] = []
 let matchCharacters = [...settings.characters]
+function artworkWinner(id:CharacterId) {
+  const assets=CHARACTERS[id].assets
+  return artwork(assets.master) ?? artwork(assets.zonePose) ?? artwork(assets.portraits.victory) ?? artwork(assets.portraits.neutral)
+}
+function artworkLoser(id:CharacterId) {
+  const assets=CHARACTERS[id].assets
+  return artwork(assets.portraits.defeat) ?? artwork(assets.portraits.damage) ?? artwork(assets.portraits.danger) ?? artwork(assets.portraits.neutral)
+}
 let lobbyPadPrior: (ReadonlySet<Action>|undefined)[] = []
 const selectionCaptions = new Map<number,{id:CharacterId;text:string}>()
 const picker = new ArcadePicker()
@@ -160,6 +175,7 @@ function render() {
 
 function go(next: Page) {
   if (next === 'game') return
+  if (next==='lobby'||next==='home') victoryPlayed=false
   if (online && next!=='online') {
     online.close()
     online = null; onlineLobby = null; onlineNames = null; onlineSeat = -1
@@ -197,6 +213,17 @@ function start(roster: readonly Participant[]) {
 
 function mountGame(current: Match, initialCountdown: number = SETTINGS.countdown) {
   const {seed,roster} = current
+  countdownShown=0
+  battleGoPlayed=false
+  if (initialCountdown<=0) {
+    battleGoPlayed=true
+    audio.playEffect('battle-go',.9)
+  }
+  criticalSeen.clear()
+  surgeReadySeen.clear()
+  victoryPlayed=false
+  blitzWarningSent=false
+  audio.playEffect('battle-start',.86)
   if (page==='game') audio.stopCharacterVoices()
   audio.setMusic(mode==='blitz' ? 'blitz' : undefined)
   const format = mode==='blitz' ? 'BLITZ' : current.teams ? '2v2' : roster.length===PLAYERS ? 'VS4' : roster.map(()=>1).join('v')
@@ -266,6 +293,12 @@ function drawOverlay() {
     return
   }
   const currentMatch = match
+  if (mode==='blitz' && !victoryPlayed) {
+    victoryPlayed=true
+    audio.wake()
+    audio.duckMusic(.55,3)
+    audio.playEffect('victory-stinger',.9)
+  }
   const animate = arena?.finish(currentMatch,finalFallen)
   const game = overlay.closest('.game')!
   game.classList.add('result-scene')
@@ -290,11 +323,31 @@ function drawOverlay() {
       return `<li><b>${current}</b><div class="result-player" data-result-player="${slot}">${escape(slots[slot].name)}${type.length ? `<small>${type.join(' · ')}</small>` : ''}</div><span>${lines}</span><span>${sent}</span><span>${received}</span><span>${cancelled}</span><span>${pieces}</span></li>`
     })
   }).join('')
-  overlay.innerHTML = `<section class="result-card"><div class="overline"><i></i> RESULTADOS · ${modeName(mode)} <time>${formatTime(currentMatch.now)}</time></div><h2>${title}</h2>
+  const blitzResult = mode==='blitz' && currentMatch instanceof BlitzMatch ? (()=> {
+    const winningTeam=currentMatch.winningTeam
+    if (winningTeam===null) return ''
+    const winning=currentMatch.roster.flatMap((participant,index)=>participant.team===winningTeam?[index]:[])
+    const losing= currentMatch.roster.flatMap((participant,index)=>participant.team!==winningTeam?[index]:[])
+    const artCard=(index:number,kind:'winner'|'loser')=>{
+      const id=matchCharacters[currentMatch.roster[index].slot]
+      const character=CHARACTERS[id]
+      const src=kind==='winner'
+        ? artworkWinner(id)
+        : artworkLoser(id)
+      const mvp=mvps.includes(index)
+      return `<figure class="blitz-result-${kind}" ${kind==='loser'?'':''}><span class="blitz-result-team">${teamName(participantTeam(index))}</span>${mvp&&kind==='winner'?'<b class="blitz-mvp-badge">MVP</b>':''}${src?`<img src="${src}" alt="${character.name}" draggable="false">`:'<span class="blitz-result-fallback">'+character.name+'</span>'}<figcaption>${character.name}</figcaption></figure>`
+    }
+    const participantTeam=(index:number)=>currentMatch.roster[index].team ?? 0
+    return `<div class="blitz-result-visual" data-team="${winningTeam}">
+      <div class="blitz-result-winners">${winning.map(index=>artCard(index,'winner')).join('')}</div>
+      <div class="blitz-result-losers">${losing.map(index=>artCard(index,'loser')).join('')}</div>
+    </div>`
+  })() : ''
+  overlay.innerHTML = `<section class="result-card${mode==='blitz'?' blitz-result-card':''}">${blitzResult}<div class="result-card-content"><div class="overline"><i></i> RESULTADOS · ${modeName(mode)} <time>${formatTime(currentMatch.now)}</time></div><h2>${title}</h2>
     <div class="result-mvp"><div><small>${mvps.length>1?'MVP COMPARTIDO':'MVP'}</small><strong>${mvpNames}</strong></div>
       <span><b>${bestSent}</b> líneas enviadas</span></div>
     <div class="result-columns"><span>#</span><span>Jugador</span><span title="Líneas limpiadas">Limp.</span><span title="Líneas enviadas">Env.</span><span title="Líneas recibidas">Rec.</span><span title="Líneas canceladas">Canc.</span><span title="Piezas colocadas">Piezas</span></div>
-    <ol class="ranking">${rows}</ol><div class="modal-actions">${online ? `${onlineLobby?.host===onlineSeat?'<button class="primary" data-online="lobby">Volver todos a la sala</button>':''}<button class="secondary" data-page="home">Salir</button>` : `<button class="primary" data-do="rematch" ${missing.length?'disabled':''}>Revancha</button><button class="secondary" data-page="lobby">Volver a la sala</button>`}</div></section>`
+    <ol class="ranking">${rows}</ol><div class="modal-actions">${online ? `${onlineLobby?.host===onlineSeat?'<button class="primary" data-online="lobby">Volver todos a la sala</button>':''}<button class="secondary" data-page="home">Salir</button>` : `<button class="primary" data-do="rematch" ${missing.length?'disabled':''}>Revancha</button><button class="secondary" data-page="lobby">Volver a la sala</button>`}</div></div></section>`
   arena?.placeResultCaptions(overlay)
   animate?.()
 }
@@ -343,6 +396,7 @@ function receiveOnline(message: ServerMessage) {
       } else if (page==='game' && message.lobby.phase!=='results') {
         phase = message.lobby.phase==='countdown' ? 'countdown' : 'live'
         audio.resumeMusic()
+        if (phase==='live' && !battleGoPlayed) { battleGoPlayed=true; audio.playEffect('battle-go',.9) }
       }
       break
     }
@@ -364,6 +418,9 @@ function receiveOnline(message: ServerMessage) {
       onlineNames = message.names
       if (match instanceof OnlineMatch && match.seed===message.seed) {
         countdown = message.countdown
+        countdownShown=0
+        battleGoPlayed=false
+        victoryPlayed=false
       } else {
         matchCharacters = uniqueCharacters(message.characters)
         match = new OnlineMatch(message)
@@ -372,10 +429,21 @@ function receiveOnline(message: ServerMessage) {
       break
     case 'countdown':
       countdown = message.left
+      if (phase==='countdown') {
+        const shown=Math.ceil(countdown/HZ)
+        if (shown>0 && shown!==countdownShown) { countdownShown=shown; audio.playEffect('countdown-tick',.72) }
+        if (countdown<=0 && !battleGoPlayed) { battleGoPlayed=true; audio.playEffect('battle-go',.9) }
+      }
       break
     case 'frame':
       if (!(match instanceof OnlineMatch) || phase==='results') return
       match.load(message.state)
+      for (const [i,player] of match.players.entries()) {
+        if (player.danger!==2) criticalSeen.delete(i)
+        if (!player.dead && player.zone.energy>=player.rules.zoneMinimum && !player.zone.active) {
+          if (!surgeReadySeen.has(i)) { surgeReadySeen.add(i); audio.playEffect('surge-ready',.72) }
+        } else surgeReadySeen.delete(i)
+      }
       for (const {slot,event} of message.events) playEvent(match,slot,event)
       if (match.finished) {
         finalFallen = message.fallen
@@ -431,6 +499,19 @@ app.addEventListener('change',event=>{
   }
 })
 
+function refreshModeSelectionInfo() {
+  if (!modeMenuOpen) return
+  const modes: Record<Mode,{players:string;name:string;copy:string}> = {
+    versus:{players:'2-4 JUGADORES',name:'VERSUS SURGE',copy:'Todos contra todos. Cada plaza carga SURGE y ataca al rival.'},
+    teams:{players:'4 JUGADORES',name:'EQUIPOS 2V2',copy:'Dos equipos. Coordinación, objetivos compartidos y presión competitiva.'},
+    blitz:{players:'2-4 JUGADORES',name:'2V2 BLITZ',copy:'Relevos activos, defensa de equipo y rescates bajo presión.'},
+  }
+  const active=modes[mode]
+  const info=app.querySelector<HTMLElement>('.mode-selection-info')
+  if (!info) return
+  info.innerHTML=`<small>${active.players}</small><strong>${active.name}</strong><p>${active.copy}</p>`
+}
+
 app.addEventListener('click',event => {
   const button = (event.target as HTMLElement).closest<HTMLButtonElement>('button')
   if (!button || button.disabled) return
@@ -447,12 +528,19 @@ app.addEventListener('click',event => {
       node.classList.toggle('is-selected',i===modeMenuIndex)
       node.setAttribute('aria-pressed',String(i===modeMenuIndex))
     })
+    refreshModeSelectionInfo()
     audio.playEffect('character-hover')
     return
   }
   if (button.hasAttribute('data-mode-confirm')) {
     modeMenuOpen=false
     audio.playEffect('character-confirm')
+    const selected=app.querySelector<HTMLElement>(`.arcade-mode[data-mode="${mode}"]`)
+    if (!settings.reduced && selected) selected.animate([
+      {transform:'translateY(-8px) scale(1.035)',filter:'brightness(1.25)',offset:0},
+      {transform:'translateY(-16px) scale(1.10)',filter:'brightness(1.5)',offset:.55},
+      {transform:'translateY(-8px) scale(.98)',filter:'brightness(.8)',offset:1},
+    ],{duration:260,easing:'cubic-bezier(.2,.7,.2,1)'})
     go('lobby')
     return
   }
@@ -936,7 +1024,12 @@ window.addEventListener('keydown',event=>{
         if (action==='left'||action==='right') {
           modeMenuIndex=(modeMenuIndex+(action==='right'?1:-1)+3)%3
           mode=['versus','teams','blitz'][modeMenuIndex] as Mode
-          render()
+          app.querySelectorAll('.arcade-mode').forEach((node,i)=>{
+            node.classList.toggle('is-selected',i===modeMenuIndex)
+            node.setAttribute('aria-pressed',String(i===modeMenuIndex))
+          })
+          refreshModeSelectionInfo()
+          audio.playEffect('character-hover')
         } else if (action==='confirm') {
           modeMenuOpen=false
           audio.playEffect('character-confirm')
@@ -987,7 +1080,12 @@ function pollCharacterPads() {
       if (modeMenuOpen && (left&&!prior.left||right&&!prior.right)) {
         modeMenuIndex=(modeMenuIndex+(right&&!prior.right?1:-1)+3)%3
         mode=['versus','teams','blitz'][modeMenuIndex] as Mode
-        render()
+        app.querySelectorAll('.arcade-mode').forEach((node,i)=>{
+          node.classList.toggle('is-selected',i===modeMenuIndex)
+          node.setAttribute('aria-pressed',String(i===modeMenuIndex))
+        })
+        refreshModeSelectionInfo()
+        audio.playEffect('character-hover')
       } else if (!modeMenuOpen && (up&&!prior.up||down&&!prior.down)) {
         arcadeMenuIndex=(arcadeMenuIndex+(down&&!prior.down?1:-1)+5)%5
         app.querySelectorAll('.arcade-option').forEach((node,i)=>node.classList.toggle('is-selected',i===arcadeMenuIndex))
@@ -1020,7 +1118,6 @@ function speak(id:CharacterId,event:VoiceEvent,seat:number,caption:(text:string|
   const text = settings.characterOptions.subtitles ? subtitleFor(id,event) : undefined
   if (!voiceEnabled && !text) return
   if (clip) audio.wake()
-  caption(undefined,false,'waiting')
   audio.playCharacterVoice(clip,seat,state=>{
     caption(state==='playing' || state==='fallback' ? text : undefined,state==='fallback',state)
   },priority)
@@ -1081,11 +1178,47 @@ function playEvent(activeMatch: Match, i: number, event: Match['players'][number
   const activeArena = arena
   const player = activeMatch.players[i]
   presentCharacter(i,event,activeMatch)
+  if (event.type==='perfect') {
+    perfectSeen.set(i,activeMatch.now)
+    audio.playEffect('perfect-clear',.88)
+  } else if (event.type==='combo') {
+    if ((perfectSeen.get(i)??-1)!==activeMatch.now) {
+      const level=Math.max(1,Number(event.detail)||1)
+      audio.playEffect('combo-rise',.68,1+Math.min(.16,level*.018))
+    }
+  } else if (event.type==='critical') {
+    if (!activeMatch.players[i].dead && !criticalSeen.has(i)) {
+      criticalSeen.add(i)
+      audio.playEffect('danger-alert',.82)
+    }
+  } else if (event.type==='eliminated') {
+    criticalSeen.delete(i)
+  } else if (event.type==='zoneStart') {
+    audio.playEffect('surge-activate',.82)
+  } else if (event.type==='zoneEnd') {
+    audio.duckMusic(.68,2)
+    audio.playEffect('surge-finish',.82)
+  } else if (event.type==='blitzWarning') {
+    if (!blitzWarningSent) {
+      blitzWarningSent=true
+      audio.playEffect('blitz-swap-warning',.78)
+    }
+  } else if (event.type==='blitzRotate'||event.type==='blitzEmergency') {
+    blitzWarningSent=false
+    audio.playEffect('blitz-swap',.82)
+  } else if (event.type==='blitzRevived') {
+    audio.playEffect('teammate-revive',.82)
+  } else if (event.type==='victory'||event.type==='blitzVictory') {
+    // The definitive stinger is owned by drawOverlay() so rerenders and online frames cannot duplicate it.
+  }
   if (event.type==='send') audio.playEffect('attack-send')
-  if (event.type==='zoneStart') audio.playEffect('surge-activate')
   if (activeMatch instanceof BlitzMatch && (event.type==='eliminated' || event.type==='blitzRevived')) {
     const teammate = activeMatch.roster.findIndex((p,j)=>j!==i && p.team===activeMatch.roster[i].team && !activeMatch.players[j].dead)
-    if (teammate>=0) presentCharacter(teammate,{type:event.type==='eliminated'?'teammateDown':'teammateRevived'},activeMatch)
+    if (teammate>=0) {
+      const teammateEvent=event.type==='eliminated'?'teammateDown':'teammateRevived'
+      if (event.type==='eliminated') audio.playEffect('teammate-down',.82)
+      presentCharacter(teammate,{type:teammateEvent},activeMatch)
+    }
   }
   activeArena?.note(i,event.type,event.detail,activeMatch.now)
   if (activeArena && event.type==='incoming' && event.source!==undefined) {
@@ -1121,7 +1254,15 @@ function frame(now: number) {
     }
     if (phase === 'paused') continue
     if (phase === 'countdown') {
-      if (--countdown <= 0) phase = 'live'
+      const shown=Math.ceil(countdown/HZ)
+      if (shown>0 && shown!==countdownShown) {
+        countdownShown=shown
+        audio.playEffect('countdown-tick',.72)
+      }
+      if (--countdown <= 0) {
+        phase='live'
+        if (!battleGoPlayed) { battleGoPlayed=true; audio.playEffect('battle-go',.9) }
+      }
       continue
     }
     const alive = match.players.map(p=>!p.dead)
@@ -1129,6 +1270,13 @@ function frame(now: number) {
     steps++
     match.players.forEach((p,i) => {
       if (p.zone.active && p.zone.remaining % (HZ*2) === 0 && p.zone.remaining !== p.zone.duration) p.event('zoneLoop')
+      if (p.danger!==2) criticalSeen.delete(i)
+      if (!p.dead && p.zone.energy>=p.rules.zoneMinimum && !p.zone.active && !surgeReadySeen.has(i)) {
+        surgeReadySeen.add(i)
+        audio.playEffect('surge-ready',.72)
+      } else if (p.zone.active || p.zone.energy<p.rules.zoneMinimum) {
+        surgeReadySeen.delete(i)
+      }
       for (const event of p.events) if (match) playEvent(match,i,event)
       p.events.length = 0
     })

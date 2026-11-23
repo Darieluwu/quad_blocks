@@ -18,6 +18,8 @@ Los ID son `volt`, `nix`, `pix`, `astra`, `blaze` y `pengu`. Coloca cada recurso
 
 Puedes incorporar los archivos de a uno. El selector usa la ilustración maestra o el retrato neutral. Durante el juego, una expresión ausente recurre al retrato neutral y, si este falta, se muestran las iniciales del personaje. Entrega la ilustración original de **Pengu** en un archivo separado para integrar el diseño sin alterarlo.
 
+La [ilustración aprobada de Blaze](references/blaze-original.png) conserva el escenario original. El juego usa su recorte con alfa en `src/characters/art/blaze/master.png`. Los ocho cambios de expresión se editaron sobre el retrato neutral. Las poses mantienen la complexión y el equipo industrial de la referencia, con un golpe de avance para Flare Impact y los brazos abiertos para Inferno Break.
+
 ## Voces japonesas y subtítulos
 
 Los clips van en `src/characters/voices/ja/<id>/<evento>.ogg`. También se aceptan `.mp3` y `.wav`. Usa exactamente estos eventos, respetando mayúsculas y minúsculas:

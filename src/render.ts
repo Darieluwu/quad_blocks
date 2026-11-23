@@ -13,8 +13,8 @@ import { artwork } from './characters/assets'
 import { DialogueCard, dialogueMarkup } from './characters/dialogue'
 import './characters/dialogue.css'
 import { ZoneCinematics } from './characters/cinematics'
-import { characterVisuals } from './characters/visuals'
-import { digitalImpact, digitalPortrait } from './characters/digital-feedback'
+import { characterVisuals, type CharacterVisual } from './characters/visuals'
+import { impactFeedback, portraitFeedback } from './characters/feedback'
 import './characters/hud-portrait.css'
 import type { GameEvent } from './engine/player'
 
@@ -36,6 +36,18 @@ const ANIMATIONS: Record<string,string> = {
 }
 const CELL = 26
 const by = <E extends HTMLElement>(root: ParentNode, selector: string) => root.querySelector<E>(selector)!
+function dialogueMarkupLabel(id:CharacterId,text:string) {
+  const character=CHARACTERS[id]
+  return `<div class="dialogue-avatar">${portraitMarkup(id)}</div><strong class="dialogue-name">${character.name}</strong><p class="dialogue-text">${text.replace(/[&<>"']/g,char=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[char]!))}</p>`
+}
+function winnerResultArt(id:CharacterId) {
+  const assets=CHARACTERS[id].assets
+  return artwork(assets.master) ?? artwork(assets.zonePose) ?? artwork(assets.portraits.victory) ?? artwork(assets.portraits.neutral)
+}
+function loserResultArt(id:CharacterId) {
+  const assets=CHARACTERS[id].assets
+  return artwork(assets.portraits.defeat) ?? artwork(assets.portraits.damage) ?? artwork(assets.portraits.danger) ?? artwork(assets.portraits.neutral)
+}
 
 function attackShowcase(id:CharacterId) {
   if (!characterVisuals[id]) return ''
@@ -84,7 +96,7 @@ export function mountArena(root: HTMLElement, roster: readonly Participant[], bl
     return `
     <article class="player${blitz?' blitz-player':''}" data-player="${slot}" style="--player:${COLORS[slot]};--character-color:${colors[0]}">
       <header class="player-banner">
-        <div class="hud-portrait">${portraitMarkup(id)}</div>
+        <div class="hud-portrait" data-theme="${characterVisuals[id]?.theme ?? ''}">${portraitMarkup(id)}</div>
         <div class="player-profile"><div class="player-head"><span class="player-tag">J${slot+1}</span><h2></h2>
         <span class="character-name">${name}</span>
         ${team===undefined ? '' : `<span class="team-tag" data-team="${team}">Equipo ${team===0?'A':'B'}</span>`}
@@ -136,7 +148,7 @@ export function mountArena(root: HTMLElement, roster: readonly Participant[], bl
       <div class="blitz-stack">${roster.filter(p=>p.team===team).map(card).join('')}</div>
     </section>`).join('')}</div>` :
     '<div class="arena-grid" style="--boards:'+roster.length+'">'+roster.map(card).join('')+'</div>'
-  root.innerHTML = layout+'<div class="projectile-layer" aria-hidden="true"></div>'
+  root.innerHTML = layout+(blitz?'<div class="blitz-subtitle-layer" aria-label="Diálogo de personajes"></div>':'')+'<div class="projectile-layer" aria-hidden="true"></div>'
   root.classList.toggle('no-attack-animation',!attackAnimations)
   return new Arena(root,roster,characters,attackAnimations)
 }
@@ -182,6 +194,7 @@ class Arena {
       return {node,team,ctx,grid,stack,stackCtx:stack.getContext('2d')!,revision:-1,signature:'',
         portrait:new Portrait(characters[slot],by(node,'.hud-portrait .character-portrait'),slot),
         portraitFrame:by(node,'.hud-portrait'),portraitPulse:null as Animation|null,
+        visualStrike:null as {tick:number;kind:'tetris'|'spin'|'zoneFinish'}|null,
         dialogue:new DialogueCard(by(node,'.dialogue-slot'),characters[slot],slot),
         reserveZone:node.querySelector<HTMLElement>('.reserve-zone'),reserveGarbage:node.querySelector<HTMLElement>('.reserve-garbage'),
         showcase:node.querySelector<HTMLElement>('.character-showcase'),showcaseAnimation:null as Animation|null,
@@ -284,7 +297,23 @@ class Arena {
       return
     }
     const theme = characterVisuals[origin.portrait.id]?.theme
+    if (theme==='cosmic' || theme==='fire') {
+      // Incoming events can precede the caster's clear within the same simulation tick.
+      requestAnimationFrame(()=>{
+        if (!this.layer.isConnected) return
+        if (this.reduced.matches || this.layer.closest('.reduced')) arrive()
+        else this.animateAttack(origin,victim,theme,tick,arrive)
+      })
+    } else this.animateAttack(origin,victim,theme,tick,arrive)
+  }
+
+  private animateAttack(origin:Arena['views'][number],victim:Arena['views'][number],
+    theme:CharacterVisual['theme']|undefined,
+    tick:number,arrive:()=>void) {
     const electric = theme==='electric'
+    const cosmic = theme==='cosmic'
+    const fire = theme==='fire'
+    const variation = (cosmic || fire) && origin.visualStrike?.tick===tick ? origin.visualStrike.kind : undefined
     const bounds = this.layer.getBoundingClientRect()
     const anchor = (view: Arena['views'][number]) => {
       const field = view.well.getBoundingClientRect()
@@ -296,27 +325,43 @@ class Arena {
     const x = (direction>0 ? start.right : start.left)-bounds.left
     const y = Math.max(18,Math.min(start.top,end.top)-bounds.top-12)
     const dx = (direction>0 ? end.left : end.right)-bounds.left-x
-    const arc = Math.min(16,Math.abs(dx)*.10,y-8)
+    const arc = Math.min(variation==='tetris'?34:16,Math.abs(dx)*.10,y-8)
     const projectile = document.createElement('span')
     projectile.className = 'projectile'
     if (theme) projectile.classList.add(`projectile-${theme}`)
+    if (cosmic || fire) projectile.dataset.strike = variation ?? 'simple'
     projectile.dataset.from = origin.node.dataset.player
     projectile.dataset.to = victim.node.dataset.player
     projectile.style.left = x+'px'
     projectile.style.top = y+'px'
-    projectile.style.setProperty('--shot',theme==='digital'?'#30f5df':electric ? '#ffd345' : COLORS[Number(origin.node.dataset.player)])
+    projectile.style.setProperty('--shot',fire?'#ff702c':cosmic?'#ce9dff':theme==='digital'?'#30f5df':theme==='frost'?'#9cdeff':
+      electric ? '#ffd345' : COLORS[Number(origin.node.dataset.player)])
     projectile.style.setProperty('--shot-accent',CHARACTERS[origin.portrait.id].colors[1])
     projectile.style.setProperty('--bearing',Math.atan2(0,dx)+'rad')
     this.layer.append(projectile)
-    const flight = projectile.animate([
+    const flight = projectile.animate(variation==='spin' ? [
+      {transform:'translate(0,0) scale(.6)',opacity:.55},
+      {transform:`translate(${dx*.28}px,${-arc}px) rotate(160deg)`,opacity:1,offset:.3},
+      {transform:`translate(${dx*.67}px,${arc*.30}px) rotate(285deg)`,opacity:1,offset:.67},
+      {transform:`translate(${dx}px,0) rotate(360deg) scale(1.1)`,opacity:1},
+    ] : [
       {transform:'translate(0,0) scale(.65)',opacity:.48},
       {transform:`translate(${dx*.48}px,${-arc}px)`,opacity:1,offset:.46},
       {transform:`translate(${dx}px,0) scale(1.15)`,opacity:1},
-    ],{duration:Math.min(490,310+Math.abs(dx)*.12),easing:'ease-out'})
-    flight.onfinish = () => {
+    ],{duration:Math.min(490,(fire?345:310)+Math.abs(dx)*.12),easing:'ease-out'})
+    const cosmicImpact = cosmic ? window.setTimeout(()=>{
+      if (this.layer.isConnected && victim.node.dataset.featured!=='false' && !victim.node.classList.contains('dead')) {
+        impactFeedback(victim.node,'cosmic')
+      }
+    },180) : undefined
+    const clear = () => {
+      if (cosmicImpact!==undefined) window.clearTimeout(cosmicImpact)
       projectile.remove()
+    }
+    void flight.finished.then(()=>{
+      clear()
       if (!this.layer.isConnected) return
-      if (theme==='digital') digitalImpact(victim.node)
+      if (theme && !electric && !this.reduced.matches && !this.layer.closest('.reduced')) impactFeedback(victim.node,theme)
       if (electric && victim.node.dataset.featured!=='false' && !victim.node.classList.contains('dead')) {
         victim.well.animate([
           {boxShadow:'0 0 17px 3px #ffd345, 0 0 4px 1px #fff6a9 inset'},
@@ -324,15 +369,26 @@ class Arena {
         ],{duration:320,easing:'ease-out'})
       }
       arrive()
-    }
+    },clear)
   }
 
   characterEvent(i:number,event:GameEvent,tick:number) {
     const cue = cueFor(event)
     const view = this.views[i]
-    if (cue) view.portrait.react(cue,performance.now(),this.attackAnimations)
-    if (cue && characterVisuals[view.portrait.id]?.theme==='digital' && this.attackAnimations &&
-        !this.reduced.matches && !this.root.closest('.reduced')) digitalPortrait(view.portraitFrame,event,cue)
+    const theme = characterVisuals[view.portrait.id]?.theme
+    if (cue) {
+      const reaction = theme && theme!=='electric' && theme!=='digital' && event.type==='teammateDown' ?
+        {...cue,portrait:'danger' as const} : theme==='fire' && event.type==='teammateRevived' ?
+          {...cue,portrait:'victory' as const} : cue
+      view.portrait.react(reaction,performance.now(),this.attackAnimations)
+      if ((theme==='cosmic' || theme==='fire') && (cue.attack==='tetris' || cue.attack==='spin' || cue.attack==='zoneFinish')) {
+        if (view.visualStrike?.tick!==tick || view.visualStrike.kind!=='zoneFinish') {
+          view.visualStrike = {tick,kind:cue.attack}
+        }
+      }
+    }
+    if (cue && theme && theme!=='electric' && this.attackAnimations &&
+        !this.reduced.matches && !this.root.closest('.reduced')) portraitFeedback(view.portraitFrame,theme,event,cue)
     const attackPulse = cue?.attack==='tetris' || cue?.attack==='spin' || cue?.attack==='combo'
     if (attackPulse || event.type==='blitzGuard' || event.type==='blitzProtected') this.emphasizePortrait(view,attackPulse)
     if (event.type==='zoneStart') this.cinematics.charge(view.portrait.id,view.node)
@@ -343,7 +399,9 @@ class Arena {
     }
     if (!view.showcase || !cue) return cue
     if (event.type==='eliminated' || event.type==='victory' || event.type==='blitzVictory') view.showcaseAnimation?.cancel()
-    if (!cue.attack || cue.attack==='zoneFinish' || !this.attackAnimations || this.reduced.matches || this.root.closest('.reduced')) return cue
+    if (!cue.attack || cue.attack==='zoneFinish' || (theme==='frost' && cue.attack==='combo') ||
+        ((theme==='cosmic' || theme==='fire') && cue.attack!=='tetris') ||
+        !this.attackAnimations || this.reduced.matches || this.root.closest('.reduced')) return cue
     view.showcaseAnimation?.cancel()
     view.showcase.dataset.scene = 'attack'
     const scene = by(view.showcase,'.character-cut-in')
@@ -362,7 +420,7 @@ class Arena {
 
   private emphasizePortrait(view:Arena['views'][number],towardRival:boolean) {
     if (!this.attackAnimations || this.reduced.matches || this.root.closest('.reduced') ||
-        view.node.dataset.featured==='false' || this.root.querySelector('.cinematic-scene')) return
+        view.node.dataset.featured==='false' || this.root.querySelector('.cinematic-scene:not([data-channel])')) return
     if (view.portraitPulse && Number(view.portraitPulse.currentTime)<65) return
     view.portraitPulse?.cancel()
     const frame = view.portraitFrame
@@ -385,12 +443,51 @@ class Arena {
     const {dialogue,portrait} = this.views[i]
     if (!text) {
       dialogue.hide(ended)
+      this.clearBlitzSubtitle(i)
       return
     }
     const accent = zoneFinish ? this.cinematics.accent(portrait.id) : undefined
     dialogue.slot.toggleAttribute('data-cinematic-line',!!accent)
     if (accent) dialogue.slot.style.setProperty('--scene-color',accent)
     dialogue.show(text,timed)
+    if (this.root.querySelector('.blitz-arena') && this.root.clientWidth>=1500) dialogue.hide(false)
+    if (this.root.classList.contains('blitz-arena') || this.root.querySelector('.blitz-arena')) this.showBlitzSubtitle(i,text,timed,accent)
+  }
+
+  private blitzSubtitleTimer = new Map<number,number>()
+  private showBlitzSubtitle(i:number,text:string,timed:boolean,accent:string|undefined) {
+    const layer=this.root.querySelector<HTMLElement>('.blitz-subtitle-layer')
+    if (!layer) return
+    const view=this.views[i]
+    const team=view.team
+    if (team===undefined) return
+    const caption=dialogueMarkupLabel(view.portrait.id,text)
+    let callout=layer.querySelector<HTMLElement>(`.blitz-subtitle-callout[data-callout-player="${i}"]`)
+    if (!callout) {
+      callout=document.createElement('div')
+      callout.className='blitz-subtitle-callout'
+      callout.dataset.calloutPlayer=String(i)
+      callout.dataset.team=String(team)
+      layer.append(callout)
+    }
+    callout.innerHTML=caption
+    callout.style.setProperty('--dialogue-color',CHARACTERS[view.portrait.id].colors[0])
+    if (accent) callout.style.setProperty('--dialogue-accent',accent)
+    const node=view.node.getBoundingClientRect()
+    const arena=this.root.getBoundingClientRect()
+    const width=Math.min(210,Math.max(150,(this.root.querySelector<HTMLElement>('.blitz-arena')?.getBoundingClientRect().width??arena.width)*.14))
+    callout.style.width=`${width}px`
+    callout.style.top=`${Math.max(56,Math.min(arena.height-78,node.top-arena.top+(team===0?110:220)))}px`
+    callout.style.left=team===0?'8px':''
+    callout.style.right=team===1?'8px':''
+    clearTimeout(this.blitzSubtitleTimer.get(i))
+    if (timed) this.blitzSubtitleTimer.set(i,window.setTimeout(()=>this.clearBlitzSubtitle(i),5000))
+  }
+
+  private clearBlitzSubtitle(i:number) {
+    clearTimeout(this.blitzSubtitleTimer.get(i))
+    this.blitzSubtitleTimer.delete(i)
+    this.root.querySelector<HTMLElement>(`.blitz-subtitle-callout[data-callout-player="${i}"]`)?.remove()
   }
 
   placeResultCaptions(overlay:HTMLElement) {

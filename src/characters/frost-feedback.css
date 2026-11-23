@@ -1,0 +1,67 @@
+.frost-portrait,.frost-impact {
+  position:absolute; inset:-1px; z-index:2; pointer-events:none; border-radius:inherit;
+  color:#cdf4ff; border:1px solid currentColor; box-shadow:0 0 15px #55c3ff;
+  animation:frost-fade 560ms ease-out both;
+}
+.frost-portrait i,.frost-impact i {
+  position:absolute; left:50%; top:50%; width:33%; height:17px;
+  clip-path:polygon(0 42%,74% 12%,100% 50%,73% 90%,0 57%);
+  background:linear-gradient(155deg,#fff 18%,#88d7ff 48%,#1e6dce 50%,#b8eaff);
+  transform-origin:left center;
+  animation:frost-shard 510ms ease-out both;
+}
+.frost-portrait i:nth-child(1),.frost-impact i:nth-child(1) { --angle:-135deg }
+.frost-portrait i:nth-child(2),.frost-impact i:nth-child(2) { --angle:-72deg; height:12px }
+.frost-portrait i:nth-child(3),.frost-impact i:nth-child(3) { --angle:-31deg }
+.frost-portrait i:nth-child(4),.frost-impact i:nth-child(4) { --angle:23deg; height:12px }
+.frost-portrait i:nth-child(5),.frost-impact i:nth-child(5) { --angle:91deg }
+.frost-portrait i:nth-child(6),.frost-impact i:nth-child(6) { --angle:153deg; height:10px }
+.frost-portrait[data-effect="tetris"] {
+  border-width:2px; box-shadow:inset 0 0 12px #8edfff,0 0 22px #64caff;
+}
+.frost-portrait:is([data-effect="tetris"],[data-effect="spin"],[data-effect="combo"])::after {
+  position:absolute; bottom:2px; inset-inline:2px; padding:3px 2px; text-align:center;
+  color:#f2fbff; background:linear-gradient(90deg,transparent,#0d3155ec 22% 78%,transparent);
+  font:800 clamp(8px,.62vw,12px)/1 system-ui,sans-serif; letter-spacing:.05em;
+}
+.frost-portrait[data-effect="tetris"]::after { content:"FROST EDGE" }
+.frost-portrait[data-effect="spin"]::after { content:"CRYSTAL BREAK" }
+.frost-portrait[data-effect="combo"]::after { content:"SILENT BLIZZARD" }
+.frost-portrait[data-effect="spin"] i { animation-name:frost-orbit }
+.frost-portrait:is([data-effect="combo"],[data-effect="simple"]) i {
+  max-width:5px; height:5px; box-shadow:0 0 6px #effaff;
+}
+.frost-portrait[data-effect="damage"] { animation-name:frost-damage }
+.frost-portrait:is([data-effect="danger"],[data-effect="down"]) i { display:none }
+.frost-portrait[data-effect="shield"] {
+  border:4px double #dcf7ff; box-shadow:inset 0 0 18px #4ac8ffb3,0 0 14px #b1eaff;
+  background:repeating-linear-gradient(61deg,transparent 0 19px,#e0f7ff22 20px 22px);
+}
+.frost-portrait[data-effect="reboot"] { box-shadow:inset 0 0 16px #d8f8ff,0 0 26px #9ae2ff }
+.frost-portrait[data-effect="reboot"] i { animation-direction:reverse }
+.frost-impact { animation-duration:350ms }
+.frost-impact i { width:24px; height:12px; top:-5px; --angle:-75deg }
+.frost-impact i:nth-child(odd) { top:auto; bottom:-5px; --angle:75deg }
+.frost-impact i:nth-child(3n) { left:12% }
+.frost-impact i:nth-child(3n + 2) { left:82% }
+.projectile-frost::before {
+  width:76px; left:-72px; height:20px; top:-10px; transform-origin:72px 10px;
+  clip-path:polygon(0 50%,55% 24%,74% 35%,87% 0,100% 45%,79% 96%,44% 68%);
+  background:linear-gradient(180deg,#d8f8ff,#7fc9fa 48%,#3983d3 51%,#d7f6ff);
+}
+.projectile-frost::after { clip-path:polygon(50% 0,100% 50%,50% 100%,0 50%); background:#f0fbff }
+.nix-showcase .character-cut-in { object-position:50% 10%; mask-image:linear-gradient(90deg,transparent,#000 43%) }
+.reduced :is(.frost-portrait,.frost-impact),.no-attack-animation :is(.frost-portrait,.frost-impact) { visibility:hidden }
+@media (prefers-reduced-motion:reduce) { .frost-portrait,.frost-impact { visibility:hidden } }
+@keyframes frost-fade { 0%,100% { opacity:0 } 18% { opacity:1 } 50% { opacity:.6 } }
+@keyframes frost-damage { 0%,100% { opacity:0 } 22% { opacity:1; transform:translateX(3px) } 48% { opacity:.75; transform:translateX(-2px) } }
+@keyframes frost-shard {
+  from { opacity:0; transform:rotate(var(--angle)) translateX(75%) scale(.3) }
+  28% { opacity:1 }
+  to { opacity:0; transform:rotate(var(--angle)) translateX(66px) scale(1.15) }
+}
+@keyframes frost-orbit {
+  from { opacity:0; transform:rotate(calc(var(--angle) - 42deg)) translateX(74%) scale(.35) }
+  49% { opacity:1; transform:rotate(var(--angle)) translateX(95%) scale(.8) }
+  to { opacity:0; transform:rotate(calc(var(--angle) + 38deg)) translateX(55px) scale(1.1) }
+}

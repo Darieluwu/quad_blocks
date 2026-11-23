@@ -1,0 +1,79 @@
+.cosmic-portrait,.cosmic-impact {
+  position:absolute; inset:0; z-index:2; pointer-events:none; border-radius:inherit;
+  color:#d8b5ff; border:1px solid currentColor; box-shadow:0 0 13px #aa70ed;
+  animation:cosmic-fade 570ms ease-out both;
+}
+.cosmic-portrait i,.cosmic-impact i {
+  position:absolute; width:13px; height:13px; inset:var(--star-y) auto auto var(--star-x);
+  background:#f9e5b7;
+  clip-path:polygon(50% 0,61% 39%,100% 50%,61% 61%,50% 100%,39% 61%,0 50%,39% 39%);
+  animation:cosmic-star 470ms ease-out both;
+}
+.cosmic-portrait i:nth-child(1),.cosmic-impact i:nth-child(1) { --star-x:6%; --star-y:-3%; --star-vector:-12px }
+.cosmic-portrait i:nth-child(2),.cosmic-impact i:nth-child(2) { --star-x:48%; --star-y:-4%; --star-vector:0px }
+.cosmic-portrait i:nth-child(3),.cosmic-impact i:nth-child(3) { --star-x:86%; --star-y:-1%; --star-vector:13px }
+.cosmic-portrait i:nth-child(4),.cosmic-impact i:nth-child(4) { --star-x:14%; --star-y:96%; --star-vector:-9px }
+.cosmic-portrait i:nth-child(5),.cosmic-impact i:nth-child(5) { --star-x:53%; --star-y:97%; --star-vector:5px }
+.cosmic-portrait i:nth-child(6),.cosmic-impact i:nth-child(6) { --star-x:90%; --star-y:93%; --star-vector:12px }
+.cosmic-portrait::before {
+  content:""; position:absolute; inset:-4px 0; border:2px solid #ad80f1; border-radius:50%;
+  transform:rotate(-24deg); box-shadow:0 0 10px #9c68ef;
+}
+.cosmic-portrait[data-effect="spin"]::before {
+  border:3px double #eed6ff; animation:cosmic-twist 530ms ease-out both;
+}
+.cosmic-portrait[data-effect="combo"] { box-shadow:inset 0 0 14px #a94fff6e,0 0 22px #be8cff }
+.cosmic-portrait[data-effect="combo"]::before { animation:cosmic-twist 520ms ease-out reverse both }
+.cosmic-portrait[data-effect="simple"] i:nth-child(n+4),
+.cosmic-portrait:is([data-effect="danger"],[data-effect="down"]) i { display:none }
+.cosmic-portrait:is([data-effect="danger"],[data-effect="down"])::before { border-style:dotted; opacity:.5 }
+.cosmic-portrait[data-effect="damage"] { animation-name:cosmic-jolt }
+.cosmic-portrait[data-effect="shield"] {
+  border:3px double #f3dcb7;
+  background:radial-gradient(ellipse at center,transparent 42%,#8765c167 95%);
+}
+.cosmic-portrait[data-effect="reboot"] i { animation-direction:reverse }
+.cosmic-portrait:is([data-effect="tetris"],[data-effect="spin"],[data-effect="combo"],[data-effect="shield"])::after {
+  position:absolute; inset:auto 0 2px; padding:3px 2px;
+  text-align:center; color:#fff5e4; background:linear-gradient(90deg,transparent,#2b164de8 20% 80%,transparent);
+  font:800 clamp(8px,.65vw,12px)/1 system-ui,sans-serif; letter-spacing:.06em;
+}
+.cosmic-portrait[data-effect="tetris"]::after { content:"STARFALL ARC" }
+.cosmic-portrait[data-effect="spin"]::after { content:"NEBULA TWIST" }
+.cosmic-portrait[data-effect="combo"]::after { content:"COSMIC PULSE" }
+.cosmic-portrait[data-effect="shield"]::after { content:"ASTRAL VEIL" }
+.cosmic-impact { inset:-2px; border:3px double #eee0ff; animation-duration:350ms }
+.projectile-cosmic::before {
+  width:68px; height:16px; left:-62px; top:-8px; transform-origin:62px 8px;
+  border-radius:100%; background:linear-gradient(90deg,transparent,#b98aff 66%,#fff1cf);
+  clip-path:polygon(0 52%,62% 25%,83% 32%,100% 50%,79% 78%,57% 61%);
+}
+.projectile-cosmic::after {
+  inset:-8px; border-radius:50%; border:2px solid #e6ccff;
+  background:radial-gradient(circle,#fcf5dc 12%,#ce9dff 24%,#301161 51%,#b88bf3 65%);
+}
+.projectile-cosmic[data-strike="spin"]::before {
+  inset:-13px auto auto -14px; width:29px; height:24px; background:none; clip-path:none;
+  border:2px solid #deb1ff; border-radius:50%; transform:rotate(-38deg);
+}
+.projectile-cosmic[data-strike="tetris"]::before { clip-path:none; height:8px; top:-4px }
+.projectile-cosmic[data-strike="zoneFinish"]::after { inset:-12px; border:3px double #f7ddff; background:#261039 }
+.astra-showcase .character-cut-in { object-position:54% 8%; mask-image:linear-gradient(90deg,transparent,#000 42%) }
+.reduced :is(.cosmic-portrait,.cosmic-impact),.no-attack-animation :is(.cosmic-portrait,.cosmic-impact) { visibility:hidden }
+@media (prefers-reduced-motion:reduce) { .cosmic-portrait,.cosmic-impact { visibility:hidden } }
+@keyframes cosmic-fade { 0%,100% { opacity:0 } 22% { opacity:1 } 63% { opacity:.74 } }
+@keyframes cosmic-star {
+  from { opacity:0; transform:scale(.25) }
+  33% { opacity:1 }
+  to { opacity:0; transform:translate(var(--star-vector),-14px) scale(1.02) rotate(84deg) }
+}
+@keyframes cosmic-twist {
+  from { transform:rotate(-64deg) scale(.36,.78) }
+  55% { transform:rotate(116deg) scale(.84,.64) }
+  to { transform:rotate(286deg) scale(1.13,.92) }
+}
+@keyframes cosmic-jolt {
+  0%,100% { opacity:0 }
+  18% { opacity:1; transform:translateX(3px) }
+  58% { opacity:.67; transform:translateX(-2px) }
+}

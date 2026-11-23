@@ -1,7 +1,9 @@
+import { openLobby } from './navigation'
 import { createHash } from 'node:crypto'
 import { readFileSync, readdirSync } from 'node:fs'
 import { expect, test, type Page, type WebSocketRoute } from '@playwright/test'
 import { CHARACTER_IDS, VOICE_EVENTS, type CharacterId, type VoiceEvent } from '../../src/characters/catalog'
+import { characterVisuals } from '../../src/characters/visuals'
 import { makeMatch, snapshot, type Frame, type ServerMessage } from '../../src/online/protocol'
 
 const digest = (url:URL) => createHash('sha256').update(readFileSync(url)).digest('hex')
@@ -58,9 +60,9 @@ async function traceVoices(page:Page) {
 type VoiceLog = {starts:string[]; ends:string[]; pauses:string[]; times:number[]; active:number; peak:number}
 const voices = (page:Page) => page.evaluate(()=>(window as unknown as {voiceLog:VoiceLog}).voiceLog)
 
-test('las 72 grabaciones exactas se sirven y decodifican en el navegador desde el build',async ({page})=>{
+test('las grabaciones exactas se sirven y decodifican en el navegador desde el build',async ({page})=>{
   const files = voiceFiles()
-  expect(new Set(files.map(file=>file.url)).size).toBe(72)
+  expect(new Set(files.map(file=>file.url)).size).toBe(CHARACTER_IDS.length*VOICE_EVENTS.length)
   await page.goto('/')
   const failures = await page.evaluate(async files=>{
     const audio = new AudioContext()
@@ -88,7 +90,7 @@ test('Marcar listo reproduce las cuatro voces de selección en VS4 y muestra sus
   const assets = voiceFiles()
   await traceVoices(page)
   await page.goto('/')
-  await page.getByRole('button',{name:'Jugar Versus Zone'}).click()
+  await openLobby(page,'versus')
   expect((await voices(page)).starts).toEqual([])
   for (let i=0;i<4;i++) await page.locator(`[data-ready="${i}"]`).click()
   const expected = CHARACTER_IDS.slice(0,4).map(id=>assets.find(file=>file.id===id && file.event==='selection')!.url)
@@ -115,7 +117,7 @@ test('la pista de selección mantiene una sola instancia y la sala funciona si l
     return tracks.map(track=>({loop:track.loop,paused:track.paused,time:track.currentTime,error:track.error?.code}))
   })
   await page.goto('/')
-  await page.getByRole('button',{name:'Jugar Versus Zone'}).click()
+  await openLobby(page,'versus')
   await expect.poll(async ()=>(await music())[0]?.time).toBeGreaterThan(0)
   await expect(page.locator('.lobby-fighter[data-slot="2"] .lobby-fighter-art img')).toHaveAttribute('src',/master-.+\.png$/)
   await page.locator('[data-character="2"]').click()
@@ -134,7 +136,7 @@ test('la pista de selección mantiene una sola instancia y la sala funciona si l
   await expect.poll(async ()=>(await music())[0].paused).toBe(true)
   await page.route('**/assets/selection-*.mp3',route=>route.fulfill({status:404}))
   await page.reload()
-  await page.getByRole('button',{name:'Jugar Versus Zone'}).click()
+  await openLobby(page,'versus')
   await expect.poll(async ()=>(await music())[0]?.error).toBeTruthy()
   await page.locator('[data-seat-settings="2"]').click()
   await page.locator('[data-controller="2"]').selectOption('bot')
@@ -147,7 +149,7 @@ test('la sala arcade reserva al confirmar y reproduce las voces de persona e IA'
   const assets = voiceFiles()
   await traceVoices(page)
   await page.goto('/')
-  await page.getByRole('button',{name:/2v2 Blitz/}).click()
+  await openLobby(page,'blitz')
   await page.locator('[data-seat-settings="1"]').click()
   await page.locator('[data-controller="1"]').selectOption('bot')
   await page.locator('[data-seat-close]:visible').click()
@@ -161,7 +163,9 @@ test('la sala arcade reserva al confirmar y reproduce las voces de persona e IA'
   await page.screenshot({path:info.outputPath('selector-volt.png')})
   await picker.locator('[data-picker-id="blaze"]').click()
   await expect(picker.locator('.arcade-scene:not(.outgoing) h3')).toHaveText('BLAZE')
-  await expect(picker.locator('.arcade-scene:not(.outgoing) .arcade-figure > span')).toHaveText('BL')
+  const blaze = picker.locator('.arcade-scene:not(.outgoing) .arcade-master')
+  await expect.poll(()=>blaze.evaluate((img:HTMLImageElement)=>img.naturalHeight)).toBeGreaterThan(900)
+  await page.screenshot({path:info.outputPath('blaze-selector.png'),animations:'disabled'})
   await page.keyboard.press('Escape')
   await expect(page.locator('[data-character="0"]')).toHaveAttribute('data-id','volt')
   expect((await voices(page)).starts).toEqual([])
@@ -182,6 +186,12 @@ test('la sala arcade reserva al confirmar y reproduce las voces de persona e IA'
   await expect(picker.locator('.arcade-scene.outgoing')).toHaveCount(0)
   expect(await picker.evaluate(dialog=>dialog.scrollWidth<=dialog.clientWidth)).toBe(true)
   await page.screenshot({path:info.outputPath('selector-compacto.png')})
+  await page.keyboard.press('Escape')
+  await page.setViewportSize({width:1920,height:1080})
+  const fighter = page.locator('.lobby-fighter[data-slot="1"]')
+  await expect(fighter.locator('.lobby-fighter-art img')).toHaveAttribute('src',/master-.+\.png$/)
+  await expect(fighter).toContainText('BLAZE')
+  await page.screenshot({path:info.outputPath('blaze-lobby.png'),animations:'disabled'})
 })
 
 async function playbackRoom(page:Page, options?:{attackVoices:boolean;subtitles:boolean;attackAnimations?:boolean},
@@ -201,11 +211,175 @@ async function playbackRoom(page:Page, options?:{attackVoices:boolean;subtitles:
     })
   })
   await page.goto('/')
-  await page.getByRole('button',{name:'Jugar online'}).click()
+  await page.locator('[data-main-action="online"]').click()
   await page.getByRole('button',{name:'Crear sala'}).click()
   await expect(page.locator('.online-player')).toHaveText('ONLINE · J1')
   return {assets:voiceFiles(),lineup,match,frame:(events:Frame['events'])=>send({type:'frame',state:snapshot(match),events,fallen:[]})}
 }
+
+test('ASTRA usa su maestra y confirma con su voz y subtítulo en el selector',async ({page},info)=>{
+  await traceVoices(page)
+  await page.goto('/')
+  await openLobby(page,'blitz')
+  const slot = page.locator('.lobby-fighter[data-slot="3"]')
+  const hero = slot.locator('.lobby-fighter-art img')
+  await expect.poll(()=>hero.evaluate((img:HTMLImageElement)=>img.naturalHeight)).toBeGreaterThan(900)
+  await page.screenshot({path:info.outputPath('astra-lobby.png'),animations:'disabled'})
+  await page.locator('[data-character="3"]').click()
+  const scene = page.locator('.arcade-scene:not(.outgoing)')
+  await expect(scene).toHaveAttribute('data-preview','astra')
+  await expect(scene.locator('.arcade-master')).toHaveAttribute('src',(await hero.getAttribute('src'))!)
+  await expect(scene).toContainText('Cosmos')
+  await page.screenshot({path:info.outputPath('astra-selector.png'),animations:'disabled'})
+  await page.locator('[data-picker-confirm]').click()
+  await expect(page.locator('.arcade-caption')).toContainText(translations.astra.selection)
+  const voice = voiceFiles().find(file=>file.id==='astra' && file.event==='selection')!
+  await expect.poll(async ()=>(await voices(page)).starts).toContain(voice.url)
+})
+
+test('ASTRA distingue sus ataques y Event Horizon en Blitz',async ({page},info)=>{
+  const {match,frame,assets} = await playbackRoom(page,undefined,['volt','nix','pix','astra'])
+  match.sides[0].active = 0
+  match.sides[1].active = 3
+  frame([])
+  const player = page.locator('[data-player="3"]')
+  const portrait = player.locator('.hud-portrait img')
+  const scene = page.locator('.cinematic-scene.cinematic-cosmic')
+  const advance = (events:Frame['events'])=>{ match.now++; frame(events) }
+  const play = (type:string,detail?:string)=>advance([{slot:3,event:{type,detail}}])
+  const hit = (type:string,strike:string)=>{
+    // Deliver to the lower-index victim before the caller publishes the attack event.
+    advance([{slot:0,event:{type:'incoming',source:3,detail:'4'}},{slot:3,event:{type,detail:'4'}}])
+    return expect(page.locator(`.projectile-cosmic[data-strike="${strike}"][data-from="3"][data-to="0"]`)).toBeVisible()
+  }
+  await expect(portrait).toHaveAttribute('src',/neutral-.+\.png$/)
+  play('simpleAttack')
+  await expect(player.locator('.cosmic-portrait')).toHaveAttribute('data-effect','simple')
+  await expect.poll(async ()=>(await voices(page)).starts)
+    .toContain(assets.find(file=>file.id==='astra' && file.event==='simpleAttack1')!.url)
+  await hit('quad','tetris')
+  await expect(player.locator('.astra-showcase')).toHaveAttribute('data-scene','attack')
+  await expect(page.locator('[data-player="0"] .cosmic-impact')).toBeVisible()
+  await hit('tDouble','spin')
+  for (const [type,detail,effect,art] of [
+    ['combo','3','combo','attack'],['receive','3','damage','damage'],['critical','','danger','danger'],
+    ['blitzGuard','2','shield','support'],['teammateDown','','down','danger'],['teammateRevived','','reboot','support'],
+  ]) {
+    play(type,detail)
+    await expect(player.locator('.cosmic-portrait')).toHaveAttribute('data-effect',effect)
+    await expect(portrait).toHaveAttribute('src',new RegExp(`/${art}-.+\\.png$`))
+  }
+  play('zoneStart')
+  await expect(player.locator('.cinematic-charge.cinematic-cosmic img')).toBeVisible()
+  await expect(portrait).toHaveAttribute('src',/zone-.+\.png$/)
+  await hit('zoneEnd','zoneFinish')
+  await expect(scene).toContainText(/EVENT\s*HORIZON/)
+  await expect(scene).toHaveAttribute('data-delivery','true')
+  await expect(page.locator('.blitz-subtitle-callout[data-team="1"] .dialogue-text')).toHaveText(translations.astra.zoneFinish)
+  const region = (await scene.boundingBox())!
+  for (const field of await page.locator('.player[data-featured="true"] .well').all()) {
+    const box = (await field.boundingBox())!
+    expect(region.x+region.width<=box.x || box.x+box.width<=region.x ||
+      region.y+region.height<=box.y || box.y+box.height<=region.y).toBe(true)
+  }
+  await scene.evaluate(node=>node.getAnimations({subtree:true}).forEach(anim=>{
+    anim.pause()
+    anim.currentTime = 640
+  }))
+  await page.screenshot({path:info.outputPath('astra-event-horizon.png')})
+  await scene.evaluate(node=>node.getAnimations({subtree:true}).forEach(anim=>anim.finish()))
+  await expect(scene).toHaveCount(0)
+  play('zoneEnd','6')
+  await expect(scene).toHaveAttribute('data-delivery','false')
+  await expect(scene.locator('.cinematic-beam')).toBeHidden()
+  await expect(page.locator('.cinematic-impact.cinematic-cosmic')).toHaveCount(0)
+  await expect(scene).toHaveCount(0)
+  match.sides[1].active = 2
+  advance([])
+  await expect(player).toHaveAttribute('data-state','reserve')
+  await page.emulateMedia({reducedMotion:'reduce'})
+  play('zoneEnd','6')
+  await expect(scene).toHaveCount(0)
+})
+
+test('NIX aparece en el lobby y confirma su selección como IA',async ({page},info)=>{
+  await traceVoices(page)
+  await page.goto('/')
+  await openLobby(page,'blitz')
+  const fighter = page.locator('.lobby-fighter[data-slot="1"]')
+  await expect(fighter.locator('.lobby-fighter-art img')).toHaveAttribute('src',/master-.+\.png$/)
+  await page.locator('[data-seat-settings="1"]').click()
+  await page.locator('[data-controller="1"]').selectOption('bot')
+  await page.locator('[data-seat-close]:visible').click()
+  await page.screenshot({path:info.outputPath('nix-lobby.png')})
+  await page.locator('[data-character="1"]').click()
+  await expect(page.locator('.arcade-scene:not(.outgoing)')).toHaveAttribute('data-preview','nix')
+  const master = page.locator('.arcade-scene:not(.outgoing) .arcade-master')
+  await expect.poll(()=>master.evaluate((image:HTMLImageElement)=>image.naturalWidth)).toBeGreaterThan(500)
+  await page.screenshot({path:info.outputPath('nix-selector.png'),animations:'disabled'})
+  await page.locator('[data-picker-confirm]').click()
+  await expect(page.locator('.arcade-caption')).toContainText(translations.nix.selection)
+  const voice = voiceFiles().find(file=>file.id==='nix' && file.event==='selection')!
+  await expect.poll(async ()=>(await voices(page)).starts).toContain(voice.url)
+})
+
+test('NIX muestra efectos glaciares y Absolute Zero sin cubrir las matrices',async ({page},info)=>{
+  const {assets,match,frame} = await playbackRoom(page)
+  match.sides[0].active = 1
+  match.sides[1].active = 2
+  frame([])
+  const player = page.locator('[data-player="1"]')
+  const art = player.locator('.hud-portrait img')
+  await expect(art).toHaveAttribute('src',/neutral-.+\.png$/)
+  frame([{slot:1,event:{type:'simpleAttack'}}])
+  await expect(player.locator('.frost-portrait')).toHaveAttribute('data-effect','simple')
+  await expect.poll(async ()=>(await voices(page)).starts)
+    .toContain(assets.find(file=>file.id==='nix' && file.event==='simpleAttack1')!.url)
+  frame([{slot:0,event:{type:'quad',detail:'4'}},{slot:1,event:{type:'quad',detail:'4'}},
+    {slot:2,event:{type:'tDouble',detail:'2'}}])
+  await expect(player.locator('.nix-showcase')).toHaveAttribute('data-scene','attack')
+  await expect(page.locator('[data-player="2"] .digital-portrait')).toHaveAttribute('data-effect','spin')
+  await expect(page.locator('[data-player="0"] .volt-showcase')).toHaveAttribute('data-scene','attack')
+  for (const [type,detail,effect,pose] of [
+    ['tDouble','2','spin','attack'],['combo','3','combo','attack'],
+    ['receive','3','damage','damage'],['critical','','danger','danger'],
+    ['blitzGuard','2','shield','support'],['teammateDown','','down','danger'],
+    ['teammateRevived','','reboot','support'],
+  ]) {
+    frame([{slot:1,event:{type,detail}}])
+    await expect(player.locator('.frost-portrait')).toHaveAttribute('data-effect',effect)
+    await expect(art).toHaveAttribute('src',new RegExp(`/${pose}-.+\\.png$`))
+  }
+  frame([{slot:1,event:{type:'zoneStart'}}])
+  await expect(player.locator('.cinematic-charge.cinematic-frost img')).toBeVisible()
+  await expect(art).toHaveAttribute('src',/zone-.+\.png$/)
+  match.now++
+  frame([{slot:1,event:{type:'zoneEnd',detail:'8'}},{slot:2,event:{type:'incoming',source:1,detail:'4'}}])
+  const scene = page.locator('.cinematic-scene.cinematic-frost')
+  await expect(scene).toContainText(/ABSOLUTE\s*ZERO/)
+  await expect(scene).toHaveAttribute('data-delivery','true')
+  await expect(page.locator('.projectile-frost[data-from="1"][data-to="2"]')).toBeVisible()
+  for (const image of await scene.locator('img').all()) {
+    await expect.poll(()=>image.evaluate((node:HTMLImageElement)=>node.naturalWidth)).toBeGreaterThan(500)
+  }
+  await expect(player.locator('.dialogue-text')).toHaveText(translations.nix.zoneFinish)
+  const region = (await scene.boundingBox())!
+  for (const field of await page.locator('.player[data-featured="true"] .well').all()) {
+    const box = (await field.boundingBox())!
+    expect(region.x+region.width<=box.x || box.x+box.width<=region.x ||
+      region.y+region.height<=box.y || box.y+box.height<=region.y).toBe(true)
+  }
+  await scene.evaluate(node=>node.getAnimations({subtree:true}).forEach(animation=>{
+    animation.pause()
+    animation.currentTime = 640
+  }))
+  await page.screenshot({path:info.outputPath('nix-absolute-zero.png')})
+  await scene.evaluate(node=>node.getAnimations({subtree:true}).forEach(animation=>animation.finish()))
+  await expect(scene).toHaveCount(0)
+  await page.emulateMedia({reducedMotion:'reduce'})
+  frame([{slot:1,event:{type:'zoneEnd',detail:'8'}}])
+  await expect(scene).toHaveCount(0)
+})
 
 test('PIX usa reacciones digitales y System Override en Blitz',async ({page},info)=>{
   await page.setViewportSize({width:1920,height:1080})
@@ -314,7 +488,7 @@ test('Blitz ubica dos tarjetas en el centro o el marco y las traslada con el rel
   frame([{slot:2,event:{type:'tDouble'}},{slot:1,event:{type:'teammateRevived'}}])
   await expect(player).toHaveAttribute('data-state','reserve')
   await expect(player.locator('.well')).toBeHidden()
-  await expect(player.locator('.reserve-readout')).toHaveText(/Zone 50%.*\+3 basura/)
+  await expect(player.locator('.reserve-readout')).toHaveText(/SURGE 50%.*\+3 basura/)
   await expect(portrait).toBeVisible()
   await expect(caption.locator('.dialogue-text')).toHaveText(translations.volt.spin)
   const reserveLine = page.locator('[data-player="1"] .dialogue-text')
@@ -371,18 +545,28 @@ test('el retrato lateral amplía Tetris y Spin sin desplazar el campo y conserva
   await expect(portraitFrame).not.toHaveAttribute('data-pulsing','')
 })
 
-test('VS4 muestra cuatro voces y tarjetas separadas sin invadir las matrices',async ({page},info)=>{
+for (const last of ['astra','blaze'] as const) test(`VS4 muestra cuatro voces y tarjetas separadas con ${last}`,async ({page},info)=>{
+  const lineup = ['volt','nix','pix',last] as const
+  await page.addInitScript(characters=>localStorage.setItem('quad-blocks-v1',JSON.stringify({characters})),lineup)
   await traceVoices(page)
   await page.emulateMedia({reducedMotion:'reduce'})
   await page.clock.install()
   await page.goto('/')
-  await page.getByRole('button',{name:'Jugar Versus Zone'}).click()
+  await openLobby(page,'versus')
   for (let i=0;i<4;i++) await page.locator(`[data-ready="${i}"]`).click()
   await page.getByRole('button',{name:'Iniciar partida'}).click()
   await expect(page.locator('#overlay')).toBeHidden()
   await page.clock.pauseAt(await page.evaluate(()=>Date.now()+100))
   const players = page.locator('.arena-grid .player')
   await expect(players.locator('.hud-portrait:visible')).toHaveCount(4)
+  await page.emulateMedia({reducedMotion:'no-preference'})
+  await page.evaluate(()=>{
+    const arena = document.querySelector('.arena-grid')!
+    new MutationObserver(()=>{
+      const effects = arena.querySelectorAll(':is(.frost-portrait,.digital-portrait,.cosmic-portrait,.fire-portrait)[data-effect="danger"]')
+      if (effects.length===3) (arena as HTMLElement).dataset.simultaneousPortraits = '3'
+    }).observe(arena,{childList:true,subtree:true})
+  })
   for (let round=0;round<14 && await players.first().getAttribute('data-danger')!=='2';round++) {
     await page.evaluate(()=>{
       for (const code of ['KeyW','KeyI','ArrowUp','Numpad8']) {
@@ -391,32 +575,34 @@ test('VS4 muestra cuatro voces y tarjetas separadas sin invadir las matrices',as
     })
     await page.clock.runFor(34)
   }
+  await expect(page.locator('.arena-grid')).toHaveAttribute('data-simultaneous-portraits','3')
   const captions = players.locator('.character-caption')
-  await expect(captions.locator('.dialogue-name')).toHaveText(['VOLT','NIX','PIX','ASTRA'])
-  await expect(captions.locator('.dialogue-text')).toHaveText(CHARACTER_IDS.slice(0,4).map(id=>translations[id].danger))
+  await expect(captions.locator('.dialogue-name')).toHaveText(lineup.map(id=>id.toUpperCase()))
+  await expect(captions.locator('.dialogue-text')).toHaveText(lineup.map(id=>translations[id].danger))
   await expect.poll(async ()=>(await voices(page)).peak).toBe(4)
   await expect(captions.nth(0).locator('.dialogue-avatar img')).toBeVisible()
-  await expect(captions.nth(1).locator('.dialogue-avatar span > span')).toHaveText('NI')
-  await expect(captions.nth(1).locator('.dialogue-avatar img')).toBeHidden()
+  await expect(captions.nth(1).locator('.dialogue-avatar img')).toBeVisible()
+  await expect(captions.nth(3).locator('.dialogue-avatar img')).toBeVisible()
   for (const width of [1920,600,320]) {
     await page.setViewportSize({width,height:1080})
-    const layout = await page.evaluate(()=>{
+    const measure = () => page.evaluate(()=>{
       const bounds = (selector:string) => [...document.querySelectorAll(selector)].map(node=>node.getBoundingClientRect().toJSON())
       const fit = [...document.querySelectorAll<HTMLElement>('.dialogue-text')].every(line=>
         line.scrollHeight<=Math.ceil(parseFloat(getComputedStyle(line).lineHeight)*2) && line.scrollWidth<=line.clientWidth)
       return {cards:bounds('.character-caption:not([hidden])'),boards:bounds('.well'),fit,scrollWidth:document.documentElement.scrollWidth}
     })
+    await expect.poll(async ()=>(await measure()).fit,{message:`Subtítulos a ${width}px`}).toBe(true)
+    const layout = await measure()
     const overlaps = (a:DOMRect,b:DOMRect) => a.left<b.right && b.left<a.right && a.top<b.bottom && b.top<a.bottom
     expect(layout.cards).toHaveLength(4)
     expect(layout.cards.every((box,i)=>layout.boards.every(board=>!overlaps(box,board)) &&
       layout.cards.slice(i+1).every(other=>!overlaps(box,other)))).toBe(true)
-    expect(layout.fit).toBe(true)
     expect(layout.scrollWidth).toBeLessThanOrEqual(width)
     if (width===1920) await page.screenshot({path:info.outputPath('dialogos-vs4.png')})
   }
 })
 
-test('Thunder Overdrive compone la tormenta y la descarga entre los tableros de Blitz',async ({page},info)=>{
+test('la definitiva de Volt compone la tormenta y la descarga entre los tableros de Blitz',async ({page},info)=>{
   await page.setViewportSize({width:1902,height:950})
   const {match,frame} = await playbackRoom(page)
   match.sides[0].active = 0
@@ -446,7 +632,7 @@ test('Thunder Overdrive compone la tormenta y la descarga entre los tableros de 
   match.now++
   frame([{slot:0,event:{type:'zoneEnd',detail:'8'}},{slot:2,event:{type:'incoming',source:0,detail:'4'}}])
   const ultimate = page.locator('.cinematic-scene')
-  await expect(ultimate).toContainText(/THUNDER\s*OVERDRIVE/)
+  await expect(ultimate.locator('.cinematic-title strong')).toHaveText(new RegExp(characterVisuals.volt!.title.join('\\s*')))
   await expect(ultimate).toBeVisible()
   await expect(ultimate).toHaveAttribute('data-layout','center')
   await expect(ultimate).toHaveAttribute('data-delivery','true')
@@ -469,7 +655,7 @@ test('Thunder Overdrive compone la tormenta y la descarga entre los tableros de 
   const caption = player.locator('.character-caption')
   await expect(caption.locator('.dialogue-text')).toHaveText(translations.volt.zoneFinish)
   expect((await caption.boundingBox())!.y).toBeGreaterThan(box.y+box.height)
-  await page.screenshot({path:info.outputPath('thunder-overdrive.png')})
+  await page.screenshot({path:info.outputPath('volt-surge.png')})
   await expect(rival).toHaveAttribute('data-saw-cinematic-impact','true')
   await ultimate.evaluate(node=>node.getAnimations({subtree:true}).forEach(animation=>animation.play()))
   await expect(ultimate).toHaveCount(0)
@@ -479,7 +665,96 @@ test('Thunder Overdrive compone la tormenta y la descarga entre los tableros de 
   await expect(ultimate).toBeHidden()
 })
 
-test('Thunder Overdrive usa un lateral en Blitz compacto y respeta una descarga cancelada',async ({page},info)=>{
+test('BLAZE reacciona a ataques y rescates y conserva los avisos al reducir efectos',async ({page})=>{
+  const {assets,match,frame} = await playbackRoom(page,undefined,['volt','nix','blaze','astra'])
+  match.sides[0].active = 0
+  match.sides[1].active = 2
+  const player = page.locator('[data-player="2"]')
+  const portrait = player.locator('.hud-portrait img')
+  const mark = (type:string,detail?:string)=>{match.now++; frame([{slot:2,event:{type,detail}}])}
+  const rival = page.locator('[data-player="0"]')
+  await rival.evaluate(node=>{
+    new MutationObserver(records=>{
+      for (const record of records) for (const added of record.addedNodes) {
+        if (added instanceof HTMLElement && added.classList.contains('fire-impact')) {
+          node.setAttribute('data-fire-hits',String(Number(node.getAttribute('data-fire-hits'))+1))
+        }
+      }
+    }).observe(node,{childList:true})
+  })
+  await expect(portrait).toHaveAttribute('src',/neutral-.+\.png$/)
+  mark('simpleAttack')
+  const voice = assets.find(file=>file.id==='blaze' && file.event==='simpleAttack1')!
+  await expect.poll(async ()=>(await voices(page)).starts).toContain(voice.url)
+  for (const [type,detail,effect,art] of [
+    ['quad','4','tetris','attack'],['tDouble','2','spin','attack'],['combo','3','combo','attack'],
+    ['receive','3','damage','damage'],['critical','','danger','danger'],['blitzGuard','2','shield','support'],
+    ['teammateDown','','down','danger'],['teammateRevived','','reboot','victory'],
+  ]) {
+    match.now++
+    frame(type==='quad'||type==='tDouble' ? [{slot:0,event:{type:'incoming',source:2,detail:'4'}},
+      {slot:2,event:{type,detail}}] : [{slot:2,event:{type,detail}}])
+    await expect(player.locator('.fire-portrait')).toHaveAttribute('data-effect',effect)
+    await expect(portrait).toHaveAttribute('src',new RegExp(`/${art}-.+\\.png$`))
+    if (type==='quad') await expect(player.locator('.blaze-showcase img')).toBeVisible()
+    if (type==='quad'||type==='tDouble') {
+      await expect(page.locator(`.projectile-fire[data-strike="${effect}"][data-to="0"]`)).toBeVisible()
+      await expect(rival).toHaveAttribute('data-fire-hits',type==='quad'?'1':'2')
+    }
+  }
+  mark('zoneStart')
+  await expect(player.locator('.cinematic-charge.cinematic-fire img')).toBeVisible()
+  await expect(portrait).toHaveAttribute('src',/zone-.+\.png$/)
+  await page.emulateMedia({reducedMotion:'reduce'})
+  mark('zoneEnd','8')
+  await expect(player.locator('.zone-result')).toBeVisible()
+  await expect(page.locator('.cinematic-scene')).toHaveCount(0)
+})
+
+test('BLAZE y ASTRA usan canales superiores e inferiores simultáneos en Blitz',async ({page},info)=>{
+  await page.setViewportSize({width:1920,height:1080})
+  const {match,frame} = await playbackRoom(page,undefined,['astra','pix','blaze','volt'])
+  match.sides[0].active=0
+  match.sides[1].active=2
+  frame([])
+  frame([
+    {slot:0,event:{type:'zoneEnd',detail:'8'}},
+    {slot:2,event:{type:'zoneEnd',detail:'8'}},
+    {slot:0,event:{type:'incoming',source:2,detail:'4'}},
+  ])
+  const channels=page.locator('.cinematic-scene[data-channel]')
+  await expect(channels).toHaveCount(2)
+  const top = channels.filter({hasText:/EVENT\s*HORIZON/})
+  const bottom = channels.filter({hasText:/INFERNO\s*BREAK/})
+  await expect(top).toHaveAttribute('data-channel','team-a')
+  await expect(bottom).toHaveAttribute('data-channel','team-b')
+  await expect(top).toHaveAttribute('data-delivery','false')
+  await expect(bottom).toHaveAttribute('data-delivery','true')
+  await expect(top.locator('.cinematic-beam')).toBeHidden()
+  await expect(page.locator('.projectile-fire[data-strike="zoneFinish"][data-from="2"][data-to="0"]')).toBeVisible()
+  const a=(await top.boundingBox())!
+  const b=(await bottom.boundingBox())!
+  expect(Math.abs(a.width-b.width)).toBeLessThanOrEqual(1)
+  expect(Math.abs(a.height-b.height)).toBeLessThanOrEqual(1)
+  const clock=(await page.locator('.blitz-clock').boundingBox())!
+  expect(a.y+a.height).toBeLessThanOrEqual(clock.y)
+  expect(b.y).toBeGreaterThanOrEqual(clock.y+clock.height)
+  for (const field of await page.locator('.player[data-featured="true"] .well').all()) {
+    const box=(await field.boundingBox())!
+    for (const scene of [a,b]) expect(scene.x+scene.width<=box.x || box.x+box.width<=scene.x).toBe(true)
+  }
+  await expect(page.locator('.blitz-subtitle-callout[data-team="0"] .dialogue-text')).toHaveText(translations.astra.zoneFinish)
+  await expect(page.locator('.blitz-subtitle-callout[data-team="1"] .dialogue-text')).toHaveText(translations.blaze.zoneFinish)
+  await expect(page.locator('.blitz-subtitle-callout[data-team="0"]')).toBeVisible()
+  await expect(page.locator('.blitz-subtitle-callout[data-team="1"]')).toBeVisible()
+  await channels.evaluateAll(nodes=>nodes.forEach(node=>node.getAnimations({subtree:true}).forEach(anim=>{
+    anim.pause()
+    anim.currentTime=665
+  })))
+  await page.screenshot({path:info.outputPath('blitz-dos-cinematicas.png')})
+})
+
+test('la definitiva de Volt usa un lateral en Blitz compacto y respeta una descarga cancelada',async ({page},info)=>{
   await page.setViewportSize({width:1366,height:768})
   const {match,frame} = await playbackRoom(page,{attackVoices:false,subtitles:false},['nix','pix','pengu','volt'])
   match.sides[1].active = 3
@@ -495,12 +770,11 @@ test('Thunder Overdrive usa un lateral en Blitz compacto y respeta una descarga 
   const summary = (await page.locator('.blitz-team[data-side="1"] .blitz-summary').boundingBox())!
   expect(box.x).toBeGreaterThan(board.x+board.width)
   expect(box.y).toBeGreaterThan(summary.y+summary.height)
-  await expect(page.locator('.character-caption:visible')).toHaveCount(0)
   await scene.evaluate(node=>node.getAnimations({subtree:true}).forEach(animation=>{
     animation.pause()
     animation.currentTime = 410
   }))
-  await page.screenshot({path:info.outputPath('thunder-overdrive-lateral.png')})
+  await page.screenshot({path:info.outputPath('volt-surge-lateral.png')})
   const reserve = page.locator('.blitz-team[data-side="1"] .player[data-featured="false"]')
   await reserve.evaluate(panel=>{ panel.style.paddingBlockEnd = '60px' })
   const summaryAfter = (await page.locator('.blitz-team[data-side="1"] .blitz-summary').boundingBox())!

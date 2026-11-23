@@ -1,8 +1,9 @@
+import { openLobby } from './navigation'
 import { expect, test, type Page } from '@playwright/test'
 
 async function lobby(page: Page) {
-  await page.getByRole('button',{name:'Jugar Versus Zone'}).click()
-  await expect(page.getByRole('heading',{name:'Sala Versus Zone'})).toBeVisible()
+  await openLobby(page,'versus')
+  await expect(page.getByRole('heading',{name:'Sala Versus SURGE'})).toBeVisible()
 }
 async function start(page: Page) {
   const start = page.getByRole('button',{name:'Iniciar partida'})
@@ -18,7 +19,7 @@ async function snapshot(page: Page,i: number) {
 
 test('la sala muestra los enfrentamientos y abre los ajustes de una sola plaza',async ({page},info)=>{
   await page.goto('/')
-  await page.getByRole('button',{name:/2v2 Blitz/}).click()
+  await openLobby(page,'blitz')
   const lineup = page.locator('.lobby-lineup')
   const arena = page.locator('.lobby-fighter')
   await expect(arena).toHaveCount(4)
@@ -28,7 +29,7 @@ test('la sala muestra los enfrentamientos y abre los ajustes de una sola plaza',
   const master = arena.first().locator('.lobby-fighter-art img')
   await expect(master).toHaveAttribute('src',/master-.*\.png$/)
   await expect.poll(()=>master.evaluate((img:HTMLImageElement)=>img.naturalHeight)).toBeGreaterThan(800)
-  await expect(arena.nth(1).locator('.lobby-fighter-art span')).toHaveText('NI')
+  await expect(arena.nth(1).locator('.lobby-fighter-art img')).toHaveAttribute('src',/master-.+\.png$/)
   for (const [width,height] of [[1920,1080],[1366,768],[390,844]]) {
     await page.setViewportSize({width,height})
     expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
@@ -65,11 +66,11 @@ test('menú, cuatro tableros horizontales, controles de teclado, pausa y reinici
   const errors: string[] = []
   page.on('pageerror',error => errors.push(error.message))
   await page.goto('/')
-  await expect(page.getByRole('heading',{name:/TETRA\s*VOLT\./})).toBeVisible()
+  await expect(page.locator('.arcade-brand')).toBeVisible()
   await expect(page.getByRole('button',{name:/VS[23]/})).toHaveCount(0)
-  await expect(page.getByRole('button',{name:/Equipos 2v2/})).toBeEnabled()
+  await expect(page.locator('[data-main-action="play"]')).toBeEnabled()
   await page.screenshot({path:info.outputPath('menu.png')})
-  await page.getByRole('button',{name:'Configuración'}).click()
+  await page.locator('[data-main-action="settings"], .bar [data-page="settings"]').click()
   await page.getByLabel('Gravedad inicial (celdas/s)').fill('0')
   await page.getByLabel('Semilla').fill('offline-seed')
   await page.getByRole('button',{name:'Volver'}).click()
@@ -101,14 +102,14 @@ test('menú, cuatro tableros horizontales, controles de teclado, pausa y reinici
 
 test('edita y conserva configuración, nombre y teclado, con guardado y conflictos', async ({page}) => {
   await page.goto('/')
-  await page.getByRole('button',{name:'Ver controles'}).click()
+  await page.locator('[data-main-action="controls"]').click()
   await page.locator('[data-action="left"]').click()
   await page.keyboard.press('KeyJ')
   await expect(page.getByRole('status')).toContainText('Conflicto')
   await page.locator('[data-action="left"]').click()
   await page.keyboard.press('KeyG')
   await expect(page.getByRole('status')).toContainText('Asignación guardada')
-  await page.getByRole('button',{name:'Configuración'}).click()
+  await page.locator('[data-main-action="settings"], .bar [data-page="settings"]').click()
   await page.getByLabel('Generador').selectOption('bag14')
   await page.getByLabel('Secuencia compartida').uncheck()
   await page.getByLabel('Reducir efectos').check()
@@ -182,7 +183,7 @@ test('cuatro mandos simulados, diagnóstico, reasignación de eje y reconexión 
     pads[1].connected = value
   },connected)
   await page.goto('/')
-  await page.getByRole('button',{name:'Configuración'}).click()
+  await page.locator('[data-main-action="settings"], .bar [data-page="settings"]').click()
   await page.getByLabel('Gravedad inicial (celdas/s)').fill('0')
   await page.getByRole('button',{name:'Volver'}).click()
   await lobby(page)
@@ -256,15 +257,15 @@ test('carga Zone jugando, sintetiza sonidos y entrega su ataque al terminar', as
     }
   })
   await page.goto('/')
-  await page.getByRole('button',{name:'Configuración'}).click()
+  await page.locator('[data-main-action="settings"], .bar [data-page="settings"]').click()
   await page.getByLabel('Gravedad inicial (celdas/s)').fill('0')
   await page.getByLabel('Progresión por línea').fill('0')
   await page.getByLabel('Semilla').fill('zone-arena')
-  const meter = page.getByLabel('Líneas por cuarto de Zone (0 = por fases)')
+  const meter = page.getByLabel('Líneas por cuarto de SURGE (0 = por fases)')
   await expect(meter).toHaveValue('0')
   await meter.fill('2')
   await page.getByText('Tabla de ataques',{exact:true}).click()
-  await page.getByLabel('Bonificación Zone',{exact:true}).fill('3')
+  await page.getByLabel('Bonificación SURGE',{exact:true}).fill('3')
   await page.getByRole('button',{name:'Volver'}).click()
   await lobby(page)
   await start(page)
@@ -304,7 +305,7 @@ test('carga Zone jugando, sintetiza sonidos y entrega su ataque al terminar', as
   await page.clock.resume()
   await page.screenshot({path:info.outputPath('zone.png')})
   await expect(j2.locator('.incoming')).toHaveText('0')
-  await expect(j1.locator('.zone-result')).toContainText('ZONE COMPLETADA', {timeout:6000})
+  await expect(j1.locator('.zone-result')).toContainText('SURGE COMPLETADO', {timeout:6000})
   await expect(j1.locator('.zone-result')).toContainText('Single')
   await expect(j1.locator('.zone-result')).toContainText('1 línea')
   await expect(j1.locator('.zone-result')).toHaveCSS('animation-name','zone-result-in')
@@ -350,7 +351,7 @@ async function pauseFinalFall(page: Page) {
 test('el tablero final cae intacto en VS4 y deja al ganador, estadísticas y revancha', async ({page},info) => {
   await pauseFinalFall(page)
   await page.goto('/')
-  await page.getByRole('button',{name:'Configuración'}).click()
+  await page.locator('[data-main-action="settings"], .bar [data-page="settings"]').click()
   await page.getByLabel('Gravedad inicial (celdas/s)').fill('0')
   await page.getByRole('button',{name:'Volver'}).click()
   await lobby(page)
@@ -363,6 +364,10 @@ test('el tablero final cae intacto en VS4 y deja al ganador, estadísticas y rev
   }
   await expect(page.getByRole('heading',{name:'Jugador 1 gana'})).toBeVisible()
   await expect(page.locator('.ranking li')).toHaveCount(4)
+  await expect(page.locator('.blitz-result-card')).toBeVisible()
+  await expect(page.locator('.blitz-result-winner')).toHaveCount(2)
+  await expect(page.locator('.blitz-result-loser')).toHaveCount(2)
+  await expect(page.locator('.blitz-result-winner img')).toHaveCount(2)
   await expect(page.locator('.ranking li').nth(1)).toContainText('Jugador 4')
   const defeat = page.locator('li:has([data-result-player="3"]) .character-caption')
   await expect(defeat).toBeVisible()
@@ -432,7 +437,7 @@ test('la pila crítica activa el marco rojo y la alarma sintetizada', async ({pa
     }
   })
   await page.goto('/')
-  await page.getByRole('button',{name:'Configuración'}).click()
+  await page.locator('[data-main-action="settings"], .bar [data-page="settings"]').click()
   await page.getByLabel('Gravedad inicial (celdas/s)').fill('0')
   await page.getByLabel('Semilla').fill('alerta')
   await page.getByLabel('Voces de ataques').uncheck()
@@ -467,7 +472,7 @@ test('la pila crítica activa el marco rojo y la alarma sintetizada', async ({pa
 
 test('Equipos 2v2 admite personas e IA, jugar y volver a cargar las dificultades', async ({page}) => {
   await page.goto('/')
-  await page.getByRole('button',{name:/Equipos 2v2/}).click()
+  await openLobby(page,'teams')
   await expect(page.getByRole('heading',{name:'Sala Equipos 2v2'})).toBeVisible()
   const start = page.getByRole('button',{name:'Iniciar partida'})
   await expect(page.locator('#lobby-seat-editor')).toBeHidden()
@@ -494,7 +499,7 @@ test('Equipos 2v2 admite personas e IA, jugar y volver a cargar las dificultades
   const before = await snapshot(page,1)
   await expect.poll(()=>snapshot(page,1)).not.toBe(before)
   await page.reload()
-  await page.getByRole('button',{name:/Equipos 2v2/}).click()
+  await openLobby(page,'teams')
   await expect(page.locator('[data-controller="1"]')).toHaveValue('bot')
   await expect(page.locator('[data-level="1"]')).toHaveValue('10')
   await expect(page.locator('[data-level="3"]')).toHaveValue('1')
@@ -503,10 +508,10 @@ test('Equipos 2v2 admite personas e IA, jugar y volver a cargar las dificultades
 test('el resultado de un 2v2 incluye al compañero eliminado en el equipo ganador', async ({page}) => {
   await page.emulateMedia({reducedMotion:'reduce'})
   await page.goto('/')
-  await page.getByRole('button',{name:'Configuración'}).click()
+  await page.locator('[data-main-action="settings"], .bar [data-page="settings"]').click()
   await page.getByLabel('Gravedad inicial (celdas/s)').fill('0')
   await page.getByRole('button',{name:'Volver'}).click()
-  await page.getByRole('button',{name:/Equipos 2v2/}).click()
+  await openLobby(page,'teams')
   await start(page)
   for (const [slot,key] of [[1,'KeyI'],[2,'ArrowUp'],[3,'Numpad8']] as const) {
     for (let i=0;i<14;i++) await page.keyboard.press(key,{delay:19})
@@ -529,11 +534,11 @@ test('Blitz reutiliza mandos y teclado, intercambia dos tableros y conserva la r
     ]})
   })
   await page.goto('/')
-  await page.getByRole('button',{name:'Configuración'}).click()
+  await page.locator('[data-main-action="settings"], .bar [data-page="settings"]').click()
   await page.getByLabel('Gravedad inicial (celdas/s)').fill('0')
   await page.getByLabel('Semilla').fill('blitz-vista')
   await page.getByRole('button',{name:'Volver'}).click()
-  await page.getByRole('button',{name:/2v2 Blitz/}).click()
+  await openLobby(page,'blitz')
   await expect(page.getByRole('heading',{name:'Sala 2v2 Blitz'})).toBeVisible()
   await page.locator('[data-seat-settings="3"]').click()
   await page.locator('[data-device="3"]').selectOption('0')
@@ -626,7 +631,7 @@ test('la música de Blitz hace bucle, conserva el nivel con efectos y sigue las 
     Object.defineProperty(window,'testMusic',{value:music})
     AudioContext.prototype.createMediaElementSource = function(track) {
       const source = create.call(this,track)
-      if (!new URL(track.src).pathname.endsWith('.mp3')) return source
+      if (!/\/(blitz|selection)-[^/]+\.mp3$/.test(new URL(track.src).pathname)) return source
       music.track = track
       const connect = source.connect.bind(source)
       source.connect = ((destination:GainNode)=>{
@@ -646,7 +651,7 @@ test('la música de Blitz hace bucle, conserva el nivel con efectos y sigue las 
   })
   await page.goto('/')
   expect(await state()).toBeNull()
-  await page.getByRole('button',{name:/2v2 Blitz/}).click()
+  await openLobby(page,'blitz')
   await start(page)
   await expect.poll(async ()=>(await state())?.paused).toBe(false)
   await expect.poll(async ()=>(await state())?.duration).toBeGreaterThan(1)
@@ -675,11 +680,11 @@ test('la música de Blitz hace bucle, conserva el nivel con efectos y sigue las 
 test('Blitz oculta el contador en el duelo final y muestra misiones al costado',async ({page},info)=>{
   await pauseFinalFall(page)
   await page.goto('/')
-  await page.getByRole('button',{name:'Configuración'}).click()
+  await page.locator('[data-main-action="settings"], .bar [data-page="settings"]').click()
   await page.getByLabel('Gravedad inicial (celdas/s)').fill('0')
   await page.getByLabel('Semilla').fill('alerta')
   await page.getByRole('button',{name:'Volver'}).click()
-  await page.getByRole('button',{name:/2v2 Blitz/}).click()
+  await openLobby(page,'blitz')
   await page.getByText('Reglas de Blitz',{exact:true}).click()
   await page.getByLabel('Turno (segundos)',{exact:true}).fill('3')
   await start(page)

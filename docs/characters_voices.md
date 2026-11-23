@@ -5,7 +5,7 @@ Evento	Frase japonesa	Traducción al español
 3. Spin	まだまだ行くぜ！	¡Todavía puedo dar más!
 4. Combo alto	止まらねえぜ！	¡No hay quien me detenga!
 5. Activación SURGE	ここから本気だ！	¡Ahora voy en serio!
-6. SURGE definitiva	サンダー・オーバードライブ！	¡Thunder Overdrive!
+6. SURGE definitiva	サンダー・ブレイカー！	¡Thunder Breaker!
 7. Peligro crítico	ちっ、やばいな…！	Tch... ¡Esto se complica!
 8. Victoria	へっ、俺の勝ちだ！	¡Je, gané yo!
 9. Derrota	くそっ、次は負けねえ！	¡Maldita sea, la próxima no pierdo!

@@ -203,12 +203,12 @@ export class Player {
       power:result.attack+(zoned ? lines : 0), zoned})
     this.combo = result.combo
     this.chain = result.chain
+    if (perfect) this.event('perfect')
     if (spin) this.event(spin === 'T' ? ['tZero','tSingle','tDouble','tTriple'][lines] ?? 'tTriple' :
       spin === 'mini' ? 'mini' : 'spin'+spin, String(lines))
     else if (lines) this.event(clearNames[lines])
     if (result.b2b) this.event('backToBack')
     if (this.combo > 0) this.event('combo',String(this.combo))
-    if (perfect) this.event('perfect')
     if (!zoned && hidden && !lines) { this.eliminate(); return }
 
     const attack = this.send(this.zone.clear(lines,result.attack,this.rules,quarterLines))

@@ -35,7 +35,7 @@ it('registra los seis personajes, los nueve retratos y las catorce voces de cada
   }
 })
 
-it.each(['volt','pix'] as const)('resuelve la maestra, las nueve expresiones, las poses y el fondo de %s',id=>{
+it.each(['volt','pix','nix','astra','blaze'] as const)('resuelve la maestra, las nueve expresiones, las poses y el fondo de %s',id=>{
   const assets = CHARACTERS[id].assets
   for (const key of [assets.master,...Object.values(assets.portraits),assets.attackPose,assets.zonePose,assets.zoneBackground]) {
     expect(artwork(key),key).toMatch(/\.png$/)

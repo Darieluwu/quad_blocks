@@ -13,6 +13,30 @@
   animation:cinematic-storm var(--scene-time) ease-out both;
 }
 .cinematic-scene[data-direction="left"] .cinematic-background { object-position:95% 50% }
+.cinematic-scene[data-channel="team-a"],.cinematic-scene[data-channel="team-b"] {
+  z-index:4;
+  width:auto;
+  max-width:none;
+  border-radius:6px;
+  clip-path:polygon(4% 0,100% 0,100% 91%,96% 100%,0 100%,0 9%);
+}
+.cinematic-scene[data-channel="team-a"] { border-bottom:1px solid color-mix(in srgb,var(--scene-color) 55%,transparent) }
+.cinematic-scene[data-channel="team-b"] { border-top:1px solid color-mix(in srgb,var(--scene-color) 55%,transparent) }
+.cinematic-scene[data-channel="team-a"] .cinematic-background,
+.cinematic-scene[data-channel="team-b"] .cinematic-background {
+  object-fit:cover;
+  object-position:50% 24%;
+}
+.cinematic-scene[data-channel="team-a"] .cinematic-pose,
+.cinematic-scene[data-channel="team-b"] .cinematic-pose {
+  left:50%;
+  height:112%;
+  width:auto;
+  max-height:none;
+  object-fit:contain;
+  object-position:center 18%;
+  transform-origin:50% 42%;
+}
 .cinematic-grid {
   background:linear-gradient(0deg,#110b16 2%,transparent 35%,transparent 82%,#110b166b),
     repeating-linear-gradient(0deg,transparent 0 4px,#f9d39110 5px 6px);
@@ -77,6 +101,14 @@
   28%,82% { opacity:1; transform:translateY(0) skewX(-5deg) }
   to { opacity:0; transform:translateY(-5px) skewX(-9deg) }
 }
+.cinematic-scene[data-character="volt"] .cinematic-title {
+  animation-name:cinematic-name-thunder-breaker;
+}
+@keyframes cinematic-name-thunder-breaker {
+  from,38% { opacity:0; transform:translateY(18px) skewX(-16deg) }
+  48%,82% { opacity:1; transform:translateY(0) skewX(-5deg) }
+  to { opacity:0; transform:translateY(-5px) skewX(-9deg) }
+}
 @keyframes cinematic-spark {
   from { opacity:0; transform:rotate(var(--angle)) translateX(6px) scaleX(.25) }
   20% { opacity:1 }
@@ -117,9 +149,177 @@
 .cinematic-edge.cinematic-digital i { width:15px; height:11px; background:#b9fc79; clip-path:polygon(0 0,61% 0,61% 38%,100% 38%,100% 100%,0 100%) }
 .cinematic-edge.cinematic-digital i:nth-child(even) { background:#a163ef }
 .cinematic-charge.cinematic-digital { animation-name:cinematic-hack; animation-duration:660ms }
-.cinematic-charge.cinematic-digital img {
+.cinematic-charge:is(.cinematic-digital,.cinematic-frost,.cinematic-cosmic,.cinematic-fire) img {
   position:absolute; inset:4px 5px auto auto; width:min(27%,86px); height:64px; object-fit:cover; object-position:center 9%;
   mask-image:linear-gradient(90deg,transparent,#000 48%); opacity:.7
+}
+.cinematic-scene.cinematic-fire { background:#291009; border-color:#ff8c47 }
+.cinematic-fire .cinematic-grid {
+  background:linear-gradient(0deg,#1b0806 1%,transparent 53%),radial-gradient(ellipse at 52% 66%,#da501b1a,#2a0d0770);
+}
+.cinematic-fire .cinematic-grid::before {
+  content:""; position:absolute; inset:0; opacity:0; pointer-events:none;
+  background:linear-gradient(173deg,transparent 46%,#ff66298c 48%,#ffd85f 50%,#ff822e 51%,transparent 55%);
+  animation:inferno-ignition var(--scene-time) ease-out both;
+}
+.cinematic-fire .cinematic-grid::after {
+  content:""; position:absolute; left:50%; top:58%; width:62%; aspect-ratio:1;
+  border:2px solid #ffbe64; border-radius:50%; box-shadow:0 0 12px #ff922e,inset 0 0 7px #ff882d;
+  animation:inferno-wave 390ms 540ms ease-out both;
+}
+.cinematic-fire .cinematic-flames {
+  fill:#ed661c70; stroke:#ffbc59; filter:drop-shadow(0 0 12px #ff602b);
+}
+.cinematic-fire .cinematic-pose { animation-name:inferno-figure }
+.cinematic-scene.cinematic-fire[data-channel] .cinematic-pose {
+  height:140%; top:0; max-width:none; transform-origin:center 26%;
+}
+.cinematic-fire .cinematic-sparks i {
+  width:12px; height:5px; border-radius:60% 15%; background:#fff09b; box-shadow:0 0 8px #ff6521;
+}
+.cinematic-fire .cinematic-title {
+  font-size:clamp(23px,13.2cqi,50px); color:#fff0c6; text-shadow:2px 2px #b5370e,0 0 11px #421604;
+}
+.cinematic-fire .cinematic-beam { fill:#ff652966; filter:drop-shadow(0 0 10px #ff8b2e) }
+.cinematic-fire[data-delivery="false"] .cinematic-beam { display:none }
+.cinematic-edge.cinematic-fire { box-shadow:inset 0 0 12px #ff9b42,0 0 23px #f65b27 }
+.cinematic-edge.cinematic-fire i {
+  width:29px; height:17px; background:linear-gradient(15deg,#fff0a1,#ff932d,#e4421a);
+  clip-path:polygon(0 80%,28% 28%,31% 55%,63% 4%,60% 42%,100% 27%,80% 80%,41% 100%);
+}
+.cinematic-charge.cinematic-fire { animation-duration:720ms }
+.cinematic-charge.cinematic-fire::after {
+  content:""; position:absolute; inset:0; border-radius:inherit; border:2px solid #ffae59;
+  mask-image:linear-gradient(128deg,#000 10%,transparent 58%); box-shadow:inset 0 0 14px #ff792d;
+  animation:inferno-ignition 720ms ease-out both;
+}
+.hud-portrait[data-theme="fire"]:has([data-portrait="zone"]) { box-shadow:0 0 17px #ff783880 }
+@keyframes inferno-ignition {
+  from { opacity:0; clip-path:inset(0 100% 0 0) }
+  22% { opacity:.93; clip-path:inset(0) }
+  44% { opacity:.16 }
+  76% { opacity:.75 }
+  to { opacity:0; clip-path:inset(0 0 0 92%) }
+}
+@keyframes inferno-wave {
+  from { opacity:.77; transform:translate(-50%,-50%) scale(.18) }
+  to { opacity:0; transform:translate(-50%,-50%) scale(1.72) }
+}
+@keyframes inferno-figure {
+  from { opacity:0; transform:translate(calc(-50% + 90px*var(--scene-entry)),15%) scale(.82) }
+  22% { opacity:1; transform:translate(-50%,0) scale(1.08) }
+  38%,67% { opacity:1; transform:translate(-50%,0) scale(1.02) }
+  to { opacity:0; transform:translate(-50%,-3%) scale(1.19) }
+}
+.cinematic-scene.cinematic-cosmic { background:#120823; border-color:#be88f7 }
+.cinematic-cosmic .cinematic-grid {
+  background:linear-gradient(0deg,#120823 2%,transparent 44%),radial-gradient(ellipse at 50% 42%,transparent 24%,#1b084985);
+}
+.cinematic-cosmic .cinematic-grid::after {
+  content:""; position:absolute; left:59%; top:37%; width:36%; aspect-ratio:1;
+  border-radius:50%; border:2px solid #fae4ff;
+  background:radial-gradient(circle,#04000c 0 41%,#48177e 54%,#c18bff 68%,#f9e7ff 73%);
+  box-shadow:0 0 23px #a362ff,0 0 56px #783dff; animation:cosmic-collapse var(--scene-time) ease-in-out both;
+}
+.cinematic-cosmic .cinematic-background { animation-name:cosmic-lens }
+.cinematic-cosmic .cinematic-orbits {
+  stroke:#e6c3fc; stroke-width:1.5px; transform-origin:53% 42%; animation:cosmic-orbit var(--scene-time) ease-out both;
+}
+.cinematic-cosmic .cinematic-sparks i {
+  width:12px; height:12px; border-radius:0;
+  clip-path:polygon(50% 0,62% 39%,100% 50%,62% 61%,50% 100%,38% 61%,0 50%,38% 39%);
+  animation-duration:650ms; animation-delay:var(--delay); animation-name:cosmic-infall;
+}
+.cinematic-cosmic .cinematic-beam { fill:#b989ff42; stroke:#f2d8ff; filter:drop-shadow(0 0 12px #ba85ff) }
+.cinematic-cosmic[data-delivery="false"] .cinematic-beam { display:none }
+.cinematic-cosmic .cinematic-title {
+  font-size:clamp(24px,13.6cqi,49px); color:#fff4de;
+  text-shadow:2px 2px #693b9c,0 0 10px #250042,0 3px 14px #120823;
+}
+.cinematic-edge.cinematic-cosmic { box-shadow:inset 0 0 10px #a36dff,0 0 25px #ad7ef3 }
+.cinematic-edge.cinematic-cosmic i {
+  width:23px; height:23px; background:#fff0c8;
+  clip-path:polygon(50% 0,61% 39%,100% 50%,61% 61%,50% 100%,39% 61%,0 50%,39% 39%);
+}
+.cinematic-charge.cinematic-cosmic { animation-duration:690ms }
+.cinematic-charge.cinematic-cosmic::after {
+  content:""; position:absolute; inset:4px 5px auto auto; width:min(26%,84px); height:61px;
+  border:2px solid #d1a3ff; border-radius:50%; box-shadow:0 0 15px #a976ef;
+  animation:cosmic-orbit 690ms ease-out both;
+}
+.hud-portrait[data-theme="cosmic"]:has([data-portrait="zone"]) { box-shadow:0 0 17px #b184ff80 }
+@keyframes cosmic-lens {
+  from { opacity:.35; transform:scale(1.27,.99) rotate(-5deg) }
+  37%,76% { opacity:.94; transform:scale(1.07) rotate(0) }
+  to { opacity:.45; transform:scale(1.18,1.04) rotate(3deg) }
+}
+@keyframes cosmic-collapse {
+  0% { opacity:0; transform:translate(-50%,-50%) scale(.15) }
+  37%,64% { opacity:.9; transform:translate(-50%,-50%) scale(1) }
+  77% { opacity:1; transform:translate(-50%,-50%) scale(.25) }
+  83% { opacity:.89; transform:translate(-50%,-50%) scale(1.48); background:#e7c4fd }
+  to { opacity:0; transform:translate(-50%,-50%) scale(.04) }
+}
+@keyframes cosmic-orbit {
+  from { opacity:0; transform:rotate(-37deg) scale(.45,.84) }
+  33%,59% { opacity:.86 }
+  to { opacity:0; transform:rotate(27deg) scale(1.28,1.14) }
+}
+@keyframes cosmic-infall {
+  from { opacity:0; transform:rotate(var(--angle)) translateX(var(--distance)) scale(.6) }
+  34% { opacity:1 }
+  to { opacity:0; transform:rotate(calc(var(--angle) + 92deg)) translateX(13px) scale(.13) }
+}
+.cinematic-scene.cinematic-frost { background:#0a213b }
+.cinematic-frost .cinematic-grid {
+  background:linear-gradient(0deg,#06152f 1%,transparent 40%),
+    linear-gradient(155deg,#e6f9ff66 0 11%,transparent 32% 74%,#b6edff33 96%);
+}
+.cinematic-frost .cinematic-grid::after {
+  content:""; position:absolute; inset:0;
+  background:linear-gradient(111deg,transparent 34%,#bbecff6b 45%,#f6fdffa6 51%,transparent 65%);
+  animation:cinematic-frost-sweep var(--scene-time) ease-out both;
+}
+.cinematic-frost .cinematic-electricity g {
+  transform-origin:center; fill:#88cbfc63; animation:cinematic-frost-converge var(--scene-time) ease-out both;
+}
+.cinematic-frost .cinematic-sparks i {
+  width:13px; height:6px; border-radius:0;
+  clip-path:polygon(0 55%,68% 0,100% 47%,61% 100%);
+}
+.cinematic-frost .cinematic-title {
+  color:#e4f7ff; font-size:clamp(22px,12.3cqi,47px); letter-spacing:-.065em;
+  text-shadow:2px 2px #205d99,0 0 10px #031325,0 3px 12px #061c38;
+}
+.cinematic-frost .cinematic-beam { fill:#c2edff3b; filter:drop-shadow(0 0 9px #81d9ff) }
+.cinematic-edge.cinematic-frost { box-shadow:inset 0 0 11px #bcecff,0 0 26px #8bd7ff }
+.cinematic-edge.cinematic-frost i {
+  width:31px; height:17px; background:linear-gradient(155deg,#f4fcff,#93dbff 48%,#4289d7 51%,#c4edff);
+  clip-path:polygon(0 61%,68% 0,100% 46%,64% 92%);
+}
+.cinematic-charge.cinematic-frost { animation-name:cinematic-freeze; animation-duration:680ms }
+.cinematic-charge.cinematic-frost::after {
+  content:""; position:absolute; inset:0; border-radius:inherit; border:2px solid #c1ecff;
+  mask-image:linear-gradient(125deg,#000,transparent 60%); box-shadow:inset 0 0 10px #bceaff;
+  animation:cinematic-frost-sweep 680ms ease-out both;
+}
+.hud-portrait[data-theme="frost"]:has([data-portrait="zone"]) {
+  box-shadow:0 0 16px #83d8ff88;
+}
+@keyframes cinematic-frost-sweep {
+  0% { opacity:0; clip-path:inset(0 100% 0 0) }
+  21% { opacity:.9; clip-path:inset(0) }
+  65%,100% { opacity:0; clip-path:inset(0 0 0 85%) }
+}
+@keyframes cinematic-frost-converge {
+  from { transform:scale(1.3) }
+  59% { transform:scale(.82) }
+  to { transform:scale(1.18) }
+}
+@keyframes cinematic-freeze {
+  0%,100% { opacity:0 }
+  20% { opacity:1 }
+  57% { opacity:.65 }
 }
 .cinematic-charge.cinematic-digital::after { content:""; position:absolute; inset:0; border-top:3px solid #43ffd296;
   background:repeating-linear-gradient(0deg,transparent 0 10px,#5df6ed1c 10px 11px);
@@ -146,3 +346,11 @@
 .dialogue-slot[data-cinematic-line] .character-caption { --dialogue-accent:var(--scene-color) }
 .reduced :is(.cinematic-layer,.cinematic-edge),.no-attack-animation :is(.cinematic-layer,.cinematic-edge) { visibility:hidden }
 @media (prefers-reduced-motion:reduce) { .cinematic-layer,.cinematic-edge { visibility:hidden } }
+@media (max-width:950px) {
+  .cinematic-scene[data-channel] {
+    z-index:5;
+  }
+  .cinematic-scene[data-channel] .cinematic-title {
+    font-size:clamp(20px,11cqi,38px);
+  }
+}

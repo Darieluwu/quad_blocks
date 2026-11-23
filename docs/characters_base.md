@@ -38,7 +38,7 @@ Ataques característicos
 - Spin: Volt Spiral
 - Defensa de equipo: Static Guard
 - Combo alto / gran presión: Chain Spark
-- SURGE definitiva: Thunder Overdrive
+- SURGE definitiva: THUNDER BREAKER
 Cinemática SURGE
 Volt entra desde un lateral con una aceleración brusca, como si irrumpiera cargado de electricidad.
 Su cuerpo se rodea de rayos y líneas de energía. Extiende el brazo hacia delante y descarga un gran relámpago hacia el rival.
