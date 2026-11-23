@@ -5,7 +5,7 @@ import { HZ, PLAYERS, SETTINGS } from './engine/rules'
 import { ACTIONS, NO_INPUT, type Action } from './engine/player'
 import { BOT_LEVELS, botLevel } from './engine/bot'
 import { Inputs, automaticPadMap, conflict, defaultMap, keyboardClashes, label, padBindings, pressedButtons } from './input'
-import { Sound, type DialogueState } from './audio'
+import { Sound, comboRisePlaybackRate, type DialogueState } from './audio'
 import { mountArena } from './render'
 import { ATTACK_LABELS, BLITZ_NUMBERS, NUMBER_RULES, freshRules, loadSettings, saveSettings, type Mix, type Profile } from './settings'
 import { configuration, controls, credits, diagnostic, diagnosticsPage, escape, footer, header, home, icon, lobby, modeName, modeSelect, teamName, type Mode } from './menu'
@@ -261,7 +261,7 @@ function pause(reason = '') {
 function resume() {
   if (phase !== 'paused' || !match || disconnected(match.roster).length) return
   phase = resumePhase
-  if (match instanceof BlitzMatch) audio.resumeMusic()
+  if (match instanceof BlitzMatch || (mode==='versus' && match.roster.length===PLAYERS)) audio.resumeMusic()
   inputs.clear()
   drawOverlay()
 }
@@ -296,7 +296,6 @@ function drawOverlay() {
   if (mode==='blitz' && !victoryPlayed) {
     victoryPlayed=true
     audio.wake()
-    audio.duckMusic(.55,3)
     audio.playEffect('victory-stinger',.9)
   }
   const animate = arena?.finish(currentMatch,finalFallen)
@@ -326,8 +325,8 @@ function drawOverlay() {
   const blitzResult = mode==='blitz' && currentMatch instanceof BlitzMatch ? (()=> {
     const winningTeam=currentMatch.winningTeam
     if (winningTeam===null) return ''
-    const winning=currentMatch.roster.flatMap((participant,index)=>participant.team===winningTeam?[index]:[])
-    const losing= currentMatch.roster.flatMap((participant,index)=>participant.team!==winningTeam?[index]:[])
+    const winning=matchCharacters.flatMap((_,index)=>currentMatch.roster[index]?.team===winningTeam?[index]:[])
+    const losing=matchCharacters.flatMap((_,index)=>currentMatch.roster[index]?.team!==winningTeam?[index]:[])
     const artCard=(index:number,kind:'winner'|'loser')=>{
       const id=matchCharacters[currentMatch.roster[index].slot]
       const character=CHARACTERS[id]
@@ -396,7 +395,10 @@ function receiveOnline(message: ServerMessage) {
       } else if (page==='game' && message.lobby.phase!=='results') {
         phase = message.lobby.phase==='countdown' ? 'countdown' : 'live'
         audio.resumeMusic()
-        if (phase==='live' && !battleGoPlayed) { battleGoPlayed=true; audio.playEffect('battle-go',.9) }
+        if (phase==='live') {
+          if (!battleGoPlayed) { battleGoPlayed=true; audio.playEffect('battle-go',.9) }
+          if (mode==='versus' && match?.roster.length===PLAYERS) audio.setMusic('vs4')
+        }
       }
       break
     }
@@ -729,6 +731,8 @@ app.addEventListener('input',event => {
   if (el.dataset.volume) {
     const key = el.dataset.volume as Exclude<keyof Mix,'mute'>
     settings.audio[key] = Number(el.value)
+    const label=el.closest('.volume')?.querySelector<HTMLElement>('.volume-value')
+    if (label) label.textContent=`${Math.round(settings.audio[key]*100)}%`
     audio.update(); store()
   }
 })
@@ -1184,7 +1188,8 @@ function playEvent(activeMatch: Match, i: number, event: Match['players'][number
   } else if (event.type==='combo') {
     if ((perfectSeen.get(i)??-1)!==activeMatch.now) {
       const level=Math.max(1,Number(event.detail)||1)
-      audio.playEffect('combo-rise',.68,1+Math.min(.16,level*.018))
+      const playbackRate=comboRisePlaybackRate(level)
+      audio.playEffect('combo-rise',.68,playbackRate)
     }
   } else if (event.type==='critical') {
     if (!activeMatch.players[i].dead && !criticalSeen.has(i)) {
@@ -1196,7 +1201,6 @@ function playEvent(activeMatch: Match, i: number, event: Match['players'][number
   } else if (event.type==='zoneStart') {
     audio.playEffect('surge-activate',.82)
   } else if (event.type==='zoneEnd') {
-    audio.duckMusic(.68,2)
     audio.playEffect('surge-finish',.82)
   } else if (event.type==='blitzWarning') {
     if (!blitzWarningSent) {
@@ -1261,6 +1265,7 @@ function frame(now: number) {
       }
       if (--countdown <= 0) {
         phase='live'
+        if (mode==='versus' && match?.roster.length===PLAYERS) audio.setMusic('vs4')
         if (!battleGoPlayed) { battleGoPlayed=true; audio.playEffect('battle-go',.9) }
       }
       continue

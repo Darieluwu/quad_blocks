@@ -21,6 +21,18 @@
   clip-path:polygon(4% 0,100% 0,100% 91%,96% 100%,0 100%,0 9%);
 }
 .cinematic-scene[data-channel="team-a"] { border-bottom:1px solid color-mix(in srgb,var(--scene-color) 55%,transparent) }
+.cinematic-scene[data-layout="vs4"] {
+  z-index:12;
+  border-radius:8px;
+  clip-path:polygon(3% 0,100% 0,100% 92%,97% 100%,0 100%,0 8%);
+  box-shadow:0 12px 28px #05071088,0 0 18px color-mix(in srgb,var(--scene-color) 18%,transparent);
+}
+.cinematic-scene[data-layout="vs4"] .cinematic-pose {
+  height:118%;
+  max-width:82%;
+  object-fit:contain;
+  object-position:center 18%;
+}
 .cinematic-scene[data-channel="team-b"] { border-top:1px solid color-mix(in srgb,var(--scene-color) 55%,transparent) }
 .cinematic-scene[data-channel="team-a"] .cinematic-background,
 .cinematic-scene[data-channel="team-b"] .cinematic-background {
@@ -212,6 +224,10 @@
   to { opacity:0; transform:translate(-50%,-3%) scale(1.19) }
 }
 .cinematic-scene.cinematic-cosmic { background:#120823; border-color:#be88f7 }
+.cinematic-scene.cinematic-lunar { background:radial-gradient(ellipse at 52% 43%,#51317c,#18102f 62%,#090816);border-color:#d4b2ff }
+.cinematic-lunar .cinematic-grid { background:radial-gradient(circle at 50% 35%,#ffd67018,transparent 28%),linear-gradient(0deg,#130d28 2%,transparent 52%) }
+.cinematic-lunar .cinematic-pose { filter:drop-shadow(0 0 16px #bd8bffaa) drop-shadow(0 10px 24px #090712) }
+.cinematic-lunar .cinematic-title { color:#fff3bd;text-shadow:2px 2px #4d2d79,0 0 16px #c9a0ff }
 .cinematic-cosmic .cinematic-grid {
   background:linear-gradient(0deg,#120823 2%,transparent 44%),radial-gradient(ellipse at 50% 42%,transparent 24%,#1b084985);
 }

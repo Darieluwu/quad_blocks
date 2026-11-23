@@ -3,7 +3,7 @@ import { conflict, defaultSlot, type Slot } from './input'
 import { botLevel } from './engine/bot'
 import { DEFAULT_BLITZ, type BlitzRules } from './engine/blitz'
 import { CHARACTER_OPTIONS, uniqueCharacters, type CharacterId, type CharacterOptions } from './characters/catalog'
-export const MIX = {master:0.72,move:0.52,play:0.8,attack:0.64,alert:0.55,zone:0.75,effects:0.58,music:0.10}
+export const MIX = {master:0.72,music:0.10,voices:0.85,move:0.52,play:0.8,attack:0.64,alert:0.55,zone:0.75,effects:0.58}
 export type Mix = typeof MIX & {mute:boolean}
 export type Profile = 'Competitivo'|'Casual'|'Personalizado'
 export type Settings = {rules:Rules; profile:Profile; reduced:boolean; metrics:boolean; audio:Mix; slots:Slot[];
@@ -38,6 +38,7 @@ export function loadSettings(): Settings {
   try {
     const value = JSON.parse(localStorage.getItem(STORAGE) ?? 'null') as StoredSettings|null
     if (!value) return defaults
+    const savedAudio=value.audio as Partial<Mix>&{[key:string]:unknown}|undefined
     const {charge,...savedRules} = value.rules ?? {}
     const rules = {...defaults.rules,...savedRules,attack:{...defaults.rules.attack,...savedRules.attack}}
     if (savedRules.zoneQuarterLines===undefined && charge!==undefined && Number.isFinite(charge)) {
@@ -71,7 +72,12 @@ export function loadSettings(): Settings {
       const option = value.characterOptions?.[key]
       if (typeof option==='boolean') characterOptions[key] = option
     }
-    return {...defaults,...value,rules,audio:{...defaults.audio,...value.audio},controllers,slots,blitz,
+    const audio={...defaults.audio,...savedAudio}
+    if (typeof audio.music==='number') audio.music=Math.min(1,Math.max(0,audio.music))
+    if (typeof savedAudio?.voices!=='number') {
+      audio.voices=.85
+    }
+    return {...defaults,...value,rules,audio,controllers,slots,blitz,
       characters:uniqueCharacters(value.characters),characterOptions}
   } catch { return defaults }
 }

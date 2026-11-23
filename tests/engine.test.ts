@@ -8,8 +8,16 @@ import { Garbage, garbageProjection } from '../src/engine/garbage'
 import { Zone, zoneTitle } from '../src/engine/zone'
 import { DEFAULT_RULES, HEIGHT, HIDDEN, HZ, RANDOM_TARGET_TICKS, SETTINGS, WIDTH, type Rules } from '../src/engine/rules'
 import { automaticPadMap, conflict, defaultSlot, keyboardClashes, resolvePads } from '../src/input'
+import { comboRisePlaybackRate } from '../src/audio'
 
 const settings = (patch: Partial<Rules> = {}): Rules => ({...DEFAULT_RULES,gravity:0,progression:0,...patch})
+
+it('combo-rise asciende hasta cinco semitonos y se mantiene limitado',()=>{
+  expect(comboRisePlaybackRate(1)).toBeCloseTo(1)
+  expect(comboRisePlaybackRate(2)).toBeCloseTo(Math.pow(2,1/12))
+  expect(comboRisePlaybackRate(6)).toBeCloseTo(Math.pow(2,5/12))
+  expect(comboRisePlaybackRate(50)).toBeCloseTo(Math.pow(2,5/12))
+})
 const press = (...pressed: Action[]) => ({held:new Set(pressed),pressed})
 const player = (patch: Partial<Rules> = {}) => new Player(settings(patch),pieceSource('bag7',1))
 const fixture = (p: Player, rows = 4) => {

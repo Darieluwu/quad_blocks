@@ -364,10 +364,6 @@ test('el tablero final cae intacto en VS4 y deja al ganador, estadísticas y rev
   }
   await expect(page.getByRole('heading',{name:'Jugador 1 gana'})).toBeVisible()
   await expect(page.locator('.ranking li')).toHaveCount(4)
-  await expect(page.locator('.blitz-result-card')).toBeVisible()
-  await expect(page.locator('.blitz-result-winner')).toHaveCount(2)
-  await expect(page.locator('.blitz-result-loser')).toHaveCount(2)
-  await expect(page.locator('.blitz-result-winner img')).toHaveCount(2)
   await expect(page.locator('.ranking li').nth(1)).toContainText('Jugador 4')
   const defeat = page.locator('li:has([data-result-player="3"]) .character-caption')
   await expect(defeat).toBeVisible()

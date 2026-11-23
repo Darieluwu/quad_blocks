@@ -53,7 +53,7 @@ it('mezcla cuatro plazas, interrumpe solo la plaza vigente y mantiene las alerta
       expect(clip.pause).not.toHaveBeenCalled()
     }
     const dialogueGain = Context.sources[0].outputs[0] as ReturnType<typeof gainNode>
-    expect(dialogueGain.gain.setTargetAtTime).toHaveBeenLastCalledWith(.21,1,.024)
+    expect(dialogueGain.gain.setTargetAtTime).toHaveBeenLastCalledWith(.1785,1,.024)
     const dialogueBus = dialogueGain.outputs[0].outputs[0]
     for (let i=0;i<4;i++) mixer.play({type:'quad'},i)
     expect(Context.oscillators).toHaveLength(20)

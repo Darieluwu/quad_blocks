@@ -5,6 +5,7 @@ import './digital-feedback.css'
 import './frost-feedback.css'
 import './cosmic-feedback.css'
 import './fire-feedback.css'
+import './lunar-feedback.css'
 
 const fragments = '<i></i>'.repeat(6)
 type FeedbackTheme = Exclude<CharacterVisual['theme'],'electric'>

@@ -1,14 +1,20 @@
 import type { Mix } from './settings'
 import type { GameEvent } from './engine/player'
 import blitzTrack from './music/blitz.mp3?url'
-type Music = 'blitz'|'selection'|'menu'
+import vs4Track from './music/vs4.mp3?url'
+type Music = 'blitz'|'selection'|'menu'|'vs4'
 const optionalTracks = import.meta.glob<string>('./music/selection.mp3',{eager:true,import:'default',query:'?url&no-inline'})
 const optionalMenu = import.meta.glob<string>('./music/menu.mp3',{eager:true,import:'default',query:'?url&no-inline'})
-const tracks:Record<Music,string|undefined> = {blitz:blitzTrack,selection:optionalTracks['./music/selection.mp3'],menu:optionalMenu['./music/menu.mp3']}
+const tracks:Record<Music,string|undefined> = {blitz:blitzTrack,selection:optionalTracks['./music/selection.mp3'],menu:optionalMenu['./music/menu.mp3'],vs4:vs4Track}
 const optionalEffects = import.meta.glob<string>('./music/sfx/*.{mp3,ogg,wav}',{eager:true,import:'default',query:'?url&no-inline'})
 export type CinematicEffect =
   'battle-start'|'countdown-tick'|'battle-go'|'combo-rise'|'perfect-clear'|'danger-alert'|'surge-ready'|
   'surge-activate'|'surge-finish'|'blitz-swap-warning'|'blitz-swap'|'teammate-down'|'teammate-revive'|'victory-stinger'
+export function comboRisePlaybackRate(level:number) {
+  const combo=Math.max(1,Math.floor(Number.isFinite(level)?level:1))
+  const semitones=Math.min(5,Math.max(0,combo-1))
+  return Math.pow(2,semitones/12)
+}
 const MUSIC_FADE = .24
 type Bus = Exclude<keyof Mix,'master'|'mute'|'music'>
 type Patch = [Bus, OscillatorType, number[], number, number]
@@ -67,9 +73,6 @@ export class Sound {
   private dialogueBus?: GainNode
   private effectInstances = new Map<string,HTMLAudioElement[]>()
   private effectLast = new Map<string,number>()
-  private duckUntil = 0
-  private duckLevel = 1
-  private duckTimer = 0
 
   constructor(private mix: Mix) {}
 
@@ -116,9 +119,8 @@ export class Sound {
     const now = this.context.currentTime
     this.master.gain.setTargetAtTime(this.mix.mute ? 0 : this.mix.master,now,0.018)
     for (const [key,bus] of this.buses) bus.gain.setTargetAtTime(this.mix[key],now,0.018)
-    const duck = this.context.currentTime<this.duckUntil ? this.duckLevel : 1
-    this.music?.gain.gain.setTargetAtTime(this.mix.music*duck,now,0.032)
-    this.dialogueBus?.gain.setTargetAtTime(this.mix.play,now,.018)
+    this.music?.gain.gain.setTargetAtTime(this.mix.music,now,0.032)
+    this.dialogueBus?.gain.setTargetAtTime(this.mix.voices,now,.018)
   }
 
   setMusic(kind?:Music) {
@@ -251,7 +253,7 @@ export class Sound {
   private levelDialogue() {
     const active = [...this.dialogue.values()].flatMap(line=>line.media ? [line.media] : [])
     const level = CHARACTER_LEVEL/Math.sqrt(Math.max(1,active.length))
-    for (const line of active) line.gain.gain.setTargetAtTime(level,this.context!.currentTime,.024)
+    for (const line of active) line.gain.gain.setTargetAtTime(level*this.mix.voices,this.context!.currentTime,.024)
   }
 
   private stopCharacterVoice(player:number,reason:'stopped'|'ended' = 'stopped') {
@@ -267,27 +269,6 @@ export class Sound {
     for (const player of this.dialogue.keys()) this.stopCharacterVoice(player)
   }
 
-  duckMusic(amount=.72,duration=1.8) {
-    if (!this.music || !this.context) return
-    const now=this.context.currentTime
-    this.duckUntil=Math.max(this.duckUntil,now+duration)
-    this.duckLevel=amount
-    this.music.gain.gain.setTargetAtTime(this.mix.music*amount,now,.035)
-    window.clearTimeout(this.duckTimer)
-    this.duckTimer=window.setTimeout(()=>this.restoreMusicDuck(),duration*1000)
-  }
-
-  private restoreMusicDuck() {
-    if (!this.music || !this.context) return
-    const remaining=this.duckUntil-this.context.currentTime
-    if (remaining>0) {
-      this.duckTimer=window.setTimeout(()=>this.restoreMusicDuck(),Math.ceil(remaining*1000))
-      return
-    }
-    this.duckLevel=1
-    this.music.gain.gain.setTargetAtTime(this.mix.music,this.context.currentTime,.12)
-    this.duckTimer=0
-  }
 
   playEffect(name:CinematicEffect|'character-hover'|'character-confirm'|'player-ready'|'attack-send'|'damage-impact'|'surge-ready',intensity=1,playbackRate=1) {
     if (!this.context || this.mix.mute) return

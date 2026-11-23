@@ -4,7 +4,7 @@ export type CharacterVisual = {
   title:readonly [string,string]
   color:string
   light:string
-  theme:'electric'|'digital'|'frost'|'cosmic'|'fire'
+  theme:'electric'|'digital'|'frost'|'cosmic'|'fire'|'lunar'
   entry:'caster'|'opponent'
 }
 
@@ -14,4 +14,5 @@ export const characterVisuals:Partial<Record<CharacterId,CharacterVisual>> = {
   pix:{title:['SYSTEM','OVERRIDE'],color:'#2eeed7',light:'#d8ff79',theme:'digital',entry:'opponent'},
   astra:{title:['EVENT','HORIZON'],color:'#bf92ff',light:'#f8e1b0',theme:'cosmic',entry:'caster'},
   blaze:{title:['INFERNO','BREAK'],color:'#ff742d',light:'#ffd789',theme:'fire',entry:'caster'},
+  pengu:{title:['MIDNIGHT','REVERIE'],color:'#bd8bff',light:'#ffd670',theme:'lunar',entry:'caster'},
 }

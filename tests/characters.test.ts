@@ -3,7 +3,7 @@ import { CHARACTERS, CHARACTER_IDS, PORTRAITS, VOICE_EVENTS, chooseCharacter, un
 import { artwork, findAsset, japaneseVoice, subtitleFor } from '../src/characters/assets'
 import subtitles from '../src/characters/subtitles/es.json'
 import { cueFor, isAttackVoice } from '../src/characters/presentation'
-import { loadSettings, saveSettings } from '../src/settings'
+import { loadSettings, saveSettings, MIX } from '../src/settings'
 
 it('carga los subtítulos oficiales con sus claves y su texto exacto',()=>{
   expect(Object.keys(subtitles).sort()).toEqual([...CHARACTER_IDS].sort())
@@ -35,7 +35,7 @@ it('registra los seis personajes, los nueve retratos y las catorce voces de cada
   }
 })
 
-it.each(['volt','pix','nix','astra','blaze'] as const)('resuelve la maestra, las nueve expresiones, las poses y el fondo de %s',id=>{
+it.each(['volt','pix','nix','astra','blaze','pengu'] as const)('resuelve la maestra, las nueve expresiones, las poses y el fondo de %s',id=>{
   const assets = CHARACTERS[id].assets
   for (const key of [assets.master,...Object.values(assets.portraits),assets.attackPose,assets.zonePose,assets.zoneBackground]) {
     expect(artwork(key),key).toMatch(/\.png$/)
@@ -62,6 +62,11 @@ it('tolera recursos ausentes y separa las voces de ataque de los avisos crítico
   expect(isAttackVoice('zoneFinish')).toBe(true)
   expect(isAttackVoice('zoneStart')).toBe(false)
   expect(isAttackVoice('danger')).toBe(false)
+})
+
+it('define Música y Voces de personajes como controles independientes',()=>{
+  expect(MIX.music).toBe(.10)
+  expect(MIX.voices).toBe(.85)
 })
 
 it('conserva la selección y las preferencias al recuperar la configuración',()=>{

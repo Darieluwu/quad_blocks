@@ -297,7 +297,7 @@ class Arena {
       return
     }
     const theme = characterVisuals[origin.portrait.id]?.theme
-    if (theme==='cosmic' || theme==='fire') {
+    if (theme==='cosmic' || theme==='fire' || theme==='lunar') {
       // Incoming events can precede the caster's clear within the same simulation tick.
       requestAnimationFrame(()=>{
         if (!this.layer.isConnected) return
@@ -313,7 +313,8 @@ class Arena {
     const electric = theme==='electric'
     const cosmic = theme==='cosmic'
     const fire = theme==='fire'
-    const variation = (cosmic || fire) && origin.visualStrike?.tick===tick ? origin.visualStrike.kind : undefined
+    const lunar = theme==='lunar'
+    const variation = (cosmic || fire || lunar) && origin.visualStrike?.tick===tick ? origin.visualStrike.kind : undefined
     const bounds = this.layer.getBoundingClientRect()
     const anchor = (view: Arena['views'][number]) => {
       const field = view.well.getBoundingClientRect()
@@ -329,12 +330,12 @@ class Arena {
     const projectile = document.createElement('span')
     projectile.className = 'projectile'
     if (theme) projectile.classList.add(`projectile-${theme}`)
-    if (cosmic || fire) projectile.dataset.strike = variation ?? 'simple'
+    if (cosmic || fire || lunar) projectile.dataset.strike = variation ?? 'simple'
     projectile.dataset.from = origin.node.dataset.player
     projectile.dataset.to = victim.node.dataset.player
     projectile.style.left = x+'px'
     projectile.style.top = y+'px'
-    projectile.style.setProperty('--shot',fire?'#ff702c':cosmic?'#ce9dff':theme==='digital'?'#30f5df':theme==='frost'?'#9cdeff':
+    projectile.style.setProperty('--shot',fire?'#ff702c':lunar?'#bd8bff':cosmic?'#ce9dff':theme==='digital'?'#30f5df':theme==='frost'?'#9cdeff':
       electric ? '#ffd345' : COLORS[Number(origin.node.dataset.player)])
     projectile.style.setProperty('--shot-accent',CHARACTERS[origin.portrait.id].colors[1])
     projectile.style.setProperty('--bearing',Math.atan2(0,dx)+'rad')
@@ -381,7 +382,7 @@ class Arena {
         {...cue,portrait:'danger' as const} : theme==='fire' && event.type==='teammateRevived' ?
           {...cue,portrait:'victory' as const} : cue
       view.portrait.react(reaction,performance.now(),this.attackAnimations)
-      if ((theme==='cosmic' || theme==='fire') && (cue.attack==='tetris' || cue.attack==='spin' || cue.attack==='zoneFinish')) {
+      if ((theme==='cosmic' || theme==='fire' || theme==='lunar') && (cue.attack==='tetris' || cue.attack==='spin' || cue.attack==='zoneFinish')) {
         if (view.visualStrike?.tick!==tick || view.visualStrike.kind!=='zoneFinish') {
           view.visualStrike = {tick,kind:cue.attack}
         }
@@ -400,7 +401,7 @@ class Arena {
     if (!view.showcase || !cue) return cue
     if (event.type==='eliminated' || event.type==='victory' || event.type==='blitzVictory') view.showcaseAnimation?.cancel()
     if (!cue.attack || cue.attack==='zoneFinish' || (theme==='frost' && cue.attack==='combo') ||
-        ((theme==='cosmic' || theme==='fire') && cue.attack!=='tetris') ||
+        ((theme==='cosmic' || theme==='fire' || theme==='lunar') && cue.attack!=='tetris') ||
         !this.attackAnimations || this.reduced.matches || this.root.closest('.reduced')) return cue
     view.showcaseAnimation?.cancel()
     view.showcase.dataset.scene = 'attack'

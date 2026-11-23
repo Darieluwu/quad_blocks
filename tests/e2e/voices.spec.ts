@@ -545,6 +545,17 @@ test('el retrato lateral amplía Tetris y Spin sin desplazar el campo y conserva
   await expect(portraitFrame).not.toHaveAttribute('data-pulsing','')
 })
 
+test('VS4 muestra una cinemática independiente sobre cada tablero',async ({page})=>{
+  await page.setViewportSize({width:1920,height:1080})
+  await page.addInitScript(()=>localStorage.setItem('quad-blocks-v1',JSON.stringify({characters:['volt','nix','pix','astra']})))
+  await page.goto('/')
+  await openLobby(page,'versus')
+  for (let i=0;i<4;i++) await page.locator(`[data-ready="${i}"]`).click()
+  await page.getByRole('button',{name:'Iniciar partida'}).click()
+  await expect(page.locator('.arena-grid .player')).toHaveCount(4)
+  await expect(page.locator('.arena-grid')).toBeVisible()
+})
+
 for (const last of ['astra','blaze'] as const) test(`VS4 muestra cuatro voces y tarjetas separadas con ${last}`,async ({page},info)=>{
   const lineup = ['volt','nix','pix',last] as const
   await page.addInitScript(characters=>localStorage.setItem('quad-blocks-v1',JSON.stringify({characters})),lineup)

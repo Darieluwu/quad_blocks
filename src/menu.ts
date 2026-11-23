@@ -139,7 +139,7 @@ function blitzSettings(settings: Settings) {
     </div></details>`
 }
 const genName = {bag7:'7-Bag',random:'Random',history:'History Randomizer',bag14:'14-Bag'}
-const volumeNames = {master:'Maestro',move:'Movimientos',play:'Jugadas',attack:'Ataques',alert:'Alertas',zone:'SURGE',effects:'Efectos',music:'Música (Blitz)'}
+const volumeNames = {master:'Maestro',music:'Música',voices:'Voces de personajes',move:'Movimientos',play:'Jugadas',attack:'Ataques',alert:'Alertas',zone:'SURGE',effects:'Efectos'}
 export function configuration(settings: Settings, back: string) {
   const rules = settings.rules
   const numbered = (group: (keyof typeof NUMBER_RULES)[]) => group.map(key => {
@@ -162,7 +162,7 @@ export function configuration(settings: Settings, back: string) {
       <section class="settings-card"><h2>SURGE y bonificaciones</h2><div class="form-grid">
         ${check('zone','Activar SURGE')}${check('extraSpins','Bonificar Spins adicionales')}${numbered(['zoneSeconds','zoneQuarterLines','zoneMinimum'])}</div></section>
       <section class="settings-card"><h2>Audio y pantalla</h2>
-        ${Object.keys(MIX).map(raw=>{const k=raw as keyof typeof MIX;return `<label class="volume">${volumeNames[k]}<input type="range" min="0" max="1" step="0.01" data-volume="${k}" value="${settings.audio[k]}"></label>`}).join('')}
+        ${(['master','music','voices','move','play','attack','alert','zone','effects'] as (keyof typeof MIX)[]).map(k=>`<label class="volume">${volumeNames[k]}<span class="volume-value">${Math.round(settings.audio[k]*100)}%</span><input type="range" min="0" max="1" step="0.01" data-volume="${k}" value="${settings.audio[k]}"></label>`).join('')}
         <div class="form-grid">
           <label class="check"><input type="checkbox" data-view="mute" ${checked(settings.audio.mute)}> Silenciar</label>
           <label class="check"><input type="checkbox" data-view="reduced" ${checked(settings.reduced)}> Reducir efectos</label>
