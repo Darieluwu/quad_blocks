@@ -59,6 +59,8 @@ async function traceVoices(page:Page) {
 }
 type VoiceLog = {starts:string[]; ends:string[]; pauses:string[]; times:number[]; active:number; peak:number}
 const voices = (page:Page) => page.evaluate(()=>(window as unknown as {voiceLog:VoiceLog}).voiceLog)
+const blitzCaption = (page:Page,slot:number) => page.locator(
+  `.blitz-subtitle-callout[data-callout-player="${slot}"]:visible, .player[data-player="${slot}"] .character-caption:visible`)
 
 test('las grabaciones exactas se sirven y decodifican en el navegador desde el build',async ({page})=>{
   const files = voiceFiles()
@@ -362,7 +364,7 @@ test('NIX muestra efectos glaciares y Absolute Zero sin cubrir las matrices',asy
   for (const image of await scene.locator('img').all()) {
     await expect.poll(()=>image.evaluate((node:HTMLImageElement)=>node.naturalWidth)).toBeGreaterThan(500)
   }
-  await expect(player.locator('.dialogue-text')).toHaveText(translations.nix.zoneFinish)
+  await expect(blitzCaption(page,1).locator('.dialogue-text')).toHaveText(translations.nix.zoneFinish)
   const region = (await scene.boundingBox())!
   for (const field of await page.locator('.player[data-featured="true"] .well').all()) {
     const box = (await field.boundingBox())!
@@ -409,7 +411,7 @@ test('PIX usa reacciones digitales y System Override en Blitz',async ({page},inf
   await expect(scene).toHaveAttribute('data-delivery','true')
   await expect(page.locator('.projectile-digital[data-from="2"]')).toBeVisible()
   await expect(scene.locator('.cinematic-pose')).toBeVisible()
-  await expect(player.locator('.dialogue-text')).toHaveText(translations.pix.zoneFinish)
+  await expect(blitzCaption(page,2).locator('.dialogue-text')).toHaveText(translations.pix.zoneFinish)
   await scene.evaluate(node=>node.getAnimations({subtree:true}).forEach(animation=>{
     animation.pause()
     animation.currentTime = 640
@@ -427,7 +429,7 @@ test('PIX usa reacciones digitales y System Override en Blitz',async ({page},inf
   await expect(scene).toHaveCount(0)
 })
 
-test('Blitz ubica dos tarjetas en el centro o el marco y las traslada con el relevo',async ({page},info)=>{
+test('Blitz ubica dos tarjetas fuera de los tableros y las muestra en el marco compacto o en reserva',async ({page},info)=>{
   await page.setViewportSize({width:1902,height:896})
   const {match,frame} = await playbackRoom(page,{attackVoices:false,subtitles:true,attackAnimations:false},['nix','pix','volt','pengu'])
   match.sides[0].active = 0
@@ -439,20 +441,18 @@ test('Blitz ubica dos tarjetas en el centro o el marco y las traslada con el rel
   await expect(page.locator('.player[data-player="3"] .blitz-state')).toHaveText('EN ESPERA')
   await expect.poll(()=>portrait.locator('img').evaluate((img:HTMLImageElement)=>img.naturalWidth)).toBe(512)
   frame([{slot:0,event:{type:'quad'}},{slot:2,event:{type:'quad'}}])
-  const caption = player.locator('.character-caption')
+  const caption = blitzCaption(page,2)
   await expect(caption.locator('.dialogue-name')).toHaveText('VOLT')
   await expect(caption.locator('.dialogue-text')).toHaveText(translations.volt.tetris)
-  await expect(page.locator('.character-caption:visible')).toHaveCount(2)
+  await expect(page.locator('.blitz-subtitle-callout:visible')).toHaveCount(2)
   const left = (await page.locator('[data-player="0"]').boundingBox())!
   const right = (await player.boundingBox())!
   const clock = (await page.locator('.blitz-clock').boundingBox())!
-  const centerCards = await page.locator('.character-caption:visible').evaluateAll(cards=>cards.map(card=>card.getBoundingClientRect().toJSON()))
-  for (const card of centerCards) {
-    expect(card.left).toBeGreaterThan(left.x+left.width)
-    expect(card.right).toBeLessThan(right.x)
-    expect(card.bottom<=clock.y || card.top>=clock.y+clock.height).toBe(true)
-  }
-  expect(centerCards[0].bottom).toBeLessThan(centerCards[1].top)
+  const leftCard = (await blitzCaption(page,0).boundingBox())!
+  const rightCard = (await caption.boundingBox())!
+  expect(leftCard.x+leftCard.width).toBeLessThan(left.x)
+  expect(rightCard.x).toBeGreaterThan(right.x+right.width)
+  expect(leftCard.x+leftCard.width<clock.x && rightCard.x>clock.x+clock.width).toBe(true)
   await page.screenshot({path:info.outputPath('dialogos-blitz.png'),animations:'disabled'})
   for (const [width,height,min] of [[1920,1080,150],[1600,900,140],[1366,768,110],[600,820,40]]) {
     await page.setViewportSize({width,height})
@@ -556,7 +556,7 @@ test('VS4 muestra una cinemática independiente sobre cada tablero',async ({page
   await expect(page.locator('.arena-grid')).toBeVisible()
 })
 
-for (const last of ['astra','blaze'] as const) test(`VS4 muestra cuatro voces y tarjetas separadas con ${last}`,async ({page},info)=>{
+for (const last of ['astra','blaze','pengu'] as const) test(`VS4 muestra cuatro voces y tarjetas separadas con ${last}`,async ({page},info)=>{
   const lineup = ['volt','nix','pix',last] as const
   await page.addInitScript(characters=>localStorage.setItem('quad-blocks-v1',JSON.stringify({characters})),lineup)
   await traceVoices(page)
@@ -566,6 +566,7 @@ for (const last of ['astra','blaze'] as const) test(`VS4 muestra cuatro voces y 
   await openLobby(page,'versus')
   for (let i=0;i<4;i++) await page.locator(`[data-ready="${i}"]`).click()
   await page.getByRole('button',{name:'Iniciar partida'}).click()
+  await page.clock.runFor(6800)
   await expect(page.locator('#overlay')).toBeHidden()
   await page.clock.pauseAt(await page.evaluate(()=>Date.now()+100))
   const players = page.locator('.arena-grid .player')
@@ -574,7 +575,7 @@ for (const last of ['astra','blaze'] as const) test(`VS4 muestra cuatro voces y 
   await page.evaluate(()=>{
     const arena = document.querySelector('.arena-grid')!
     new MutationObserver(()=>{
-      const effects = arena.querySelectorAll(':is(.frost-portrait,.digital-portrait,.cosmic-portrait,.fire-portrait)[data-effect="danger"]')
+      const effects = arena.querySelectorAll(':is(.frost-portrait,.digital-portrait,.cosmic-portrait,.fire-portrait,.lunar-portrait)[data-effect="danger"]')
       if (effects.length===3) (arena as HTMLElement).dataset.simultaneousPortraits = '3'
     }).observe(arena,{childList:true,subtree:true})
   })
@@ -663,9 +664,10 @@ test('la definitiva de Volt compone la tormenta y la descarga entre los tableros
     return node.getAnimations()[0].effect?.getTiming().duration
   })).toBe(1100)
   expect((await ultimate.locator('.cinematic-pose').boundingBox())!.height).toBeGreaterThan(350)
-  const caption = player.locator('.character-caption')
+  const caption = blitzCaption(page,0)
   await expect(caption.locator('.dialogue-text')).toHaveText(translations.volt.zoneFinish)
-  expect((await caption.boundingBox())!.y).toBeGreaterThan(box.y+box.height)
+  const card = (await caption.boundingBox())!
+  expect(card.x+card.width).toBeLessThan(box.x)
   await page.screenshot({path:info.outputPath('volt-surge.png')})
   await expect(rival).toHaveAttribute('data-saw-cinematic-impact','true')
   await ultimate.evaluate(node=>node.getAnimations({subtree:true}).forEach(animation=>animation.play()))
@@ -720,6 +722,91 @@ test('BLAZE reacciona a ataques y rescates y conserva los avisos al reducir efec
   mark('zoneEnd','8')
   await expect(player.locator('.zone-result')).toBeVisible()
   await expect(page.locator('.cinematic-scene')).toHaveCount(0)
+})
+
+test('PENGU confirma el personaje y muestra la maestra aprobada en el lobby',async ({page},info)=>{
+  await page.addInitScript(()=>localStorage.setItem('quad-blocks-v1',JSON.stringify({characters:['volt','nix','pix','pengu']})))
+  await traceVoices(page)
+  await page.goto('/')
+  await openLobby(page,'blitz')
+  const slot = page.locator('.lobby-fighter[data-slot="3"]')
+  const art = slot.locator('.lobby-fighter-art img')
+  await expect.poll(()=>art.evaluate((img:HTMLImageElement)=>img.naturalWidth)).toBeGreaterThan(500)
+  await page.screenshot({path:info.outputPath('pengu-lobby.png'),animations:'disabled'})
+  await page.locator('[data-character="3"]').click()
+  const scene = page.locator('.arcade-scene[data-preview="pengu"]:not(.outgoing)')
+  await expect(scene.locator('.arcade-master')).toHaveAttribute('src',(await art.getAttribute('src'))!)
+  await expect(scene).toContainText('Magia lunar')
+  await page.screenshot({path:info.outputPath('pengu-selector.png'),animations:'disabled'})
+  await page.locator('[data-picker-confirm]').click()
+  await expect(page.locator('.arcade-caption')).toContainText(translations.pengu.selection)
+  const voice = voiceFiles().find(file=>file.id==='pengu' && file.event==='selection')!
+  await expect.poll(async ()=>(await voices(page)).starts).toContain(voice.url)
+})
+
+test('PENGU muestra Starfall, Lunar Twist, Dream Ward y Midnight Reverie',async ({page},info)=>{
+  const {assets,match,frame} = await playbackRoom(page,undefined,['astra','pix','pengu','volt'])
+  match.sides[0].active=0
+  match.sides[1].active=2
+  const pengu=page.locator('[data-player="2"]')
+  const portrait=pengu.locator('.hud-portrait img')
+  const deliver=(events:Frame['events'])=>{match.now++;frame(events)}
+  const react=(type:string,detail?:string)=>deliver([{slot:2,event:{type,detail}}])
+  await expect(portrait).toHaveAttribute('src',/neutral-.+\.png$/)
+  react('simpleAttack')
+  const voice=assets.find(file=>file.id==='pengu' && file.event==='simpleAttack1')!
+  await expect.poll(async ()=>(await voices(page)).starts).toContain(voice.url)
+  for (const [type,detail,effect,expression] of [
+    ['quad','4','tetris','attack'],['tDouble','2','spin','attack'],['combo','3','combo','attack'],
+    ['receive','3','damage','damage'],['critical','','danger','danger'],['blitzGuard','2','shield','support'],
+    ['teammateDown','','down','danger'],['teammateRevived','','reboot','victory'],
+  ]) {
+    if (effect==='tetris'||effect==='spin') {
+      deliver([{slot:0,event:{type:'incoming',source:2,detail:'4'}},{slot:2,event:{type,detail}}])
+      await expect(page.locator(`.projectile-lunar[data-strike="${effect}"][data-to="0"]`)).toBeVisible()
+    } else react(type,detail)
+    await expect(pengu.locator('.lunar-portrait')).toHaveAttribute('data-effect',effect)
+    await expect(portrait).toHaveAttribute('src',new RegExp(`/${expression}-.+\\.png$`))
+    if (effect==='tetris') await expect(pengu.locator('.pengu-showcase img')).toBeVisible()
+  }
+  react('zoneStart')
+  await expect(pengu.locator('.cinematic-charge.cinematic-lunar img')).toBeVisible()
+  await expect(portrait).toHaveAttribute('src',/zone-.+\.png$/)
+  deliver([{slot:0,event:{type:'zoneEnd',detail:'6'}},{slot:2,event:{type:'zoneEnd',detail:'8'}},
+    {slot:0,event:{type:'incoming',source:2,detail:'4'}}])
+  const upper=page.locator('.cinematic-scene[data-channel="team-a"]')
+  const lower=page.locator('.cinematic-scene[data-channel="team-b"]')
+  await expect(upper).toContainText(/EVENT\s*HORIZON/)
+  await expect(lower).toContainText(/MIDNIGHT\s*REVERIE/)
+  await expect(lower.locator('.cinematic-moon')).toBeVisible()
+  await expect(lower).toHaveAttribute('data-delivery','true')
+  await expect(upper.locator('.cinematic-beam')).toBeHidden()
+  for (const selector of ['.cinematic-pose','.cinematic-background']) {
+    await expect.poll(()=>lower.locator(selector).evaluate((img:HTMLImageElement)=>img.naturalWidth)).toBeGreaterThan(300)
+  }
+  await expect(page.locator('.blitz-subtitle-callout[data-team="1"] .dialogue-text')).toHaveText(translations.pengu.zoneFinish)
+  const bounds=(await lower.boundingBox())!
+  const above=(await upper.boundingBox())!
+  expect(bounds.y).toBeGreaterThan(above.y+above.height)
+  for (const field of await page.locator('.player[data-featured="true"] .well').all()) {
+    const board=(await field.boundingBox())!
+    expect(bounds.x+bounds.width<=board.x || board.x+board.width<=bounds.x).toBe(true)
+  }
+  const channels=page.locator('.cinematic-scene[data-channel]')
+  await channels.evaluateAll(nodes=>nodes.forEach(node=>node.getAnimations({subtree:true}).forEach(anim=>{
+    anim.pause();anim.currentTime=640
+  })))
+  await page.screenshot({path:info.outputPath('pengu-midnight-reverie.png')})
+  await channels.evaluateAll(nodes=>nodes.forEach(node=>node.getAnimations({subtree:true}).forEach(anim=>anim.finish())))
+  await expect(channels).toHaveCount(0)
+  react('zoneEnd','6')
+  await expect(lower).toHaveAttribute('data-delivery','false')
+  await expect(lower.locator('.cinematic-beam')).toBeHidden()
+  await expect(channels).toHaveCount(0)
+  await page.emulateMedia({reducedMotion:'reduce'})
+  react('zoneEnd','6')
+  await expect(pengu.locator('.zone-result')).toBeVisible()
+  await expect(channels).toHaveCount(0)
 })
 
 test('BLAZE y ASTRA usan canales superiores e inferiores simultáneos en Blitz',async ({page},info)=>{
@@ -805,7 +892,7 @@ test('eventos de combate y Blitz reproducen el personaje correcto en plazas huma
       const id = lineup[slot]
       const file = assets.find(asset=>asset.id===id && asset.event===event)!
       await expect.poll(async ()=>(await voices(page)).starts,{message:file.path}).toContain(file.url)
-      await expect(page.locator(`.player[data-player="${slot}"] .character-caption`)).toContainText(translations[id][event])
+      await expect(blitzCaption(page,slot)).toContainText(translations[id][event])
     }
     await expect.poll(async ()=>(await voices(page)).active).toBe(0)
   }
@@ -841,7 +928,7 @@ test('reemplaza Zone, peligro y derrota de inmediato, con subtítulos y plazas i
   const {assets,match,frame} = await playbackRoom(page)
   const urls = (['zoneStart','danger','zoneFinish','defeat'] as const).map(event=>assets.find(file=>file.id==='volt' && file.event===event)!.url)
   const other = assets.find(file=>file.id==='nix' && file.event==='zoneStart')!.url
-  const caption = page.locator('.player[data-player="0"] .character-caption')
+  const caption = blitzCaption(page,0)
   const player = page.locator('.player[data-player="0"]')
   const portrait = player.locator('.player-banner [data-character-id="volt"]')
   const shown = (event:VoiceEvent) => expect(caption.locator('.dialogue-text')).toHaveText(translations.volt[event])
@@ -873,6 +960,7 @@ test('reemplaza Zone, peligro y derrota de inmediato, con subtítulos y plazas i
 })
 
 test('el texto sustituye a la voz de inmediato si el ataque está silenciado o el archivo falta',async ({page})=>{
+  await page.setViewportSize({width:1366,height:768})
   await page.addInitScript(()=>{
     const animate = Element.prototype.animate
     const durations:number[] = []

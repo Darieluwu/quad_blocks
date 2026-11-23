@@ -14,12 +14,46 @@
 .lunar-portrait i:nth-child(4),.lunar-impact i:nth-child(4){--lunar-x:12%;--lunar-y:94%}
 .lunar-portrait i:nth-child(5),.lunar-impact i:nth-child(5){--lunar-x:52%;--lunar-y:96%}
 .lunar-portrait i:nth-child(6),.lunar-impact i:nth-child(6){--lunar-x:92%;--lunar-y:92%}
-.lunar-portrait[data-effect="tetris"]::after,.lunar-portrait[data-effect="spin"]::after,
-.lunar-portrait[data-effect="shield"]::after { content:"MAGIA LUNAR";position:absolute;bottom:4px;left:0;right:0;text-align:center;
+.lunar-portrait:is([data-effect="tetris"],[data-effect="spin"],[data-effect="combo"],[data-effect="shield"])::after {
+  position:absolute;bottom:4px;left:0;right:0;text-align:center;
   color:#fff2c4;font:800 clamp(8px,.65vw,12px)/1 system-ui,sans-serif;background:linear-gradient(90deg,transparent,#351f5ccc 20% 80%,transparent)}
+.lunar-portrait[data-effect="tetris"]::after { content:"STARFALL" }
+.lunar-portrait[data-effect="spin"]::after { content:"LUNAR TWIST" }
+.lunar-portrait[data-effect="combo"]::after { content:"MOONLIT CASCADE" }
+.lunar-portrait[data-effect="shield"]::after { content:"DREAM WARD" }
+.lunar-portrait:is([data-effect="spin"],[data-effect="shield"],[data-effect="combo"],[data-effect="reboot"])::before {
+  content:""; position:absolute; inset:-5px; border:2px solid #c69dff; border-radius:50%;
+  animation:lunar-ring 600ms ease-out both;
+}
+.lunar-portrait[data-effect="spin"]::before {
+  inset:-9px; border:0; background:conic-gradient(transparent 30%,#b487fb 55%,#ffe6a8 74%,transparent 80%);
+  mask-image:radial-gradient(transparent 60%,#000 65% 72%,transparent 74%);
+  animation:lunar-twist 540ms ease-out both;
+}
+.lunar-portrait[data-effect="shield"] {
+  border:3px double #f8dfa0; background:radial-gradient(ellipse,transparent 45%,#9b67ef5e);
+}
+.lunar-portrait[data-effect="combo"] i:nth-child(even) { animation-delay:66ms }
+.lunar-portrait[data-effect="down"] { border-style:dashed; box-shadow:0 0 8px #7149ad }
+.lunar-portrait[data-effect="down"] i:nth-child(even) { display:none }
+.lunar-portrait[data-effect="damage"] { animation-name:lunar-jolt }
+.lunar-portrait[data-effect="reboot"] i { animation-direction:reverse }
 .projectile-lunar::before { width:72px;height:14px;left:-67px;top:-7px;transform-origin:67px 7px;border-radius:50%;
   background:linear-gradient(90deg,transparent,#bd8bff 65%,#ffd670);clip-path:polygon(0 50%,58% 18%,82% 31%,100% 50%,82% 69%,58% 82%)}
-.projectile-lunar::after { inset:-9px;border:2px solid #d7c0ff;background:radial-gradient(circle,#fff0bd 8%,#bd8bff 30%,#44245f 65%,transparent)}
+.projectile-lunar::after {
+  inset:-9px; background:#ffe6a6;
+  clip-path:polygon(50% 0,63% 37%,100% 50%,63% 63%,50% 100%,37% 63%,0 50%,37% 37%);
+}
+.projectile-lunar[data-strike="spin"]::before { width:28px;height:28px;inset:-13px auto auto -13px;clip-path:none;
+  transform:none; background:transparent;border:1px solid #bc86ff; }
+.projectile-lunar[data-strike="spin"]::after {
+  clip-path:none; background:transparent; border-radius:50%; box-shadow:inset 5px -3px #ffe8a3;
+}
+.pengu-showcase .character-cut-in { object-fit:contain; object-position:center }
 .reduced :is(.lunar-portrait,.lunar-impact),.no-attack-animation :is(.lunar-portrait,.lunar-impact){visibility:hidden}
+@media (prefers-reduced-motion:reduce) { .lunar-portrait,.lunar-impact { visibility:hidden } }
 @keyframes lunar-fade{0%,100%{opacity:0}25%{opacity:1}70%{opacity:.7}}
 @keyframes lunar-star{from{opacity:0;transform:scale(.2) rotate(0)}40%{opacity:1}to{opacity:0;transform:translateY(-16px) scale(1.1) rotate(180deg)}}
+@keyframes lunar-ring { from {opacity:.9;transform:scale(.56)} to {opacity:0;transform:scale(1.17)} }
+@keyframes lunar-twist { from {opacity:.4;transform:rotate(-75deg) scale(.66)} to {opacity:0;transform:rotate(240deg) scale(1.12)} }
+@keyframes lunar-jolt { 0%,100% {opacity:0} 22% {opacity:1;transform:translateX(2px)} 53% {opacity:.72;transform:translateX(-2px)} }

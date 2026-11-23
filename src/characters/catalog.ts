@@ -30,7 +30,7 @@ export const CHARACTERS = {
   pix:define('pix','Tecnología',['#39ebd3','#baff67'],'Hacker traviesa de cabello turquesa y negro, audífonos y chaqueta oversized.'),
   astra:define('astra','Cosmos',['#bf92ff','#f8e1b0'],'Viajera dimensional enigmática. Lee las órbitas y dobla el espacio con serena precisión.'),
   blaze:define('blaze','Combustión',['#ff742d','#ffd789'],'Piloto de combustión obsesionado con el fuego. Temerario en combate y leal a su equipo.'),
-  pengu:define('pengu','Magia lunar',['#bd8bff','#ffd670'],'Archimago dormilón. Pingüino de magia lunar.'),
+  pengu:define('pengu','Magia lunar',['#bd8bff','#ffd670'],'Archimago dormilón, tranquilo y sorprendentemente poderoso.'),
 } satisfies Record<CharacterId,Character>
 
 export const isCharacterId = (value:unknown): value is CharacterId => CHARACTER_IDS.some(id=>id===value)

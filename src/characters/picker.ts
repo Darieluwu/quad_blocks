@@ -135,7 +135,10 @@ export class ArcadePicker {
       <div class="arcade-figure" aria-hidden="true"><span>${character.name.slice(0,2)}</span>
       ${master?`<img class="arcade-master" src="${master}" data-fallback="${neutral ?? ''}" alt="" draggable="false">`:''}</div>`
     this.art.append(scene)
-    if (motion) scene.animate([{opacity:0,transform:'translateX(20px)'},{opacity:1,transform:'none'}],
-      {duration:210,easing:'cubic-bezier(.18,.68,.26,1)'})
+    if (motion) {
+      const lunar = id==='pengu'
+      scene.animate([{opacity:0,transform:lunar?'translateY(8px)':'translateX(20px)'},{opacity:1,transform:'none'}],
+        {duration:lunar?280:210,easing:'cubic-bezier(.18,.68,.26,1)'})
+    }
   }
 }

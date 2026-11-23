@@ -16,7 +16,9 @@ Los ID son `volt`, `nix`, `pix`, `astra`, `blaze` y `pengu`. Coloca cada recurso
 | `zone-background` | Fondo temático de presentación para SURGE |
 | `attacks/tetris`, `spin`, `combo`, `zoneFinish` | Acentos visuales opcionales para ataques, confinados al marco del personaje |
 
-Puedes incorporar los archivos de a uno. El selector usa la ilustración maestra o el retrato neutral. Durante el juego, una expresión ausente recurre al retrato neutral y, si este falta, se muestran las iniciales del personaje. Entrega la ilustración original de **Pengu** en un archivo separado para integrar el diseño sin alterarlo.
+Puedes incorporar los archivos de a uno. El selector usa la ilustración maestra o el retrato neutral. Durante el juego, una expresión ausente recurre al retrato neutral y, si este falta, se muestran las iniciales del personaje.
+
+Los retratos de **PengU** mantienen el lienzo aprobado de 1254 × 1254. Sus expresiones nuevas se editaron sobre el neutral y se limitaron a los ojos y los párpados. La celebración también modifica la posición de las aletas. Midnight Reverie combina la pose y el fondo aprobados con una media luna y círculos arcanos animados. En Blitz usa el canal de su equipo. En VS4 se presenta en la cabecera, fuera de la matriz.
 
 La [ilustración aprobada de Blaze](references/blaze-original.png) conserva el escenario original. El juego usa su recorte con alfa en `src/characters/art/blaze/master.png`. Los ocho cambios de expresión se editaron sobre el retrato neutral. Las poses mantienen la complexión y el equipo industrial de la referencia, con un golpe de avance para Flare Impact y los brazos abiertos para Inferno Break.
 

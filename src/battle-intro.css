@@ -1,0 +1,214 @@
+.battle-intro {
+  position:fixed; inset:var(--intro-top, 0px) 0 0; z-index:2; overflow:hidden; isolation:isolate;
+  color:#f5f7ff; pointer-events:none; font-family:system-ui,sans-serif;
+}
+.battle-intro * { animation-duration:var(--intro-duration); animation-fill-mode:both; animation-timing-function:linear }
+.intro-backplate {
+  position:absolute; inset:0; background:radial-gradient(ellipse at 50% 48%,#28324d,#080a14 72%);
+  animation-name:intro-backplate;
+}
+.intro-lineup,.intro-impact { position:absolute; inset:0 }
+.intro-lineup { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); animation-name:intro-hit }
+[data-mode="vs4"] .intro-lineup { grid-template-columns:repeat(4,minmax(0,1fr)) }
+.intro-team {
+  --team:#43e8ff;
+  position:relative; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); isolation:isolate;
+}
+.intro-team[data-team="1"] { --team:#ff507f }
+.intro-team::before {
+  content:""; position:absolute; inset:0; z-index:-1;
+  background:linear-gradient(145deg,color-mix(in srgb,var(--team) 24%,#0d1023),#070912 70%);
+  border-top:3px solid var(--team); animation:intro-backplate var(--intro-duration) linear both;
+}
+.intro-team h2 {
+  position:absolute; z-index:4; top:4%; left:50%; translate:-50% 0; margin:0; padding:.38em 1.5em;
+  white-space:nowrap; font:900 clamp(14px,1.5vw,30px)/1 Consolas,monospace; letter-spacing:.19em;
+  background:#080c18ed; border-block:1px solid var(--team); color:var(--team);
+  clip-path:polygon(8% 0,100% 0,92% 100%,0 100%);
+  animation-name:intro-label;
+}
+.intro-fighter { position:relative; min-width:0 }
+.intro-panel,.intro-sparks {
+  position:absolute; inset:0 -10%; clip-path:polygon(15% 0,100% 0,85% 100%,0 100%);
+  animation-name:intro-panel;
+}
+.intro-panel {
+  background:
+    linear-gradient(103deg,transparent 83%,color-mix(in srgb,var(--light) 60%,transparent) 96%),
+    repeating-linear-gradient(113deg,transparent 0 18px,#d9e8ff12 19px 20px,transparent 21px 43px),
+    linear-gradient(156deg,color-mix(in srgb,var(--color) 58%,#101126),#0c101c 80%);
+  box-shadow:inset 0 -5px 0 var(--color);
+}
+.intro-fighter:first-child .intro-panel { left:-16% }
+.intro-fighter:last-child .intro-panel { right:-16% }
+.intro-team .intro-panel {
+  background:
+    linear-gradient(105deg,transparent 84%,color-mix(in srgb,var(--team) 40%,transparent) 97%),
+    repeating-linear-gradient(113deg,transparent 0 22px,#d9e8ff10 23px 24px,transparent 25px 52px),
+    linear-gradient(150deg,color-mix(in srgb,var(--team) 53%,#17152d),color-mix(in srgb,var(--color) 20%,#0c1021) 75%);
+  border-top:2px solid var(--team);
+}
+.intro-sparks { animation-name:intro-sparks }
+.intro-sparks i {
+  position:absolute; left:var(--x); top:var(--y); width:var(--spark); aspect-ratio:1; rotate:45deg;
+  background:var(--light); box-shadow:0 0 12px 3px var(--color);
+}
+.intro-figure { position:absolute; inset:5% -20% 14%; z-index:2 }
+.intro-art { position:absolute; inset:0; animation-name:intro-fighter }
+.intro-art img { position:absolute; width:100%; height:100%; object-fit:contain; user-select:none }
+.intro-art .intro-master {
+  opacity:0; object-position:50% var(--focus); scale:var(--art-scale);
+  filter:drop-shadow(0 0 12px color-mix(in srgb,var(--color) 56%,transparent));
+}
+.master-ready .intro-master { opacity:1 }
+.intro-art .intro-fallback { width:72%; height:75%; inset:10% 14% auto }
+.master-ready .intro-fallback { visibility:hidden }
+.intro-label {
+  position:absolute; z-index:3; inset:auto 3% 7%; padding:.65em .7em .8em; min-width:0;
+  background:linear-gradient(120deg,#080b17f5 58%,color-mix(in srgb,var(--color) 35%,#0b0e1c));
+  border-bottom:3px solid var(--color);
+  clip-path:polygon(0 0,100% 0,100% 75%,94% 100%,0 100%);
+  animation-name:intro-label;
+}
+.intro-label strong { display:block; font-size:clamp(23px,4vw,80px); font-style:italic; font-weight:1000; line-height:1; letter-spacing:-.055em }
+.intro-seat {
+  display:flex; align-items:baseline; gap:.55em; color:var(--light); white-space:nowrap;
+  font:800 clamp(12px,1.15vw,20px)/1.45 Consolas,monospace; letter-spacing:.07em;
+}
+.intro-seat span { overflow:hidden; text-overflow:ellipsis; color:#f5f7ff; letter-spacing:0 }
+.intro-role { display:inline-block; margin-top:.6em; color:var(--team); font:800 clamp(10px,1.1vw,19px)/1 Consolas,monospace; letter-spacing:.13em }
+[data-mode="blitz"] .intro-figure { inset:4% -24% 14% }
+[data-mode="blitz"] .intro-panel {
+  background:
+    repeating-linear-gradient(0deg,transparent 0 39px,#deedff15 40px 41px,transparent 42px 68px),
+    linear-gradient(150deg,color-mix(in srgb,var(--team) 54%,#1d1335),#121427 70%);
+}
+[data-mode="blitz"] [data-role="active"] { z-index:1; --stance:1.085; --drift:8% }
+[data-mode="blitz"] [data-team="1"] [data-role="active"] { --drift:-8% }
+[data-mode="blitz"] [data-role="reserve"] { --stance:.87; --drift:-6% }
+[data-mode="blitz"] [data-team="1"] [data-role="reserve"] { --drift:6% }
+[data-role="reserve"] .intro-fallback { opacity:.82 }
+[data-role="reserve"] .intro-master { opacity:0 }
+[data-role="reserve"] .master-ready .intro-master { opacity:.9; filter:brightness(.79) drop-shadow(0 0 9px var(--color)) }
+[data-role="reserve"] .intro-role { color:#d0d9ef }
+.intro-relay {
+  position:absolute; z-index:2; inset:auto 11% 25%; height:14%; border-bottom:2px solid var(--team);
+  border-radius:50%; box-shadow:0 9px 16px -10px var(--team); animation-name:intro-relay;
+}
+.intro-relay i {
+  position:absolute; left:0; bottom:0; width:24%; height:3px; background:var(--team);
+  box-shadow:0 0 14px 3px var(--team); animation-name:intro-relay-forward;
+}
+.intro-relay i + i { left:auto; right:0; animation-name:intro-relay-back }
+.intro-title {
+  position:absolute; z-index:5; top:49%; left:50%; translate:-50% -50%;
+  padding:.1em .48em .17em; text-align:center; white-space:nowrap; font-size:clamp(42px,9vw,172px);
+  font-style:italic; font-weight:1000; line-height:.96; letter-spacing:-.065em;
+  color:#fff0d0; text-shadow:0 3px #913f72,0 7px #281830,0 0 .26em #ff7e79aa;
+  background:linear-gradient(90deg,#080a16de,#130d20fa 50%,#080a16de);
+  border-block:2px solid #ffb67ba0; clip-path:polygon(8% 0,100% 0,92% 100%,0 100%);
+  animation-name:intro-title;
+}
+.intro-title h1 { margin:0; font:inherit }
+.intro-title span { display:block; margin:.65em 0 .3em; font:900 .18em/1 Consolas,monospace; letter-spacing:.22em; color:#a8f3ff; text-shadow:none }
+[data-mode="teams"] .intro-title { font-size:clamp(58px,13vw,195px) }
+[data-mode="blitz"] .intro-title {
+  top:61%; font-size:clamp(37px,7.4vw,145px); color:#ecf7ff;
+  text-shadow:0 3px #276884,0 7px #192741,0 0 .29em #61dfff8a; border-color:#81e7ffc0;
+  animation-name:intro-blitz-title;
+}
+[data-mode="blitz"] .intro-versus { top:46%; animation-name:intro-blitz-versus }
+.intro-impact {
+  z-index:4; background:radial-gradient(ellipse at center,#ffd9aa8a,transparent 56%),
+    linear-gradient(104deg,transparent 48.9%,#b2d9ffba 49.7%,#ffbbabbb 50%,transparent 51.3%);
+  animation-name:intro-impact;
+}
+
+@keyframes intro-backplate { 0%,76% { opacity:1 } 100% { opacity:0 } }
+@keyframes intro-panel {
+  0% { opacity:0; transform:translate(var(--entry)) skewX(-11deg) }
+  17%,73% { opacity:1; transform:translate(0) }
+  100% { opacity:0; transform:translateX(5%) skewX(-10deg) }
+}
+@keyframes intro-fighter {
+  0% { opacity:0; transform:translate(var(--entry)) scale(1.12) }
+  19% { opacity:1; transform:translate(0) scale(1) }
+  49%,73% { opacity:1; transform:translateX(var(--drift,0)) scale(var(--stance,1.025)) }
+  100% { opacity:0; transform:translate(var(--travel-x,0px),var(--travel-y,0px)) scale(var(--travel-scale,.2)) }
+}
+@keyframes intro-label {
+  0%,14% { opacity:0; transform:translateY(18px) }
+  26%,77% { opacity:1; transform:translateY(0) }
+  97%,100% { opacity:0; transform:translateY(12px) }
+}
+@keyframes intro-sparks {
+  0% { opacity:0; transform:translate(-18%,8%) }
+  20%,68% { opacity:.8 }
+  100% { opacity:0; transform:translate(18%,-10%) }
+}
+@keyframes intro-title {
+  0%,34% { opacity:0; scale:1.32 }
+  43% { opacity:1; scale:.97 }
+  51%,71% { opacity:1; scale:1 }
+  80%,100% { opacity:0; scale:1.08 }
+}
+@keyframes intro-blitz-title {
+  0%,33% { opacity:0; scale:1.25 }
+  39%,57% { opacity:1; scale:1 }
+  63%,100% { opacity:0; scale:.96 }
+}
+@keyframes intro-blitz-versus {
+  0%,61% { opacity:0; scale:1.2 }
+  67%,76% { opacity:1; scale:1 }
+  84%,100% { opacity:0; scale:1.08 }
+}
+@keyframes intro-impact { 0%,38%,55%,100% { opacity:0 } 43% { opacity:.8 } }
+@keyframes intro-hit { 0%,41%,49%,100% { transform:none } 43% { transform:translateX(3px) } 46% { transform:translateX(-2px) } }
+@keyframes intro-relay { 0%,34%,67%,100% { opacity:0 } 40%,59% { opacity:1 } }
+@keyframes intro-relay-forward { 0%,37% { transform:translateX(0) } 61%,100% { transform:translateX(315%) } }
+@keyframes intro-relay-back { 0%,37% { transform:translateX(0) } 61%,100% { transform:translateX(-315%) } }
+
+#overlay.countdown .battle-counter {
+  position:absolute; top:34%; left:50%; translate:-50% -50%; padding:.18em .72em .24em;
+  min-width:0; text-align:center; gap:0; white-space:nowrap; color:#fff2d2;
+  border:0; border-block:2px solid #ffbc777d; border-radius:0;
+  background:linear-gradient(90deg,#141125b8,#100e20f0,#141125b8);
+  clip-path:polygon(10% 0,100% 0,90% 100%,0 100%); font-size:clamp(32px,6vw,91px);
+  animation:battle-count-in 1s cubic-bezier(.17,.69,.24,.99) both;
+}
+#overlay .battle-counter span { color:#bcecf5; font:800 clamp(10px,1vw,15px)/1 Consolas,monospace; letter-spacing:.16em }
+#overlay .battle-counter strong { font:italic 1000 1em/.95 system-ui,sans-serif; text-shadow:0 0 .32em #ff9865; }
+#overlay.countdown .battle-counter-go { top:39%; font-size:clamp(36px,7vw,98px); animation-name:battle-go-in; animation-duration:var(--go-duration) }
+@keyframes battle-count-in { 0% { opacity:.2; scale:1.36 } 15%,70% { opacity:1; scale:1 } 100% { opacity:.4; scale:.92 } }
+@keyframes battle-go-in {
+  0% { opacity:.28; transform:translateX(-2px) scale(.8) }
+  20% { opacity:1; transform:translateX(3px) scale(1.07); filter:brightness(1.25) }
+  36%,58% { opacity:1; transform:none }
+  100% { opacity:0; transform:scale(1.18) }
+}
+@media (prefers-reduced-motion:no-preference) {
+  #arena:has(+ #overlay[data-quiet="false"] .battle-counter-go) { animation:battle-arena-impact 220ms ease-out }
+}
+@keyframes battle-arena-impact {
+  0%,100% { transform:none }
+  24% { transform:translateX(3px) }
+  54% { transform:translateX(-2px) }
+}
+.battle-intro[data-quiet="true"] :is(.intro-lineup,.intro-impact) { animation-name:none }
+.battle-intro[data-simplified="true"] .intro-lineup { animation-name:none }
+.battle-intro[data-quiet="true"] .intro-impact { display:none }
+.battle-intro[data-quiet="true"] .intro-art { animation-name:intro-quiet-art }
+.battle-intro[data-quiet="true"] :is(.intro-panel,.intro-label,.intro-team h2) { animation-name:intro-quiet-art }
+.battle-intro[data-quiet="true"] .intro-title { animation-name:intro-quiet-title }
+.battle-intro[data-quiet="true"][data-mode="blitz"] .intro-title { animation-name:intro-quiet-blitz }
+.battle-intro[data-quiet="true"][data-mode="blitz"] .intro-versus { animation-name:intro-quiet-versus }
+.battle-intro[data-quiet="true"] .intro-relay i { animation-name:none }
+#overlay.countdown[data-quiet="true"] .battle-counter { animation-name:battle-count-quiet }
+@keyframes intro-quiet-art { 0% { opacity:0 } 20%,75% { opacity:1; scale:var(--stance,1) } 100% { opacity:0; scale:var(--stance,1) } }
+@keyframes intro-quiet-title { 0%,34%,80%,100% { opacity:0 } 43%,71% { opacity:1 } }
+@keyframes intro-quiet-blitz { 0%,33%,63%,100% { opacity:0 } 39%,57% { opacity:1 } }
+@keyframes intro-quiet-versus { 0%,61%,84%,100% { opacity:0 } 67%,76% { opacity:1 } }
+@keyframes battle-count-quiet { 0% { opacity:.5 } 15%,70% { opacity:1 } 100% { opacity:.5 } }
+@media (prefers-reduced-motion:reduce) {
+  #overlay.countdown .battle-counter { animation-name:battle-count-quiet }
+}

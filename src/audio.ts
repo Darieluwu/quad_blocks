@@ -10,6 +10,9 @@ const optionalEffects = import.meta.glob<string>('./music/sfx/*.{mp3,ogg,wav}',{
 export type CinematicEffect =
   'battle-start'|'countdown-tick'|'battle-go'|'combo-rise'|'perfect-clear'|'danger-alert'|'surge-ready'|
   'surge-activate'|'surge-finish'|'blitz-swap-warning'|'blitz-swap'|'teammate-down'|'teammate-revive'|'victory-stinger'
+const BATTLE_EFFECTS = ['battle-start','countdown-tick','battle-go'] as const
+const effectSource = (name:string) => optionalEffects[`./music/sfx/${name}.mp3`] ??
+  optionalEffects[`./music/sfx/${name}.ogg`] ?? optionalEffects[`./music/sfx/${name}.wav`]
 export function comboRisePlaybackRate(level:number) {
   const combo=Math.max(1,Math.floor(Number.isFinite(level)?level:1))
   const semitones=Math.min(5,Math.max(0,combo-1))
@@ -73,6 +76,7 @@ export class Sound {
   private dialogueBus?: GainNode
   private effectInstances = new Map<string,HTMLAudioElement[]>()
   private effectLast = new Map<string,number>()
+  private preparedEffects = new Map<string,HTMLAudioElement>()
 
   constructor(private mix: Mix) {}
 
@@ -269,19 +273,29 @@ export class Sound {
     for (const player of this.dialogue.keys()) this.stopCharacterVoice(player)
   }
 
+  prepareBattleEffects() {
+    for (const name of BATTLE_EFFECTS) {
+      const src = effectSource(name)
+      if (!src || this.preparedEffects.has(name)) continue
+      const clip = new Audio(src)
+      clip.preload = 'auto'
+      this.preparedEffects.set(name,clip)
+    }
+  }
 
   playEffect(name:CinematicEffect|'character-hover'|'character-confirm'|'player-ready'|'attack-send'|'damage-impact'|'surge-ready',intensity=1,playbackRate=1) {
     if (!this.context || this.mix.mute) return
-    const src = optionalEffects[`./music/sfx/${name}.mp3`] ?? optionalEffects[`./music/sfx/${name}.ogg`] ?? optionalEffects[`./music/sfx/${name}.wav`]
+    const src = effectSource(name)
     if (!src) return
     const now = this.context.currentTime
     const cooldown = name==='damage-impact' ? .12 : name==='character-hover' ? .18 :
-      name==='countdown-tick'||name==='blitz-swap-warning' ? .75 : .06
+      name==='blitz-swap-warning' ? .75 : .06
     if ((this.effectLast.get(name) ?? -Infinity)+cooldown>now) return
     this.effectLast.set(name,now)
     const active = (this.effectInstances.get(name) ?? []).filter(clip=>!clip.paused)
     if (active.length>=2) return
-    const clip = new Audio(src)
+    const clip = this.preparedEffects.get(name) ?? new Audio(src)
+    this.preparedEffects.delete(name)
     clip.playbackRate = Math.min(1.18,Math.max(.92,playbackRate))
     const gain = this.context.createGain()
     const source = this.context.createMediaElementSource(clip)

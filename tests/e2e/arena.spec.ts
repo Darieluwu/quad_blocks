@@ -240,6 +240,7 @@ test('carga Zone jugando, sintetiza sonidos y entrega su ataque al terminar', as
   await page.emulateMedia({reducedMotion:'no-preference'})
   await page.clock.install()
   await page.addInitScript(() => {
+    localStorage.setItem('quad-blocks-v1',JSON.stringify({characters:['pengu','nix','pix','astra']}))
     const animate = Element.prototype.animate
     Element.prototype.animate = function (keyframes, options) {
       const animation = animate.call(this,keyframes,options)
@@ -312,6 +313,11 @@ test('carga Zone jugando, sintetiza sonidos y entrega su ataque al terminar', as
   expect(await j1.locator('.well .zone-result').count()).toBe(0)
   const projectile = page.locator('.projectile[data-from="0"][data-to="1"]')
   await expect(projectile).toBeVisible()
+  const lunarScene=page.locator('.cinematic-scene[data-character="pengu"][data-layout="vs4"]')
+  await expect(lunarScene).toBeVisible()
+  const presentation=(await lunarScene.boundingBox())!
+  const matrix=(await j1.locator('.well').boundingBox())!
+  expect(presentation.y+presentation.height).toBeLessThanOrEqual(matrix.y)
   expect(await page.evaluate(()=>(window as unknown as {testFrequencies:number[]}).testFrequencies)).not.toContain(746)
   await projectile.evaluate(el=>{ el.getAnimations()[0].currentTime = 155 })
   await page.screenshot({path:info.outputPath('proyectil.png')})

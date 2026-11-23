@@ -379,7 +379,7 @@ class Arena {
     const theme = characterVisuals[view.portrait.id]?.theme
     if (cue) {
       const reaction = theme && theme!=='electric' && theme!=='digital' && event.type==='teammateDown' ?
-        {...cue,portrait:'danger' as const} : theme==='fire' && event.type==='teammateRevived' ?
+        {...cue,portrait:'danger' as const} : (theme==='fire' || theme==='lunar') && event.type==='teammateRevived' ?
           {...cue,portrait:'victory' as const} : cue
       view.portrait.react(reaction,performance.now(),this.attackAnimations)
       if ((theme==='cosmic' || theme==='fire' || theme==='lunar') && (cue.attack==='tetris' || cue.attack==='spin' || cue.attack==='zoneFinish')) {
@@ -406,9 +406,12 @@ class Arena {
     view.showcaseAnimation?.cancel()
     view.showcase.dataset.scene = 'attack'
     const scene = by(view.showcase,'.character-cut-in')
+    const glide = theme==='lunar'
     const animation = scene.animate([
-      {opacity:0,transform:'translateX(15%)'},{opacity:1,transform:'none',offset:.22},{opacity:0,transform:'none'},
-    ],{duration:570,easing:'ease-out'})
+      {opacity:0,transform:glide?'translateY(6px)':'translateX(15%)'},
+      {opacity:1,transform:'none',offset:glide?.38:.22},
+      {opacity:0,transform:'none'},
+    ],{duration:glide?630:570,easing:'ease-out'})
     view.showcaseAnimation = animation
     const clear = () => {
       if (view.showcaseAnimation!==animation) return
@@ -441,7 +444,7 @@ class Arena {
   }
 
   subtitle(i:number,text:string|undefined,timed:boolean,ended:boolean,zoneFinish:boolean) {
-    const {dialogue,portrait} = this.views[i]
+    const {dialogue,portrait,node} = this.views[i]
     if (!text) {
       dialogue.hide(ended)
       this.clearBlitzSubtitle(i)
@@ -450,9 +453,15 @@ class Arena {
     const accent = zoneFinish ? this.cinematics.accent(portrait.id) : undefined
     dialogue.slot.toggleAttribute('data-cinematic-line',!!accent)
     if (accent) dialogue.slot.style.setProperty('--scene-color',accent)
-    dialogue.show(text,timed)
-    if (this.root.querySelector('.blitz-arena') && this.root.clientWidth>=1500) dialogue.hide(false)
-    if (this.root.classList.contains('blitz-arena') || this.root.querySelector('.blitz-arena')) this.showBlitzSubtitle(i,text,timed,accent)
+    const callout = node.dataset.featured==='true' && !!this.root.querySelector('.blitz-subtitle-layer') &&
+      matchMedia('(min-width:1500px) and (min-height:600px)').matches
+    if (callout) {
+      dialogue.hide(false)
+      this.showBlitzSubtitle(i,text,timed,accent)
+    } else {
+      this.clearBlitzSubtitle(i)
+      dialogue.show(text,timed)
+    }
   }
 
   private blitzSubtitleTimer = new Map<number,number>()

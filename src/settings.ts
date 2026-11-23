@@ -3,11 +3,13 @@ import { conflict, defaultSlot, type Slot } from './input'
 import { botLevel } from './engine/bot'
 import { DEFAULT_BLITZ, type BlitzRules } from './engine/blitz'
 import { CHARACTER_OPTIONS, uniqueCharacters, type CharacterId, type CharacterOptions } from './characters/catalog'
+import { isBattleIntroPreference, type BattleIntroPreference } from './battle-intro-config'
 export const MIX = {master:0.72,music:0.10,voices:0.85,move:0.52,play:0.8,attack:0.64,alert:0.55,zone:0.75,effects:0.58}
 export type Mix = typeof MIX & {mute:boolean}
 export type Profile = 'Competitivo'|'Casual'|'Personalizado'
 export type Settings = {rules:Rules; profile:Profile; reduced:boolean; metrics:boolean; audio:Mix; slots:Slot[];
-  controllers: {bot:boolean; level:number}[]; blitz:BlitzRules; characters:CharacterId[]; characterOptions:CharacterOptions}
+  controllers: {bot:boolean; level:number}[]; blitz:BlitzRules; characters:CharacterId[]; characterOptions:CharacterOptions;
+  battleIntro:BattleIntroPreference}
 type StoredSettings = Partial<Omit<Settings,'rules'>> & {rules?:Partial<Rules> & {charge?:number}}
 const STORAGE = 'quad-blocks-v1'
 export const NUMBER_RULES = {
@@ -34,7 +36,7 @@ export function loadSettings(): Settings {
   const defaults: Settings = {rules:freshRules(),profile:'Competitivo',reduced:false,metrics:false,
     audio:{...MIX,mute:false},slots:Array.from({length:4},(_,i) => defaultSlot(i)),
     controllers:Array.from({length:4},()=>({bot:false,level:5})),blitz:{...DEFAULT_BLITZ},
-    characters:uniqueCharacters(null),characterOptions:{...CHARACTER_OPTIONS}}
+    characters:uniqueCharacters(null),characterOptions:{...CHARACTER_OPTIONS},battleIntro:'full'}
   try {
     const value = JSON.parse(localStorage.getItem(STORAGE) ?? 'null') as StoredSettings|null
     if (!value) return defaults
@@ -78,6 +80,7 @@ export function loadSettings(): Settings {
       audio.voices=.85
     }
     return {...defaults,...value,rules,audio,controllers,slots,blitz,
+      battleIntro:isBattleIntroPreference(value.battleIntro) ? value.battleIntro : defaults.battleIntro,
       characters:uniqueCharacters(value.characters),characterOptions}
   } catch { return defaults }
 }

@@ -41,8 +41,10 @@ it('mezcla cuatro plazas, interrumpe solo la plaza vigente y mantiene las alerta
   }
   vi.stubGlobal('AudioContext',Context)
   vi.stubGlobal('Audio',Clip)
+  vi.stubGlobal('window',{clearTimeout,setTimeout})
   try {
-    const mixer = new Sound({...MIX,mute:false})
+    const mix = {...MIX,mute:false}
+    const mixer = new Sound(mix)
     mixer.wake()
     const captions = Array.from({length:8},()=>vi.fn())
     for (let i=0;i<4;i++) mixer.playCharacterVoice(`line-${i}`,i,captions[i])
@@ -90,5 +92,19 @@ it('mezcla cuatro plazas, interrumpe solo la plaza vigente y mantiene las alerta
     for (const clip of Clip.instances.slice(1,4)) expect(clip.pause).not.toHaveBeenCalled()
     mixer.stopCharacterVoices()
     expect(Clip.instances.every(clip=>clip.pause.mock.calls.length===1)).toBe(true)
+    mixer.setMusic('blitz')
+    const musicGain = Context.sources.at(-1)!.outputs[0] as ReturnType<typeof gainNode>
+    const voiceBus = dialogueBus as ReturnType<typeof gainNode>
+    const master = voiceBus.outputs[0].outputs[0] as ReturnType<typeof gainNode>
+    Object.assign(mix,{music:.25,voices:.4,master:.6})
+    mixer.update()
+    expect(musicGain.gain.setTargetAtTime).toHaveBeenLastCalledWith(.25,1,.032)
+    expect(voiceBus.gain.setTargetAtTime).toHaveBeenLastCalledWith(.4,1,.018)
+    expect(master.gain.setTargetAtTime).toHaveBeenLastCalledWith(.6,1,.018)
+    musicGain.gain.setTargetAtTime.mockClear()
+    mixer.playCharacterVoice('midnight-reverie',2,vi.fn())
+    expect(musicGain.gain.setTargetAtTime).not.toHaveBeenCalled()
+    mixer.stopCharacterVoices()
+    mixer.stopMusic()
   } finally { vi.unstubAllGlobals() }
 })

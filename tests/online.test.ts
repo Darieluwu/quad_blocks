@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest'
-import { HZ } from '../src/engine/rules'
+import { HZ, SETTINGS } from '../src/engine/rules'
+import { BATTLE_INTRO_TICKS } from '../src/battle-intro-config'
 import { OnlineMatch, parseClient, type ClientMessage, type ServerMessage } from '../src/online/protocol'
 import { OnlineRoom, STEP_MS, type Peer } from '../src/online/room'
 
@@ -77,8 +78,21 @@ it('crea una sala por invitación, asigna equipos y sincroniza una partida y su 
   const start = last(a,'start')
   expect(start.levels).toEqual([null,7,null,5])
   expect(start.characters).toEqual(['pengu','blaze','pix','astra'])
-  advance(start.countdown+3)
+  expect(last(b,'start')).toEqual(start)
+  expect(start.presentation).toBe(BATTLE_INTRO_TICKS.blitz)
+  expect(start.countdown).toBe(BATTLE_INTRO_TICKS.blitz+SETTINGS.countdown)
+  room.dispatch(a.peer,{type:'input',held:0,pressed:['hard']},now)
+  advance(start.countdown-1)
+  expect(last(a,'lobby').lobby.phase).toBe('countdown')
+  expect(last(a,'frame')).toBeUndefined()
+  advance(1)
+  expect(last(a,'lobby').lobby.phase).toBe('playing')
+  expect(last(a,'countdown')).toEqual({type:'countdown',left:0})
+  expect(a.messages.filter(message=>message.type==='countdown')).toEqual(b.messages.filter(message=>message.type==='countdown'))
+  expect(last(a,'frame')).toBeUndefined()
+  advance(3)
   expect(last(a,'frame')).toEqual(last(b,'frame'))
+  expect(last(a,'frame').state.players[0].stats.pieces).toBe(0)
   advance(31*HZ)
   const previous = last(a,'frame').state
   expect(previous.turn).toBe(2)
@@ -89,6 +103,7 @@ it('crea una sala por invitación, asigna equipos y sincroniza una partida y su 
   expect(last(a,'frame').state).toEqual(previous)
   room.join(replacement.peer,identity(2),now)
   expect(last(replacement,'welcome').slot).toBe(2)
+  expect(last(replacement,'start')).toMatchObject({rejoin:true,countdown:0,characters:start.characters})
   expect(last(replacement,'frame').state.now).toBeGreaterThanOrEqual(previous.now)
   expect(last(a,'lobby').lobby.phase).toBe('playing')
   const replica = new OnlineMatch(start)

@@ -3,6 +3,7 @@ import { teamForSlot } from '../engine/match'
 import { ACTIONS, type Action, type GameEvent, type Input, type PlayerStats } from '../engine/player'
 import { DEFAULT_RULES, SETTINGS } from '../engine/rules'
 import { isCharacterId, type CharacterId } from '../characters/catalog'
+import { BATTLE_INTRO_TICKS } from '../battle-intro-config'
 
 export const ROOM_ID = /^[a-f0-9]{32}$/
 export const randomId = () => crypto.randomUUID().replaceAll('-','')
@@ -63,7 +64,8 @@ export function snapshot(match: BlitzMatch) {
 }
 
 export type Snapshot = ReturnType<typeof snapshot>
-export type MatchStart = {seed:string; names:string[]; levels:(number|null)[]; countdown:number; characters?:CharacterId[]}
+export type MatchStart = {seed:string; names:string[]; levels:(number|null)[]; countdown:number; characters?:CharacterId[];
+  presentation?:number; rejoin?:boolean}
 export type Frame = {type:'frame'; state:Snapshot; events:{slot:number; event:GameEvent}[]; fallen:number[]}
 export type ServerMessage = {type:'welcome'; slot:number} | {type:'lobby'; lobby:LobbyState} |
   {type:'characterConfirmed'; slot:number; id:CharacterId; request:number; accepted:boolean} |
@@ -108,4 +110,4 @@ export class OnlineMatch extends BlitzMatch {
 
 export type RemoteInput = {held:number; pressed:Action[]}
 export const consumeRemote = (input: RemoteInput): Input => ({held:heldActions(input.held),pressed:input.pressed.splice(0)})
-export const START_TICKS = SETTINGS.countdown
+export const START_TICKS = SETTINGS.countdown+BATTLE_INTRO_TICKS.blitz

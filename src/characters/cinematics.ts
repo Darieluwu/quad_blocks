@@ -47,13 +47,23 @@ const flameWave = `<svg class="cinematic-beam" viewBox="0 0 320 72" preserveAspe
   <path d="M0 44Q56 26 80 39Q120 17 104 8Q154 29 175 29Q202 10 210 4Q208 23 232 25L320 33Q291 52 256 50Q215 54 175 58Q121 42 138 65Q68 61 0 44z"/>
   <path class="beam-branch" d="M0 44Q106 33 176 44T319 33"/>
 </svg>`
+const lunarSeal = `<svg class="cinematic-electricity cinematic-moon" viewBox="0 0 320 440" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+  <path class="moon-crescent" d="M239 71A102 102 0 1 0 241 210 88 88 0 0 1 239 71Z"/>
+  <g class="moon-seal"><circle cx="160" cy="230" r="137"/><circle cx="160" cy="230" r="115"/>
+    <path d="M160 102 270 292 50 292ZM160 358 50 168 270 168Z"/></g>
+</svg>`
+const lunarWave = `<svg class="cinematic-beam" viewBox="0 0 320 72" preserveAspectRatio="none" aria-hidden="true">
+  <path d="M2 43Q125 3 318 35M2 48Q153 19 317 43M2 54Q161 39 291 51"/>
+  <path class="moon-crescent" d="M117 15a16 16 0 1 0 17 18 13 13 0 0 1-17-18ZM222 4a20 20 0 1 0 21 22 17 17 0 0 1-21-22Z"/>
+  <path d="M162 10v16m-8-8h16m94 29v16m-8-8h16m18-39v12m-6-6h12"/>
+</svg>`
 const particles = {
   electric:{aura:electricity,discharge:beam},
   digital:{aura:digitalGrid,discharge:digitalBeam},
   frost:{aura:frostCrystals,discharge:frostBurst},
   cosmic:{aura:cosmicOrbit,discharge:cosmicWave},
   fire:{aura:combustion,discharge:flameWave},
-  lunar:{aura:cosmicOrbit,discharge:cosmicWave},
+  lunar:{aura:lunarSeal,discharge:lunarWave},
 }
 
 function place(node:HTMLElement,x:number,y:number,width:number,height:number) {
@@ -201,10 +211,11 @@ export class ZoneCinematics {
         const players=[...this.arena.querySelectorAll<HTMLElement>('.arena-grid .player')]
         const fixedWidth=players.length ? Math.max(180,Math.min(...players.map(player=>player.getBoundingClientRect().width))*1.08) : 260
         const fixedHeight=Math.min(240,Math.max(150,arena.height*.26))
-        const width=fixedWidth
-        const height=fixedHeight
+        const lunarHeader = scene.theme==='lunar' && banner
+        const width=lunarHeader ? Math.min(board.width-16,fixedWidth) : fixedWidth
+        const height=lunarHeader ? banner.height : fixedHeight
         const x=board.left-arena.left+(board.width-width)/2
-        const y=(banner?.bottom ?? board.top)-arena.top+8
+        const y=(lunarHeader ? banner.top : (banner?.bottom ?? board.top)+8)-arena.top
         box={x,y,width,height}
         stageLayout='vs4'
       }

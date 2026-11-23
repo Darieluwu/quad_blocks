@@ -161,7 +161,7 @@
 .cinematic-edge.cinematic-digital i { width:15px; height:11px; background:#b9fc79; clip-path:polygon(0 0,61% 0,61% 38%,100% 38%,100% 100%,0 100%) }
 .cinematic-edge.cinematic-digital i:nth-child(even) { background:#a163ef }
 .cinematic-charge.cinematic-digital { animation-name:cinematic-hack; animation-duration:660ms }
-.cinematic-charge:is(.cinematic-digital,.cinematic-frost,.cinematic-cosmic,.cinematic-fire) img {
+.cinematic-charge:is(.cinematic-digital,.cinematic-frost,.cinematic-cosmic,.cinematic-fire,.cinematic-lunar) img {
   position:absolute; inset:4px 5px auto auto; width:min(27%,86px); height:64px; object-fit:cover; object-position:center 9%;
   mask-image:linear-gradient(90deg,transparent,#000 48%); opacity:.7
 }
@@ -226,8 +226,56 @@
 .cinematic-scene.cinematic-cosmic { background:#120823; border-color:#be88f7 }
 .cinematic-scene.cinematic-lunar { background:radial-gradient(ellipse at 52% 43%,#51317c,#18102f 62%,#090816);border-color:#d4b2ff }
 .cinematic-lunar .cinematic-grid { background:radial-gradient(circle at 50% 35%,#ffd67018,transparent 28%),linear-gradient(0deg,#130d28 2%,transparent 52%) }
-.cinematic-lunar .cinematic-pose { filter:drop-shadow(0 0 16px #bd8bffaa) drop-shadow(0 10px 24px #090712) }
+.cinematic-lunar .cinematic-pose {
+  filter:drop-shadow(0 0 16px #bd8bffaa) drop-shadow(0 10px 24px #090712);
+  animation-name:moon-drift;
+}
+.cinematic-scene.cinematic-lunar[data-channel] .cinematic-pose {
+  height:88%; top:3%; max-width:94%; object-fit:contain; object-position:center;
+}
+.cinematic-scene.cinematic-lunar[data-layout="vs4"] .cinematic-pose { height:96%; max-width:77%; }
 .cinematic-lunar .cinematic-title { color:#fff3bd;text-shadow:2px 2px #4d2d79,0 0 16px #c9a0ff }
+.cinematic-lunar[data-layout="vs4"] .cinematic-title { font-size:clamp(10px,6.5cqi,20px); inset:auto auto 10% 5% }
+.cinematic-lunar[data-layout="vs4"] .cinematic-title small { display:none }
+.cinematic-lunar .cinematic-moon { transform-origin:center; animation:moon-rise var(--scene-time) ease-out both }
+.cinematic-lunar .moon-crescent { fill:#ffde90; stroke:#ffe2a4; }
+.cinematic-lunar .moon-seal { stroke:#bd8bff; stroke-dasharray:9 4; transform-origin:50% 52%; animation:moon-seal var(--scene-time) ease-out both }
+.cinematic-lunar .cinematic-sparks i {
+  width:11px;height:11px; border-radius:0;
+  clip-path:polygon(50% 0,61% 39%,100% 50%,61% 61%,50% 100%,39% 61%,0 50%,39% 39%);
+  animation-duration:670ms; animation-delay:var(--delay); animation-name:moon-stars;
+}
+.cinematic-lunar .cinematic-beam { stroke:#e8c7ff; filter:drop-shadow(0 0 9px #b980fa) }
+.cinematic-lunar[data-delivery="false"] .cinematic-beam { display:none }
+.cinematic-edge.cinematic-lunar i {
+  width:21px;height:21px; background:#ffe6aa;
+  clip-path:polygon(50% 0,61% 39%,100% 50%,61% 61%,50% 100%,39% 61%,0 50%,39% 39%);
+}
+.cinematic-charge.cinematic-lunar { animation-duration:690ms; box-shadow:inset 0 0 7px #b28df4,0 0 19px #b28df4 }
+.cinematic-charge.cinematic-lunar img { object-fit:contain; mask-image:none; opacity:.85 }
+.cinematic-charge.cinematic-lunar::after {
+  content:""; position:absolute; inset:3px 8px auto auto; width:53px; height:53px;
+  border-radius:50%; box-shadow:inset 6px -3px #ffdc84,0 0 12px #a577e2;
+  animation:moon-rise 690ms ease-out both;
+}
+.hud-portrait[data-theme="lunar"]:has([data-portrait="zone"]) { box-shadow:0 0 15px #aa78f8a0 }
+@keyframes moon-rise {
+  from {opacity:0;transform:scale(.28) rotate(-15deg)}
+  32%,62% {opacity:.72;transform:scale(.96) rotate(0)}
+  to {opacity:0;transform:scale(1.08) rotate(6deg)}
+}
+@keyframes moon-seal { from {transform:rotate(-36deg) scale(.44)} to {transform:rotate(48deg) scale(1.03)} }
+@keyframes moon-drift {
+  from {opacity:0;transform:translate(-50%,13%) scale(.92)}
+  28% {opacity:1;transform:translate(-50%,0) scale(1)}
+  68% {opacity:1;transform:translate(-50%,-1%) rotate(-1deg)}
+  to {opacity:0;transform:translate(-50%,-7%) rotate(2deg)}
+}
+@keyframes moon-stars {
+  from {opacity:0;transform:rotate(var(--angle)) translateX(var(--distance)) scale(.55)}
+  39% {opacity:1;transform:rotate(var(--angle)) translateX(10px) scale(1)}
+  to {opacity:0;transform:rotate(calc(var(--angle) + 15deg)) translateX(var(--distance)) scale(.65)}
+}
 .cinematic-cosmic .cinematic-grid {
   background:linear-gradient(0deg,#120823 2%,transparent 44%),radial-gradient(ellipse at 50% 42%,transparent 24%,#1b084985);
 }

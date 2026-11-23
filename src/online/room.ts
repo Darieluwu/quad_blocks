@@ -1,5 +1,6 @@
 import type { BlitzMatch } from '../engine/blitz'
 import { HZ } from '../engine/rules'
+import { BATTLE_INTRO_TICKS } from '../battle-intro-config'
 import { chooseCharacter, uniqueCharacters } from '../characters/catalog'
 import { consumeRemote, makeMatch, PRESS_LIMIT, randomId, snapshot, START_TICKS,
   type ClientMessage, type Frame, type LobbyState, type MatchStart, type RemoteInput, type ServerMessage } from './protocol'
@@ -59,11 +60,12 @@ export class OnlineRoom {
       if (previous!==peer) previous?.close(4002,'Otra pestaña tomó esta plaza')
       this.send(peer,{type:'welcome',slot:found})
       if (this.startInfo) {
-        this.send(peer,{type:'start',...this.startInfo,countdown:this.countdown})
+        this.send(peer,{type:'start',...this.startInfo,countdown:this.countdown,rejoin:true})
         if (this.match) this.send(peer,{type:'frame',state:snapshot(this.match),events:[],fallen:[]})
       }
       if (this.phase==='paused' && this.members.every(member=>!member || member.peer)) {
         this.phase = this.countdown ? 'countdown' : 'playing'
+        if (this.countdown) this.broadcast({type:'countdown',left:this.countdown})
       }
       this.lobbyUpdate()
       return
@@ -133,7 +135,7 @@ export class OnlineRoom {
       this.frameTicks = 0
       this.events = []
       this.fallen = []
-      this.startInfo = {seed,names,levels,countdown:this.countdown,characters:[...this.characters]}
+      this.startInfo = {seed,names,levels,countdown:this.countdown,characters:[...this.characters],presentation:BATTLE_INTRO_TICKS.blitz}
       this.match = makeMatch(seed,levels)
       this.phase = 'countdown'
       this.broadcast({type:'start',...this.startInfo})

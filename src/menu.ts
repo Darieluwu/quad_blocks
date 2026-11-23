@@ -7,6 +7,7 @@ import { BOT_LEVELS } from './engine/bot'
 import { lobbyEditors, lobbyFighter, lobbyLineup, seatEditor } from './lobby-view'
 import { artwork } from './characters/assets'
 import { CHARACTERS } from './characters/catalog'
+import { BATTLE_INTRO_OPTIONS } from './battle-intro-config'
 
 export type Mode = 'versus'|'teams'|'blitz'
 export const teamName = (team: number) => team===0 ? 'Equipo A' : 'Equipo B'
@@ -166,6 +167,9 @@ export function configuration(settings: Settings, back: string) {
         <div class="form-grid">
           <label class="check"><input type="checkbox" data-view="mute" ${checked(settings.audio.mute)}> Silenciar</label>
           <label class="check"><input type="checkbox" data-view="reduced" ${checked(settings.reduced)}> Reducir efectos</label>
+          <label>Introducciones de batalla <select data-battle-intro-pref>
+            ${Object.entries(BATTLE_INTRO_OPTIONS).map(([value,label])=>`<option value="${value}" ${selected(settings.battleIntro,value)}>${label}</option>`).join('')}
+          </select></label>
           <label class="check"><input type="checkbox" data-character-option="attackAnimations" ${checked(settings.characterOptions.attackAnimations)}> Animaciones de ataques</label>
           <label class="check"><input type="checkbox" data-character-option="attackVoices" ${checked(settings.characterOptions.attackVoices)}> Voces de ataques</label>
           <label class="check"><input type="checkbox" data-character-option="subtitles" ${checked(settings.characterOptions.subtitles)}> Subtítulos de personajes</label>

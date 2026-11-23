@@ -16,6 +16,8 @@ import { CHARACTERS, CHARACTER_IDS, chooseCharacter, isCharacterId, uniqueCharac
 import { ArcadePicker } from './characters/picker'
 import { artwork, japaneseVoice, subtitleFor } from './characters/assets'
 import { isAttackVoice } from './characters/presentation'
+import { BattleIntroSystem, BATTLE_GO_MS } from './battle-intro'
+import { BATTLE_INTRO_TICKS, isBattleIntroPreference, reducedIntroTicks, type BattleIntroMode } from './battle-intro-config'
 
 type Page = 'home'|'lobby'|'settings'|'controls'|'diag'|'credits'|'game'|'online'
 const app = document.querySelector<HTMLElement>('#app')!
@@ -29,8 +31,8 @@ let modeMenuOpen = false
 const arcadePadPrior = new Map<number,{up:boolean;down:boolean;left:boolean;right:boolean;confirm:boolean;cancel:boolean}>()
 const criticalSeen = new Set<number>()
 const surgeReadySeen = new Set<number>()
-let countdownShown = 0
-let battleGoPlayed = false
+let battleIntro: BattleIntroSystem | null = null
+let countdownReceivedAt = 0
 let victoryPlayed = false
 let blitzWarningSent = false
 const perfectSeen = new Map<number,number>()
@@ -151,6 +153,7 @@ function render() {
       diagnosticsPage(diagnostic(inputs,settings),returnPage) : credits()
   app.innerHTML = (page==='home' ? '' : header(page,settings.audio.mute))+body+(page==='home'?'':footer)
   if (page==='lobby' || page==='online') {
+    if (page==='lobby' || onlineLobby?.phase==='lobby') audio.prepareBattleEffects()
     syncLobbyEditor()
     const lineupView = app.querySelector('.lobby-lineup')
     if (allReady==='false' && lineupView?.getAttribute('data-all-ready')==='true') lineupView.classList.add('just-ready')
@@ -191,7 +194,11 @@ function go(next: Page) {
   selectionCaptions.clear()
   resetPicker()
   lobbyEditor = null
-  if (page === 'game') { match = null; arena = null; inputs.clear() }
+  if (page === 'game') {
+    battleIntro?.dispose()
+    battleIntro = null
+    match = null; arena = null; inputs.clear()
+  }
   lobbyPadPrior = []
   page = next
   inputs.capture = null
@@ -208,28 +215,35 @@ function start(roster: readonly Participant[]) {
   const rules = structuredClone(settings.rules)
   match = mode==='blitz' ? new BlitzMatch(rules,seed,roster,{...settings.blitz}) : new Match(rules,seed,roster)
   matchCharacters = [...settings.characters]
-  mountGame(match)
+  const format = introMode(match)
+  const presentation = !format || settings.battleIntro==='off' ? 0 :
+    settings.battleIntro==='reduced' ? reducedIntroTicks(format) : BATTLE_INTRO_TICKS[format]
+  mountGame(match,SETTINGS.countdown+presentation,presentation)
 }
 
-function mountGame(current: Match, initialCountdown: number = SETTINGS.countdown) {
+function introMode(current:Match): BattleIntroMode|null {
+  return current instanceof BlitzMatch ? 'blitz' : current.teams ? 'teams' : current.roster.length===PLAYERS ? 'vs4' : null
+}
+
+function startBattleMusic(current:Match) {
+  const format = introMode(current)
+  if (format==='blitz' || format==='vs4') audio.setMusic(format)
+}
+
+function mountGame(current: Match, initialCountdown:number, presentation:number, rejoin = false) {
   const {seed,roster} = current
-  countdownShown=0
-  battleGoPlayed=false
-  if (initialCountdown<=0) {
-    battleGoPlayed=true
-    audio.playEffect('battle-go',.9)
-  }
+  battleIntro?.dispose()
   criticalSeen.clear()
   surgeReadySeen.clear()
   victoryPlayed=false
   blitzWarningSent=false
-  audio.playEffect('battle-start',.86)
   if (page==='game') audio.stopCharacterVoices()
-  audio.setMusic(mode==='blitz' ? 'blitz' : undefined)
+  audio.stopMusic()
   const format = mode==='blitz' ? 'BLITZ' : current.teams ? '2v2' : roster.length===PLAYERS ? 'VS4' : roster.map(()=>1).join('v')
   page = 'game'
   phase = initialCountdown ? 'countdown' : 'live'
   countdown = initialCountdown
+  countdownReceivedAt = performance.now()
   selectionCaptions.clear()
   resetPicker()
   lobbyEditor = null
@@ -242,8 +256,15 @@ function mountGame(current: Match, initialCountdown: number = SETTINGS.countdown
     <div class="game-buttons"><button class="icon-button audio-toggle" data-do="mute"></button>${online?`<span class="online-player">ONLINE · J${onlineSeat+1}</span><button class="secondary" data-page="home">Salir</button>`:`<button class="secondary" data-do="pause">${icon('pause')} Pausa</button>`}</div>
   </div></header><main class="game ${mode==='blitz'?'game-blitz':''}"><div id="arena"></div><div id="overlay" aria-live="polite"></div>
     <div class="match-footer"><span>${online?'Sala privada':`Semilla <b>${escape(seed)}</b>`}</span><span id="metrics"></span><span>${online?'Reglas competitivas':escape(settings.profile)} · ${modeName(mode)}</span></div></main>`
-  arena = mountArena(document.querySelector<HTMLElement>('#arena')!,roster,current instanceof BlitzMatch,matchCharacters,settings.characterOptions.attackAnimations)
+  const arenaRoot = app.querySelector<HTMLElement>('#arena')!
+  arena = mountArena(arenaRoot,roster,current instanceof BlitzMatch,matchCharacters,settings.characterOptions.attackAnimations)
   arena.draw(current,displaySlots())
+  const slots = displaySlots()
+  const fighters = roster.map(({slot,level,team},index)=>({slot,level,team,id:matchCharacters[slot],name:slots[slot].name,
+    active:current instanceof BlitzMatch ? current.sides.some(side=>side.active===index) : undefined}))
+  battleIntro = new BattleIntroSystem(audio,presentation,introMode(current),fighters,settings.battleIntro,
+    settings.reduced,app,arenaRoot,!rejoin && initialCountdown>SETTINGS.countdown)
+  if (initialCountdown<=SETTINGS.countdown) startBattleMusic(current)
   muteButton()
   drawOverlay()
 }
@@ -261,7 +282,7 @@ function pause(reason = '') {
 function resume() {
   if (phase !== 'paused' || !match || disconnected(match.roster).length) return
   phase = resumePhase
-  if (match instanceof BlitzMatch || (mode==='versus' && match.roster.length===PLAYERS)) audio.resumeMusic()
+  audio.resumeMusic()
   inputs.clear()
   drawOverlay()
 }
@@ -269,16 +290,28 @@ function resume() {
 function drawOverlay() {
   if (!match) return
   const overlay = document.querySelector<HTMLElement>('#overlay')!
+  if (phase==='countdown') {
+    // Interpolate the artwork between server samples, leaving the visible numbers on the official ticks.
+    const elapsed = online ? Math.min(HZ-1,(performance.now()-countdownReceivedAt)*HZ/1000) : 0
+    battleIntro?.draw(countdown-elapsed)
+  } else if (phase==='paused') battleIntro?.draw(countdown,true)
+  else battleIntro?.dispose()
   const missing = online ? [] : disconnected(match.roster)
-  const counter = Math.ceil(countdown/HZ)
-  const key = [phase,phase==='countdown'?counter:'',missing.join(','),online && phase==='paused'?onlineNotice:'',onlineLobby?.host].join('|')
+  const counter = phase==='countdown' && countdown<=SETTINGS.countdown ? Math.ceil(countdown/HZ) : 0
+  const go = phase==='live' && battleIntro?.go
+  const key = [phase,counter,go,missing.join(','),online && phase==='paused'?onlineNotice:'',onlineLobby?.host].join('|')
   if (key === overlayState) return
   overlayState = key
-  if (phase === 'live') { overlay.innerHTML = ''; overlay.hidden = true; return }
+  if (phase === 'live' && !go) { overlay.innerHTML = ''; overlay.hidden = true; return }
   overlay.hidden = false
-  if (phase === 'countdown') {
+  if (phase==='countdown' || go) {
     overlay.className = 'countdown'
-    overlay.innerHTML = `<div><span>PREPÁRATE</span><strong>${counter}</strong></div>`
+    overlay.dataset.quiet = String(battleIntro?.reduced ?? settings.reduced)
+    overlay.style.setProperty('--go-duration',`${BATTLE_GO_MS}ms`)
+    if (counter>0) {
+      battleIntro?.announce(counter)
+      overlay.innerHTML = `<div class="battle-counter"><span>PREPÁRATE</span><strong>${counter}</strong></div>`
+    } else overlay.innerHTML = go ? '<div class="battle-counter battle-counter-go"><strong>¡COMBATE!</strong></div>' : ''
     return
   }
   overlay.className = 'overlay'
@@ -382,6 +415,8 @@ function receiveOnline(message: ServerMessage) {
     }
       if (message.lobby.phase==='lobby') {
         if (page==='game') { audio.stopCharacterVoices(); lobbyPadPrior = [] }
+        battleIntro?.dispose()
+        battleIntro = null
         match = arena = null
         onlineNames = null
         page = 'online'
@@ -393,12 +428,11 @@ function receiveOnline(message: ServerMessage) {
         inputs.clear()
         online?.input(NO_INPUT)
       } else if (page==='game' && message.lobby.phase!=='results') {
+        const starting = phase==='countdown' && message.lobby.phase==='playing'
         phase = message.lobby.phase==='countdown' ? 'countdown' : 'live'
+        if (match && countdown<=SETTINGS.countdown) startBattleMusic(match)
         audio.resumeMusic()
-        if (phase==='live') {
-          if (!battleGoPlayed) { battleGoPlayed=true; audio.playEffect('battle-go',.9) }
-          if (mode==='versus' && match?.roster.length===PLAYERS) audio.setMusic('vs4')
-        }
+        if (starting) battleIntro?.announce(0)
       }
       break
     }
@@ -420,22 +454,17 @@ function receiveOnline(message: ServerMessage) {
       onlineNames = message.names
       if (match instanceof OnlineMatch && match.seed===message.seed) {
         countdown = message.countdown
-        countdownShown=0
-        battleGoPlayed=false
-        victoryPlayed=false
+        countdownReceivedAt = performance.now()
       } else {
         matchCharacters = uniqueCharacters(message.characters)
         match = new OnlineMatch(message)
-        mountGame(match,message.countdown)
+        mountGame(match,message.countdown,message.presentation ?? 0,message.rejoin)
       }
       break
     case 'countdown':
+      if (countdown>SETTINGS.countdown && message.left<=SETTINGS.countdown && match) startBattleMusic(match)
       countdown = message.left
-      if (phase==='countdown') {
-        const shown=Math.ceil(countdown/HZ)
-        if (shown>0 && shown!==countdownShown) { countdownShown=shown; audio.playEffect('countdown-tick',.72) }
-        if (countdown<=0 && !battleGoPlayed) { battleGoPlayed=true; audio.playEffect('battle-go',.9) }
-      }
+      countdownReceivedAt = performance.now()
       break
     case 'frame':
       if (!(match instanceof OnlineMatch) || phase==='results') return
@@ -738,6 +767,11 @@ app.addEventListener('input',event => {
 })
 app.addEventListener('change',event => {
   const el = event.target as HTMLInputElement | HTMLSelectElement
+  if (el.dataset.battleIntroPref!==undefined && isBattleIntroPreference(el.value)) {
+    settings.battleIntro = el.value
+    store()
+    return
+  }
   const option = el.dataset.characterOption
   if (option && option in settings.characterOptions && el instanceof HTMLInputElement) {
     settings.characterOptions[option as keyof CharacterOptions] = el.checked
@@ -1258,15 +1292,10 @@ function frame(now: number) {
     }
     if (phase === 'paused') continue
     if (phase === 'countdown') {
-      const shown=Math.ceil(countdown/HZ)
-      if (shown>0 && shown!==countdownShown) {
-        countdownShown=shown
-        audio.playEffect('countdown-tick',.72)
-      }
+      if (countdown===SETTINGS.countdown+1) startBattleMusic(match)
       if (--countdown <= 0) {
         phase='live'
-        if (mode==='versus' && match?.roster.length===PLAYERS) audio.setMusic('vs4')
-        if (!battleGoPlayed) { battleGoPlayed=true; audio.playEffect('battle-go',.9) }
+        battleIntro?.announce(0)
       }
       continue
     }
