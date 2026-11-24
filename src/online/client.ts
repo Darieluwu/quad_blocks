@@ -13,10 +13,19 @@ export function inviteCode(value: string) {
 export class RoomClient {
   private socket: WebSocket|null = null
   private timer = 0
+  private pingTimer = 0
   private ended = false
   private admitted = false
   private attempts = 0
   private held = 0
+  private inputSeq = 0
+  private pending: {seq:number; input:Input}[] = []
+  private pingId = 0
+  private pendingPing: {id:number; sentAt:number}|null = null
+  private ping = 0
+  private jitter = 0
+  private previousPing = 0
+  private snapshotTimes: number[] = []
   private token: string
 
   constructor(readonly code: string, private name: string, private create: boolean,
@@ -27,6 +36,7 @@ export class RoomClient {
   private get key() { return 'tetravolt-seat:'+this.code }
 
   connect() {
+    clearInterval(this.pingTimer)
     this.connection(this.admitted ? 'lost' : 'connecting')
     const url = new URL('/api/salas/'+this.code,location.href)
     url.protocol = location.protocol==='https:' ? 'wss:' : 'ws:'
@@ -40,35 +50,77 @@ export class RoomClient {
         this.admitted = true
         this.create = false
         this.attempts = 0
+        this.inputSeq = Math.max(this.inputSeq,message.inputSeq)
         sessionStorage.setItem(this.key,this.token)
+        this.pingTimer = window.setInterval(()=>this.measurePing(),2000)
+      } else if (message.type==='pong' && this.pendingPing?.id===message.id) {
+        this.ping = performance.now()-this.pendingPing.sentAt
+        if (this.previousPing) {
+          const variation = Math.abs(this.ping-this.previousPing)
+          this.jitter += (variation-this.jitter)/16
+        }
+        this.previousPing = this.ping
+        this.pendingPing = null
+      } else if (message.type==='frame') {
+        const now = performance.now()
+        this.snapshotTimes.push(now)
+        this.snapshotTimes = this.snapshotTimes.filter(time=>now-time<=5000)
       }
       this.receive(message)
     })
     socket.addEventListener('close',({code})=>{
       if (this.ended || this.socket!==socket) return
       if (!this.admitted || [1000,1008,4002,4003].includes(code) || ++this.attempts>25) {
+        clearInterval(this.pingTimer)
         this.connection('closed')
         return
       }
+      clearInterval(this.pingTimer)
       this.connection('lost')
       this.timer = window.setTimeout(()=>this.connect(),Math.min(3000,750*this.attempts))
     })
   }
 
   send(message: ClientMessage) {
-    if (this.socket?.readyState===WebSocket.OPEN) this.socket.send(JSON.stringify(message))
+    if (this.socket?.readyState!==WebSocket.OPEN) return false
+    this.socket.send(JSON.stringify(message))
+    return true
   }
 
   input(input: Input) {
     const held = actionMask(input.held)
     const pressed = input.pressed.filter(action=>PLAY_ACTIONS.some(allowed=>allowed===action)).slice(0,PRESS_LIMIT)
-    if (held!==this.held || pressed.length) this.send({type:'input',held,pressed})
+    if ((held!==this.held || pressed.length) && this.socket?.readyState===WebSocket.OPEN) {
+      const seq = ++this.inputSeq
+      const message: ClientMessage = {type:'input',seq,held,pressed}
+      if (this.send(message)) this.pending.push({seq,input:{held:input.held,pressed}})
+    }
     this.held = held
+  }
+
+  acknowledge(acks: readonly number[],slot: number) {
+    const ack = acks[slot] ?? 0
+    const replay = this.pending.filter(command=>command.seq>ack).map(command=>command.input)
+    this.pending = this.pending.filter(command=>command.seq>ack)
+    return replay
+  }
+
+  get metrics() {
+    const times = this.snapshotTimes
+    const snapshotHz = times.length>1 ? (times.length-1)*1000/(times[times.length-1]-times[0]) : 0
+    return {ping:this.ping,jitter:this.jitter,snapshotHz}
+  }
+
+  private measurePing() {
+    const id = ++this.pingId
+    this.pendingPing = {id,sentAt:performance.now()}
+    if (!this.send({type:'ping',id})) this.pendingPing = null
   }
 
   close(leave = true) {
     this.ended = true
     clearTimeout(this.timer)
+    clearInterval(this.pingTimer)
     if (leave) this.send({type:'leave'})
     this.socket?.close()
     if (leave) sessionStorage.removeItem(this.key)

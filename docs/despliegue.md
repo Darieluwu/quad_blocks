@@ -55,6 +55,7 @@ Confirma que el commit publicado en `main` contiene `wrangler.jsonc`, `src/onlin
 ## Cómo funcionan las salas
 
 - **Blitz online** usa las reglas competitivas. El anfitrión puede escoger la dificultad de las IA en las plazas libres. Usa **Controles → J1** para configurar tu teclado o mando antes de entrar, cualquiera sea el número de plaza que recibas.
+- Los movimientos laterales y giros se predicen en el navegador y se reconcilian con inputs numerados y snapshots. Cloudflare mantiene la autoridad sobre la simulación competitiva. Durante la partida, el pie muestra ping, jitter y frecuencia de snapshots.
 - El enlace es la invitación privada. Cualquiera que lo reciba puede ocupar una plaza libre antes de empezar. Las plazas usan una credencial propia de la pestaña, que se conserva al recargar.
 - Si la conexión se corta durante la partida, la sala espera hasta 75 segundos. Para recuperar la plaza tras recargar, abre el enlace en la misma pestaña y pulsa **Unirse**. Salir voluntariamente durante el encuentro devuelve al grupo a la sala. Las salas en espera o en resultados caducan tras diez minutos de inactividad.
 - Los modos locales siguen disponibles desde el menú, incluso en la compilación estática servida sin Cloudflare. La opción online requiere el Worker.

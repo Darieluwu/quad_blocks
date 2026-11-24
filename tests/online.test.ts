@@ -1,7 +1,8 @@
 import { expect, it } from 'vitest'
 import { HZ, SETTINGS } from '../src/engine/rules'
+import type { Action, Input } from '../src/engine/player'
 import { BATTLE_INTRO_TICKS } from '../src/battle-intro-config'
-import { OnlineMatch, parseClient, type ClientMessage, type ServerMessage } from '../src/online/protocol'
+import { OnlineMatch, parseClient, snapshot, type ClientMessage, type ServerMessage } from '../src/online/protocol'
 import { OnlineRoom, STEP_MS, type Peer } from '../src/online/room'
 
 function client() {
@@ -20,9 +21,10 @@ it('valida los mensajes de sala y acepta solo controles de juego acotados',()=>{
   const parse = (value: unknown) => parseClient(JSON.stringify(value))
   expect(parse(identity(0))).toEqual(identity(0))
   expect(parse({...identity(0),token:'falso'})).toBeNull()
-  expect(parse({type:'input',held:0,pressed:['pause']})).toBeNull()
-  expect(parse({type:'input',held:99999,pressed:[]})).toBeNull()
-  expect(parse({type:'input',held:0,pressed:['hard']})).toMatchObject({type:'input'})
+  expect(parse({type:'input',seq:1,held:0,pressed:['pause']})).toBeNull()
+  expect(parse({type:'input',seq:1,held:99999,pressed:[]})).toBeNull()
+  expect(parse({type:'input',seq:1,held:0,pressed:['hard']})).toMatchObject({type:'input'})
+  expect(parse({type:'input',seq:0,held:0,pressed:[]})).toBeNull()
   expect(parse({type:'bot',slot:4,level:1})).toBeNull()
   expect(parse({type:'character',slot:1,id:'volt',request:-1})).toBeNull()
 })
@@ -81,7 +83,7 @@ it('crea una sala por invitación, asigna equipos y sincroniza una partida y su 
   expect(last(b,'start')).toEqual(start)
   expect(start.presentation).toBe(BATTLE_INTRO_TICKS.blitz)
   expect(start.countdown).toBe(BATTLE_INTRO_TICKS.blitz+SETTINGS.countdown)
-  room.dispatch(a.peer,{type:'input',held:0,pressed:['hard']},now)
+  room.dispatch(a.peer,{type:'input',seq:1,held:0,pressed:['hard']},now)
   advance(start.countdown-1)
   expect(last(a,'lobby').lobby.phase).toBe('countdown')
   expect(last(a,'frame')).toBeUndefined()
@@ -127,8 +129,10 @@ it('comparte el resultado de cuatro humanos, limita la sala y devuelve al grupo 
   expect(last(extra,'error').message).toContain('llena')
   for (const player of players) room.dispatch(player.peer,{type:'ready',value:true},now)
   room.dispatch(players[0].peer,{type:'start'},now)
+  const inputSeq = [0,0,0,0]
   for (let i=0;i<HZ*7;i++) {
-    for (const slot of [1,3]) room.dispatch(players[slot].peer,{type:'input',held:0,pressed:['hard','hard']},now)
+    for (const slot of [1,3]) room.dispatch(players[slot].peer,
+      {type:'input',seq:++inputSeq[slot],held:0,pressed:['hard','hard']},now)
     room.step(now+=STEP_MS)
     if (last(players[0],'frame')?.state.finished) break
   }
@@ -141,4 +145,65 @@ it('comparte el resultado de cuatro humanos, limita la sala y devuelve al grupo 
   room.dispatch(players[0].peer,{type:'lobby'},now)
   expect(last(players[1],'lobby').lobby.phase).toBe('lobby')
   expect(last(players[1],'lobby').lobby.seats.every(seat=>seat.connected && !seat.ready)).toBe(true)
+})
+
+it('predice movimientos, reconcilia inputs pendientes y no predice en plazas Blitz inactivas',()=>{
+  const start = {seed:'latency-prediction',names:['A','B','C','D'],levels:[null,null,null,null],countdown:0}
+  const server = new OnlineMatch(start)
+  const client = new OnlineMatch(start)
+  const slot = server.sides[0].active
+  const before = server.players[slot].active
+  client.load(structuredClone(snapshot(server)))
+  const commands = [
+    {held:new Set<Action>(),pressed:['left'] as const},
+    {held:new Set<Action>(),pressed:['cw'] as const},
+    {held:new Set<Action>(),pressed:['ccw'] as const},
+  ]
+  for (const command of commands) expect(client.predictMovement(slot,command)).toBe(true)
+  expect(client.players[slot].active.x).toBe(before.x-1)
+  expect(client.players[slot].active.rotation).toBe(before.rotation)
+
+  for (let tick=0;tick<18;tick++) server.tick()
+  client.load(structuredClone(snapshot(server)))
+  for (const command of commands) client.predictMovement(slot,command)
+  expect(client.players[slot].active.x).toBe(server.players[slot].active.x-1)
+  expect(client.players[slot].active.rotation).toBe(server.players[slot].active.rotation)
+
+  for (const command of commands) {
+    const inputs: Input[] = Array.from({length:4},()=>({held:new Set<Action>(),pressed:[]}))
+    inputs[slot] = command
+    server.tick(inputs)
+  }
+  client.load(structuredClone(snapshot(server)))
+  expect(client.players[slot].active).toEqual(server.players[slot].active)
+  const inactive = server.sides[0].members.find(member=>member!==slot)!
+  const inactiveX = client.players[inactive].active.x
+  expect(client.predictMovement(inactive,{held:new Set(),pressed:['left']})).toBe(false)
+  expect(client.players[inactive].active.x).toBe(inactiveX)
+})
+
+it('acknowledges sequenced input once and drops input for an inactive Blitz seat',()=>{
+  const room = new OnlineRoom(()=> 'input-ack-test')
+  const players = Array.from({length:4},client)
+  let now = 1_000_000
+  for (const [i,player] of players.entries()) room.join(player.peer,identity(i,i===0),now)
+  for (const player of players) room.dispatch(player.peer,{type:'ready',value:true},now)
+  room.dispatch(players[0].peer,{type:'start'},now)
+  for (let i=0;i<last(players[0],'start').countdown;i++) room.step(now+=STEP_MS)
+  for (let i=0;i<3;i++) room.step(now+=STEP_MS)
+  const frame = last(players[0],'frame')
+  const active = frame.state.sides[0].active
+  const slotPeers = [players[0],players[2],players[1],players[3]]
+  const before = frame.state.players[active].active
+  room.dispatch(slotPeers[active].peer,{type:'input',seq:1,held:0,pressed:['cw']},now)
+  room.dispatch(slotPeers[active].peer,{type:'input',seq:1,held:0,pressed:['ccw']},now)
+  const inactive = frame.state.sides[0].members.find(slot=>slot!==active)!
+  const inactivePiece = frame.state.players[inactive].active
+  room.dispatch(slotPeers[inactive].peer,{type:'input',seq:1,held:1,pressed:['left']},now)
+  for (let i=0;i<3;i++) room.step(now+=STEP_MS)
+  const confirmed = last(players[0],'frame')
+  expect(confirmed.acks[active]).toBe(1)
+  expect(confirmed.acks[inactive]).toBe(1)
+  expect(confirmed.state.players[active].active.rotation).toBe((before.rotation+1)%4)
+  expect(confirmed.state.players[inactive].active).toEqual(inactivePiece)
 })

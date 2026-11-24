@@ -261,7 +261,8 @@ function mountGame(current: Match, initialCountdown:number, presentation:number,
     <div class="game-info"><strong>${format}</strong><span>${modeName(mode)}</span>${mode==='blitz'?'':'<output id="elapsed">00:00</output>'}</div>
     <div class="game-buttons"><button class="icon-button audio-toggle" data-do="mute"></button>${online?`<span class="online-player">ONLINE · J${onlineSeat+1}</span><button class="secondary" data-page="home">Salir</button>`:`<button class="secondary" data-do="pause">${icon('pause')} Pausa</button>`}</div>
   </div></header><main class="game ${mode==='blitz'?'game-blitz':''}"><div id="arena"></div><div id="overlay" aria-live="polite"></div>
-    <div class="match-footer"><span>${online?'Sala privada':`Semilla <b>${escape(seed)}</b>`}</span><span id="metrics"></span><span>${online?'Reglas competitivas':escape(settings.profile)} · ${modeName(mode)}</span></div></main>`
+    <div class="match-footer"><span>${online?'Sala privada':`Semilla <b>${escape(seed)}</b>`}</span><span id="metrics"></span>
+      ${online?'<span id="online-metrics" aria-live="polite"></span>':''}<span>${online?'Reglas competitivas':escape(settings.profile)} · ${modeName(mode)}</span></div></main>`
   const arenaRoot = app.querySelector<HTMLElement>('#arena')!
   arena = mountArena(arenaRoot,roster,current instanceof BlitzMatch,matchCharacters,settings.characterOptions.attackAnimations)
   arena.draw(current,displaySlots())
@@ -340,6 +341,7 @@ function drawOverlay() {
   const animate = arena?.finish(currentMatch,finalFallen)
   const game = overlay.closest('.game')!
   game.classList.add('result-scene')
+  game.classList.toggle('result-blitz',mode==='blitz')
   game.classList.toggle('result-draw',currentMatch.winnerBoards().length===0)
   overlay.className = 'results-panel'
   const winner = currentMatch.winner
@@ -400,6 +402,9 @@ function roomUrl(code: string) {
 
 function receiveOnline(message: ServerMessage) {
   switch (message.type) {
+    case 'pong':
+      renderOnlineMetrics()
+      break
     case 'error':
       onlineNotice = message.message
       if (page==='online') render()
@@ -472,9 +477,12 @@ function receiveOnline(message: ServerMessage) {
       countdown = message.left
       countdownReceivedAt = performance.now()
       break
-    case 'frame':
+    case 'frame': {
       if (!(match instanceof OnlineMatch) || phase==='results') return
+      const replay = online?.acknowledge(message.acks,onlineSeat) ?? []
       match.load(message.state)
+      for (const input of replay) match.predictMovement(onlineSeat,input)
+      renderOnlineMetrics()
       for (const [i,player] of match.players.entries()) {
         if (player.danger!==2) criticalSeen.delete(i)
         if (!player.dead && player.zone.energy>=player.rules.zoneMinimum && !player.zone.active) {
@@ -487,7 +495,17 @@ function receiveOnline(message: ServerMessage) {
         audio.stopMusic()
         phase = 'results'
       }
+      break
+    }
   }
+}
+
+function renderOnlineMetrics() {
+  const output = document.querySelector<HTMLElement>('#online-metrics')
+  if (!output || !online) return
+  const {ping,jitter,snapshotHz} = online.metrics
+  const text = `PING ${ping?Math.round(ping)+' ms':'—'} · JITTER ${ping?Math.round(jitter)+' ms':'—'} · SNAP ${snapshotHz?Math.round(snapshotHz)+' Hz':'—'}`
+  if (output.textContent!==text) output.textContent = text
 }
 
 app.addEventListener('submit',event=>{
@@ -1378,7 +1396,10 @@ function frame(now: number) {
     const physical = inputs.consume()
     if (!match || page !== 'game' || phase === 'results') continue
     if (online) {
-      if (phase==='live') online.input(physical[0])
+      if (phase==='live') {
+        online.input(physical[0])
+        if (match instanceof OnlineMatch) match.predictMovement(onlineSeat,physical[0])
+      }
       continue
     }
     const sample = match.roster.map(p=>p.level===undefined ? physical[p.slot] : NO_INPUT)

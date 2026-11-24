@@ -22,7 +22,8 @@ export type ClientMessage =
   | {type:'character'; slot:number; id:CharacterId; request?:number}
   | {type:'bot'; slot:number; level:number}
   | {type:'start'|'lobby'|'leave'}
-  | {type:'input'; held:number; pressed:Action[]}
+  | {type:'input'; seq:number; held:number; pressed:Action[]}
+  | {type:'ping'; id:number}
 
 export function parseClient(raw: unknown): ClientMessage | null {
   if (typeof raw!=='string' || raw.length>1024) return null
@@ -37,9 +38,11 @@ export function parseClient(raw: unknown): ClientMessage | null {
         (message.request===undefined || Number.isSafeInteger(message.request) && message.request>0) ? message : null
       case 'bot': return Number.isInteger(message.slot) && message.slot>=0 && message.slot<4 &&
         Number.isInteger(message.level) && message.level>=1 && message.level<=10 ? message : null
-      case 'input': return Number.isInteger(message.held) && message.held>=0 && message.held<(1<<PLAY_ACTIONS.length) &&
+      case 'input': return Number.isSafeInteger(message.seq) && message.seq>0 &&
+        Number.isInteger(message.held) && message.held>=0 && message.held<(1<<PLAY_ACTIONS.length) &&
         Array.isArray(message.pressed) && message.pressed.length<=PRESS_LIMIT &&
         message.pressed.every(action=>PLAY_ACTIONS.some(allowed=>allowed===action)) ? message : null
+      case 'ping': return Number.isSafeInteger(message.id) && message.id>0 ? message : null
       case 'start': case 'lobby': case 'leave': return message
       default: return null
     }
@@ -57,7 +60,8 @@ export function snapshot(match: BlitzMatch) {
     now:match.now, left:match.left, transition:match.transition, rotation:match.rotation, turn:match.turn,
     finished:match.finished, winningTeam:match.winningTeam, stances:match.stances, sides:match.sides,
     totals:match.finished ? match.players.map((_,i)=>match.statsFor(i)) : null,
-    players:match.players.map(p=>({board:boardText(p),active:p.active,hold:p.hold,next:p.next,dead:p.dead,
+    players:match.players.map(p=>({board:boardText(p),active:p.active,lastRotation:p.lastRotation,
+      prediction:p.predictionState(),hold:p.hold,next:p.next,dead:p.dead,
       stats:p.stats,danger:p.danger,garbage:p.garbage.queue,
       zone:{energy:p.zone.energy,remaining:p.zone.remaining,duration:p.zone.duration,lines:p.zone.lines}})),
   }
@@ -66,10 +70,11 @@ export function snapshot(match: BlitzMatch) {
 export type Snapshot = ReturnType<typeof snapshot>
 export type MatchStart = {seed:string; names:string[]; levels:(number|null)[]; countdown:number; characters?:CharacterId[];
   presentation?:number; rejoin?:boolean}
-export type Frame = {type:'frame'; state:Snapshot; events:{slot:number; event:GameEvent}[]; fallen:number[]}
-export type ServerMessage = {type:'welcome'; slot:number} | {type:'lobby'; lobby:LobbyState} |
+export type Frame = {type:'frame'; state:Snapshot; acks:number[]; events:{slot:number; event:GameEvent}[]; fallen:number[]}
+export type ServerMessage = {type:'welcome'; slot:number; inputSeq:number} | {type:'lobby'; lobby:LobbyState} |
   {type:'characterConfirmed'; slot:number; id:CharacterId; request:number; accepted:boolean} |
-  ({type:'start'} & MatchStart) | {type:'countdown'; left:number} | Frame | {type:'error'; message:string; fatal?:boolean}
+  ({type:'start'} & MatchStart) | {type:'countdown'; left:number} | {type:'pong'; id:number} |
+  Frame | {type:'error'; message:string; fatal?:boolean}
 
 export class OnlineMatch extends BlitzMatch {
   private totals: PlayerStats[] | null = null
@@ -100,11 +105,20 @@ export class OnlineMatch extends BlitzMatch {
         for (const row of player.board) for (let x=0;x<row.length;x++) row[x] = CELLS[Number(view.board[column++])]
         player.revision++
       }
-      const {board,zone,garbage,...values} = view
+      const {board,zone,garbage,prediction,...values} = view
       Object.assign(player,values)
+      player.loadPredictionState(prediction,view.lastRotation)
       Object.assign(player.zone,zone)
       player.garbage.queue.splice(0,player.garbage.queue.length,...garbage)
     }
+  }
+
+  predictMovement(slot: number,input: Input) {
+    if (this.finished || this.transition || !this.sides.some(side=>side.active===slot)) return false
+    const player = this.players[slot]
+    if (!player || player.dead) return false
+    player.predictMovement(input)
+    return true
   }
 }
 

@@ -93,6 +93,8 @@ for (const preference of ['off','reduced'] as const) test(
       'countdown-tick','countdown-tick','countdown-tick','battle-go',
     ])
     await expect(page.locator('#overlay')).toBeHidden({timeout:8000})
+    await expect(page.locator('#online-metrics')).toContainText(/PING \d+ ms · JITTER \d+ ms · SNAP \d+ Hz/)
+    await expect(guest.locator('#online-metrics')).toContainText(/PING \d+ ms · JITTER \d+ ms · SNAP \d+ Hz/)
     await expect(guest.locator('.player[data-player="0"] .player-banner [data-character-id="pengu"]')).toBeVisible()
     await guest.reload()
     await expect(page.getByRole('heading',{name:'Partida en espera'})).toBeVisible()

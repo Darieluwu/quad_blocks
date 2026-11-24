@@ -208,7 +208,7 @@ async function playbackRoom(page:Page, options?:{attackVoices:boolean;subtitles:
     connection = socket
     socket.onMessage(message=>{
       if (JSON.parse(String(message)).type!=='join') return
-      send({type:'welcome',slot:0})
+      send({type:'welcome',slot:0,inputSeq:0})
       send({type:'start',seed:'voice-validation',names:['Humano A','IA A','Humano B','IA B'],levels,countdown:0,characters:[...lineup]})
     })
   })
@@ -216,7 +216,7 @@ async function playbackRoom(page:Page, options?:{attackVoices:boolean;subtitles:
   await page.locator('[data-main-action="online"]').click()
   await page.getByRole('button',{name:'Crear sala'}).click()
   await expect(page.locator('.online-player')).toHaveText('ONLINE · J1')
-  return {assets:voiceFiles(),lineup,match,frame:(events:Frame['events'])=>send({type:'frame',state:snapshot(match),events,fallen:[]})}
+  return {assets:voiceFiles(),lineup,match,frame:(events:Frame['events'])=>send({type:'frame',state:snapshot(match),acks:[0,0,0,0],events,fallen:[]})}
 }
 
 test('ASTRA usa su maestra y confirma con su voz y subtítulo en el selector',async ({page},info)=>{

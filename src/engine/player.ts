@@ -102,10 +102,10 @@ export class Player {
     return true
   }
 
-  private shift(dx: number, sweep = false) {
+  private shift(dx: number, sweep = false, report = true) {
     if (!this.move(dx)) return
     if (sweep) while (this.move(dx)) { /* move to the wall */ }
-    this.event('move')
+    if (report) this.event('move')
   }
 
   private gravityMove(cells: number) {
@@ -118,7 +118,7 @@ export class Player {
     return moved
   }
 
-  private horizontal(input: Input) {
+  private horizontal(input: Input, report = true) {
     const left = input.held.has('left')
     const right = input.held.has('right')
     let tapped = false
@@ -126,7 +126,7 @@ export class Player {
     for (const action of input.pressed) {
       if (action!=='left' && action!=='right') continue
       this.direction = action==='left' ? -1 : 1
-      this.shift(this.direction,sweep)
+      this.shift(this.direction,sweep,report)
       tapped = true
     }
     if (tapped) {
@@ -137,16 +137,43 @@ export class Player {
     if (desired !== this.direction) {
       this.direction = desired
       this.dasElapsed = this.repeatElapsed = 0
-      if (desired) this.shift(desired,sweep)
+      if (desired) this.shift(desired,sweep,report)
     } else if (desired) {
       const das = ticks(this.rules.das)
       if (++this.dasElapsed < das) return
-      if (this.rules.arr === 0) this.shift(desired,true)
+      if (this.rules.arr === 0) this.shift(desired,true,report)
       else if (this.dasElapsed === das || ++this.repeatElapsed >= ticks(this.rules.arr)) {
         this.repeatElapsed = 0
-        this.shift(desired)
+        this.shift(desired,false,report)
       }
     }
+  }
+
+  predictMovement(input: Input) {
+    if (this.dead) return
+    this.horizontal(input,false)
+    for (const action of input.pressed) {
+      if (action!=='cw' && action!=='ccw' && action!=='half') continue
+      const result = rotate(this.board,this.active,action==='cw'?1:action==='ccw'?-1:2,this.rules.floorKicks)
+      if (!result) continue
+      if (this.active.kind!=='O') this.resetLock(!fits(this.board,this.active,0,1))
+      this.active = result.piece
+      this.lastRotation = result
+    }
+  }
+
+  predictionState() {
+    return {direction:this.direction,dasElapsed:this.dasElapsed,repeatElapsed:this.repeatElapsed,
+      lockTimer:this.lockTimer,lockResets:this.lockResets}
+  }
+
+  loadPredictionState(state: ReturnType<Player['predictionState']>, rotation: Rotation|null) {
+    this.direction = state.direction
+    this.dasElapsed = state.dasElapsed
+    this.repeatElapsed = state.repeatElapsed
+    this.lockTimer = state.lockTimer
+    this.lockResets = state.lockResets
+    this.lastRotation = rotation
   }
 
   send(lines: number) {

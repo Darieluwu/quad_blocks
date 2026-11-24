@@ -517,6 +517,7 @@ dd { margin:0; overflow-wrap:anywhere }
 .player-stats { margin-top:8px }
 .match-footer { margin:14px 0 4px }
 .match-footer b { color:#e1eaf8; word-break:break-word }
+#online-metrics { color:#8ea3c4; font-size:clamp(8px,.72vw,12px); white-space:nowrap }
 .danger-label { margin-left:auto; font:800 clamp(8px,.65vw,12px) Consolas,monospace; color:#ffd285 }
 .player[data-danger="1"] .well { border-color:#db913f }
 .player.zoned { border-color:#ffe28a; box-shadow:0 0 26px #ffbe4b83,inset 0 0 20px #f8b84624; background:linear-gradient(165deg,#302216,#161926 50%) }
@@ -592,6 +593,27 @@ dd { margin:0; overflow-wrap:anywhere }
   .blitz-result-visual { min-height:470px }
   .blitz-result-winner { height:min(390px,68vh) }
   .blitz-result-losers { width:102px }
+}
+.game.result-scene.result-blitz {
+  width:min(calc(100% - 32px),1680px); max-width:1680px;
+  grid-template-columns:minmax(0,.92fr) minmax(0,1.08fr);
+  align-content:center; gap:clamp(12px,1.5vw,24px);
+}
+.result-scene.result-blitz #arena { grid-column:1; grid-row:1; width:100% }
+.result-scene.result-blitz .results-panel { grid-column:2; grid-row:1; width:100%; justify-self:stretch }
+.result-scene.result-blitz .blitz-result-card {
+  grid-template-columns:minmax(0,.82fr) minmax(0,1fr);
+  gap:clamp(8px,1vw,16px); width:100%; max-width:none;
+}
+.result-scene.result-blitz .blitz-result-visual { min-height:min(560px,max(360px,calc(100svh - 340px))) }
+.result-scene.result-blitz .blitz-result-winner { height:min(500px,calc(100svh - 420px)) }
+.result-scene.result-blitz .blitz-result-losers { width:clamp(76px,7vw,112px) }
+.result-scene.result-blitz .result-columns,
+.result-scene.result-blitz .result-card .ranking li { grid-template-columns:14px minmax(0,1.55fr) repeat(5,minmax(18px,.58fr)) }
+@media (max-height:820px) and (min-width:971px) {
+  .game.result-scene.result-blitz { padding-block:8px 12px }
+  .result-scene.result-blitz .blitz-result-visual { min-height:min(440px,max(330px,calc(100svh - 340px))) }
+  .result-scene.result-blitz .blitz-result-winner { height:min(390px,calc(100svh - 420px)) }
 }
 @media (max-width:970px) {
   .blitz-result-card { grid-template-columns:1fr; width:min(760px,calc(100vw - 20px)); min-width:0; max-height:94svh; overflow-y:auto; overflow-x:hidden }
@@ -691,6 +713,12 @@ dd { margin:0; overflow-wrap:anywhere }
   .result-boards:has(.player:nth-child(2)) .player { width:min(42vw,300px) }
   .results-panel,.result-draw .results-panel { grid-column:1; width:min(100%,520px); justify-self:center }
   .result-draw .results-panel { grid-row:2 }
+}
+@media (max-width:970px) {
+  .game.result-scene.result-blitz { width:calc(100% - 20px); max-width:100%; grid-template-columns:minmax(0,1fr) }
+  .result-scene.result-blitz #arena,.result-scene.result-blitz .results-panel { grid-column:1; grid-row:auto; width:100% }
+  .result-scene.result-blitz .blitz-result-card { grid-template-columns:minmax(0,1fr); width:min(760px,100%); margin-inline:auto }
+  .result-scene.result-blitz .blitz-result-winner { height:100% }
 }
 @media (max-width:750px) {
   .bar-inner { flex-wrap:wrap; gap:9px; padding:9px 0 }
