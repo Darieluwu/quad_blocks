@@ -1,8 +1,9 @@
 import { expect, it } from 'vitest'
-import { HZ, SETTINGS } from '../src/engine/rules'
-import type { Action, Input } from '../src/engine/player'
+import { Match, teamForSlot } from '../src/engine/match'
+import { DEFAULT_RULES, HZ, SETTINGS } from '../src/engine/rules'
+import { NO_INPUT, type Action, type Input } from '../src/engine/player'
 import { BATTLE_INTRO_TICKS } from '../src/battle-intro-config'
-import { OnlineMatch, parseClient, snapshot, type ClientMessage, type ServerMessage } from '../src/online/protocol'
+import { OnlineMatch, actionMask, parseClient, snapshot, type ClientMessage, type Frame, type ServerMessage } from '../src/online/protocol'
 import { OnlineRoom, STEP_MS, type Peer } from '../src/online/room'
 
 function client() {
@@ -206,4 +207,224 @@ it('acknowledges sequenced input once and drops input for an inactive Blitz seat
   expect(confirmed.acks[inactive]).toBe(1)
   expect(confirmed.state.players[active].active.rotation).toBe((before.rotation+1)%4)
   expect(confirmed.state.players[inactive].active).toEqual(inactivePiece)
+})
+
+function simulateLatency(rttMs: number, jitterMs: number) {
+  const room = new OnlineRoom(() => `lat-${rttMs}-${jitterMs}`)
+  const peers = Array.from({length: 4}, client)
+  let now = 1_000_000
+  for (const [i, p] of peers.entries()) room.join(p.peer, identity(i, i === 0), now)
+  for (const p of peers) room.dispatch(p.peer, {type: 'ready', value: true}, now)
+  room.dispatch(peers[0].peer, {type: 'start'}, now)
+  const start = last(peers[0], 'start')
+  for (let i = 0; i < start.countdown; i++) room.step(now += STEP_MS)
+
+  const slotPeers = [peers[0], peers[2], peers[1], peers[3]]
+  // Step 3 ticks to get initial frame and identify active slot on team 0
+  for (let i = 0; i < 3; i++) room.step(now += STEP_MS)
+  const initFrame = last(peers[0], 'frame')
+  const activeSlot = initFrame.state.sides[0].active
+  const localClient = new OnlineMatch(start)
+  localClient.reconcile(initFrame, activeSlot, [])
+
+  const oneWayTicks = Math.round((rttMs / 2) / STEP_MS)
+  const jitterTicks = Math.round(jitterMs / STEP_MS)
+  const inFlightToServer: {deliverAt: number; msg: Extract<ClientMessage, {type: 'input'}>}[] = []
+  const inFlightToClient: {deliverAt: number; frame: Frame}[] = []
+  const pending: {seq: number; input: Input}[] = []
+  let seq = 0
+  let lastFrameCount = slotPeers[activeSlot].messages.filter(m => m.type === 'frame').length
+  let heldMask = 0
+
+  const script = new Map<number, Input>([
+    [1, {held: new Set<Action>(['left']), pressed: ['left']}],
+    [2, {held: new Set<Action>(['left']), pressed: []}],
+    [10, {held: new Set<Action>(['left']), pressed: ['cw']}],
+    [12, {held: new Set<Action>(), pressed: ['hold']}],
+    [15, {held: new Set<Action>(['right']), pressed: ['right']}],
+    [16, {held: new Set<Action>(['right']), pressed: ['ccw']}],
+    [22, {held: new Set<Action>(), pressed: ['hard']}],
+    [25, {held: new Set<Action>(), pressed: ['soft']}],
+    [28, {held: new Set<Action>(), pressed: ['half']}],
+    [32, {held: new Set<Action>(), pressed: ['hard']}],
+  ])
+
+  const totalTicks = 80
+  for (let t = 1; t <= totalTicks; t++) {
+    const input = script.get(t) ?? NO_INPUT
+    const mask = actionMask(input.held)
+    let sentSeq = 0
+    if (mask !== 0 || input.pressed.length > 0 || mask !== heldMask) {
+      sentSeq = ++seq
+      pending.push({seq: sentSeq, input: {held: new Set(input.held), pressed: input.pressed.slice()}})
+      const jitter = jitterTicks ? ((t % 3) - 1) * jitterTicks : 0
+      inFlightToServer.push({
+        deliverAt: Math.max(t, t + oneWayTicks + jitter),
+        msg: {type: 'input', seq: sentSeq, held: mask, pressed: input.pressed.slice()},
+      })
+    }
+    heldMask = mask
+
+    // Client simulates immediately on tick t
+    const pieceBefore = {...localClient.players[activeSlot].active}
+    localClient.stepLocal(activeSlot, input, sentSeq)
+    if (t === 1) expect(localClient.players[activeSlot].active.x).toBe(pieceBefore.x - 1)
+    if (t === 10) expect(localClient.players[activeSlot].active.rotation).not.toBe(pieceBefore.rotation)
+
+    // Deliver client -> server messages arriving at tick t
+    for (let i = inFlightToServer.length - 1; i >= 0; i--) {
+      if (inFlightToServer[i].deliverAt <= t) {
+        room.dispatch(slotPeers[activeSlot].peer, inFlightToServer[i].msg, now)
+        inFlightToServer.splice(i, 1)
+      }
+    }
+
+    // Advance server 1 tick
+    room.step(now += STEP_MS)
+    const frames = slotPeers[activeSlot].messages.filter((m): m is Frame => m.type === 'frame')
+    if (frames.length > lastFrameCount) {
+      lastFrameCount = frames.length
+      const f = frames[frames.length - 1]
+      const jitter = jitterTicks ? ((t % 2) ? jitterTicks : 0) : 0
+      inFlightToClient.push({deliverAt: t + oneWayTicks + jitter, frame: structuredClone(f)})
+    }
+
+    // Deliver server -> client frames arriving at tick t
+    for (let i = inFlightToClient.length - 1; i >= 0; i--) {
+      if (inFlightToClient[i].deliverAt <= t) {
+        const f = inFlightToClient[i].frame
+        inFlightToClient.splice(i, 1)
+        const ack = f.acks[activeSlot] ?? 0
+        const remaining = pending.filter(c => c.seq > ack)
+        pending.splice(0, pending.length, ...remaining)
+        localClient.reconcile(f, activeSlot, remaining)
+      }
+    }
+  }
+
+  // Drain remaining in-flight packets and verify client & server converge to identical state
+  for (let extra = totalTicks + 1; extra <= totalTicks + 40; extra++) {
+    for (let i = inFlightToServer.length - 1; i >= 0; i--) {
+      if (inFlightToServer[i].deliverAt <= extra) {
+        room.dispatch(slotPeers[activeSlot].peer, inFlightToServer[i].msg, now)
+        inFlightToServer.splice(i, 1)
+      }
+    }
+    room.step(now += STEP_MS)
+    const frames = slotPeers[activeSlot].messages.filter((m): m is Frame => m.type === 'frame')
+    if (frames.length > lastFrameCount) {
+      lastFrameCount = frames.length
+      inFlightToClient.push({deliverAt: extra + oneWayTicks, frame: structuredClone(frames[frames.length - 1])})
+    }
+    for (let i = inFlightToClient.length - 1; i >= 0; i--) {
+      if (inFlightToClient[i].deliverAt <= extra) {
+        const f = inFlightToClient[i].frame
+        inFlightToClient.splice(i, 1)
+        const ack = f.acks[activeSlot] ?? 0
+        const remaining = pending.filter(c => c.seq > ack)
+        pending.splice(0, pending.length, ...remaining)
+        localClient.reconcile(f, activeSlot, remaining)
+      }
+    }
+    localClient.stepLocal(activeSlot, NO_INPUT, 0)
+  }
+
+  const finalServerFrame = last(slotPeers[activeSlot], 'frame')
+  return {localClient, finalServerFrame, activeSlot}
+}
+
+for (const [rtt, jitter] of [[0, 0], [100, 15], [200, 25], [300, 35]] as const) {
+  it(`simula inmediatamente sin teletransportes recurrentes con latencia ${rtt}ms y jitter ${jitter}ms`, () => {
+    const {localClient, finalServerFrame, activeSlot} = simulateLatency(rtt, jitter)
+    expect(localClient.diagnostics.divergences).toBeLessThanOrEqual(2)
+    expect(localClient.players[activeSlot].stats.pieces).toBeGreaterThanOrEqual(2)
+    expect(localClient.players[activeSlot].hold).toBe(finalServerFrame.state.players[activeSlot].hold)
+  })
+}
+
+it('reconcilia basura inesperada con rollback y replay sin perder inputs pendientes', () => {
+  const start = {seed: 'rollback-garbage', names: ['A', 'B', 'C', 'D'], levels: [null, null, null, null], countdown: 0}
+  const server = new OnlineMatch(start)
+  const clientMatch = new OnlineMatch(start)
+  const slot = server.sides[0].active
+  clientMatch.reconcile({type: 'frame', frameId: 1, state: structuredClone(snapshot(server)), acks: [0, 0, 0, 0], events: [], fallen: []}, slot, [])
+
+  // Client runs 5 ticks ahead: moves left at tick 1, cw at tick 3, hard drop at tick 5
+  const pending: {seq: number; input: Input}[] = []
+  const seqInputs: [number, Input][] = [
+    [1, {held: new Set(['left']), pressed: ['left']}],
+    [2, {held: new Set(['left']), pressed: []}],
+    [3, {held: new Set(), pressed: ['cw']}],
+    [4, NO_INPUT],
+    [5, {held: new Set(), pressed: ['hard']}],
+  ]
+  for (const [seq, inp] of seqInputs) {
+    pending.push({seq, input: inp})
+    clientMatch.stepLocal(slot, inp, seq)
+  }
+  expect(clientMatch.players[slot].stats.pieces).toBe(1)
+
+  // Server advances 2 ticks (acks seq 1 & 2) AND injects 3 garbage lines on server
+  for (let i = 0; i < 2; i++) {
+    const inputs: Input[] = [NO_INPUT, NO_INPUT, NO_INPUT, NO_INPUT]
+    inputs[slot] = seqInputs[i][1]
+    server.tick(inputs)
+  }
+  server.players[slot].garbage.push({lines: 3, hole: 4, ready: 0})
+  // Lock a piece or trigger garbage directly by simulating garbage arrival at tick 2
+  const serverSnap = structuredClone(snapshot(server))
+  const unacked = pending.filter(c => c.seq > 2)
+  const res = clientMatch.reconcile({type: 'frame', frameId: 2, state: serverSnap, acks: [2, 0, 0, 0], events: [], fallen: []}, slot, unacked)
+
+  expect(res.rolledBack).toBe(true)
+  expect(res.reason).toBe('garbage')
+  // Unacked cw (seq 3) and hard drop (seq 5) were replayed, and the 3 garbage lines were incorporated on lock!
+  expect(clientMatch.players[slot].stats.pieces).toBe(1)
+  expect(clientMatch.players[slot].stats.received).toBe(3)
+})
+
+it('detiene predicción en relevo Blitz, descarta frames duplicados y mantiene equivalencia en VS4 y 2v2', () => {
+  const start = {seed: 'blitz-relay-v2', names: ['A', 'B', 'C', 'D'], levels: [null, null, null, null], countdown: 0}
+  const server = new OnlineMatch(start)
+  const clientMatch = new OnlineMatch(start)
+  const firstActive = server.sides[0].active
+  const teammate = server.sides[0].members.find(s => s !== firstActive)!
+  clientMatch.reconcile({type: 'frame', frameId: 1, state: structuredClone(snapshot(server)), acks: [0, 0, 0, 0], events: [], fallen: []}, firstActive, [])
+  expect(clientMatch.isSlotActive(firstActive)).toBe(true)
+
+  // Advance server to end of Blitz turn 1
+  for (let i = 0; i < server.turnTicks; i++) server.tick()
+  expect(server.transition).toBeGreaterThan(0)
+  expect(server.sides[0].active).toBe(teammate)
+
+  const relayFrame: Frame = {type: 'frame', frameId: 2, state: structuredClone(snapshot(server)), acks: [0, 0, 0, 0], events: [], fallen: []}
+  const res = clientMatch.reconcile(relayFrame, firstActive, [{seq: 99, input: {held: new Set(), pressed: ['hard']}}])
+  expect(res.localActive).toBe(false)
+  expect(clientMatch.isSlotActive(firstActive)).toBe(false)
+  expect(clientMatch.stepLocal(firstActive, {held: new Set(), pressed: ['hard']}, 100)).toEqual([])
+
+  // Duplicate / older frameId is ignored
+  const dup = clientMatch.reconcile({type: 'frame', frameId: 2, state: structuredClone(snapshot(server)), acks: [0, 0, 0, 0], events: [], fallen: []}, firstActive, [])
+  expect(dup.accepted).toBe(false)
+
+  // VS4 and 2v2 deterministic state equivalence with Player.exportState / importState
+  for (const teams of [false, true]) {
+    const roster = Array.from({length: 4}, (_, slot) => teams ? {slot, team: teamForSlot(slot)} : {slot})
+    const m1 = new Match(DEFAULT_RULES, `mode-${teams}`, roster)
+    const m2 = new Match(DEFAULT_RULES, `mode-${teams}`, roster)
+    const actions: Input[] = [
+      {held: new Set(['left']), pressed: ['left']},
+      {held: new Set(), pressed: ['cw']},
+      {held: new Set(), pressed: ['hard']},
+      {held: new Set(), pressed: ['hold']},
+    ]
+    for (let t = 0; t < 20; t++) {
+      const inp = [actions[t % 4], NO_INPUT, actions[(t + 1) % 4], NO_INPUT]
+      m1.tick(inp)
+      m2.tick(inp)
+    }
+    const saved = m1.players[0].exportState()
+    m2.players[0].importState(saved)
+    expect(m2.players[0].exportState()).toEqual(m1.players[0].exportState())
+  }
 })

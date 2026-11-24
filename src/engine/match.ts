@@ -22,7 +22,7 @@ export class Match {
   private random: () => number
   private targetRandom: () => number
   protected bots: (Bot|null)[]
-  private zonePhase = 0
+  zonePhase = 0
   private pastStats: (PlayerStats|undefined)[] = []
 
   constructor(readonly rules: Rules, readonly seed: string, readonly roster: readonly Participant[] = defaultRoster(),

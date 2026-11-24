@@ -10,22 +10,31 @@ export function seedOf(value: string) {
   return hash >>> 0
 }
 
+export type PieceSourceState = {rng: number; bag: Kind[]; history: Kind[]}
+export type PieceSource = (() => Kind) & {
+  save: () => PieceSourceState
+  restore: (state: PieceSourceState) => void
+}
+
 export function randomFrom(seed: number) {
   let state = seed >>> 0
-  return () => {
+  const next = () => {
     state = (state + 0x6d2b79f5) | 0
     let value = Math.imul(state ^ state >>> 15, state | 1)
     value ^= value + Math.imul(value ^ value >>> 7, value | 61)
     return ((value ^ value >>> 14) >>> 0) / 4294967296
   }
+  next.save = () => state >>> 0
+  next.restore = (saved: number) => { state = saved >>> 0 }
+  return next
 }
 
-export function pieceSource(mode: Generator, seed: number): () => Kind {
+export function pieceSource(mode: Generator, seed: number): PieceSource {
   const random = randomFrom(seed)
   const pick = () => KINDS[Math.floor(random() * KINDS.length)]
   const bag: Kind[] = []
   const history: Kind[] = []
-  return () => {
+  const next = (() => {
     if (mode === 'random') return pick()
     if (mode === 'history') {
       let piece = pick()
@@ -43,5 +52,12 @@ export function pieceSource(mode: Generator, seed: number): () => Kind {
       }
     }
     return bag.pop()!
+  }) as PieceSource
+  next.save = () => ({rng: random.save(), bag: bag.slice(), history: history.slice()})
+  next.restore = (state: PieceSourceState) => {
+    random.restore(state.rng)
+    bag.splice(0, bag.length, ...state.bag)
+    history.splice(0, history.length, ...state.history)
   }
+  return next
 }

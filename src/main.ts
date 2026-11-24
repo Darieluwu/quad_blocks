@@ -400,6 +400,12 @@ function roomUrl(code: string) {
   return url.href
 }
 
+const LOCAL_BOARD_EVENTS = new Set([
+  'move','rotate','soft','hard','hold','lock','single','double','triple','quad',
+  'mini','tZero','tSingle','tDouble','tTriple','spinL','spinJ','spinS','spinZ',
+  'backToBack','perfect','combo','zoneStart','zoneWarning','zoneEnd','blitzStance',
+])
+
 function receiveOnline(message: ServerMessage) {
   switch (message.type) {
     case 'pong':
@@ -479,9 +485,10 @@ function receiveOnline(message: ServerMessage) {
       break
     case 'frame': {
       if (!(match instanceof OnlineMatch) || phase==='results') return
-      const replay = online?.acknowledge(message.acks,onlineSeat) ?? []
-      match.load(message.state)
-      for (const input of replay) match.predictMovement(onlineSeat,input)
+      const pending = online?.acknowledge(message.acks,onlineSeat) ?? []
+      const result = match.reconcile(message,onlineSeat,pending)
+      if (!result.accepted) return
+      if (!result.localActive) online?.clearPending()
       renderOnlineMetrics()
       for (const [i,player] of match.players.entries()) {
         if (player.danger!==2) criticalSeen.delete(i)
@@ -489,7 +496,10 @@ function receiveOnline(message: ServerMessage) {
           if (!surgeReadySeen.has(i)) { surgeReadySeen.add(i); audio.playEffect('surge-ready',.72) }
         } else surgeReadySeen.delete(i)
       }
-      for (const {slot,event} of message.events) playEvent(match,slot,event)
+      for (const {slot,event} of message.events) {
+        if (slot===onlineSeat && result.localActive && LOCAL_BOARD_EVENTS.has(event.type)) continue
+        playEvent(match,slot,event)
+      }
       if (match.finished) {
         finalFallen = message.fallen
         audio.stopMusic()
@@ -503,8 +513,24 @@ function receiveOnline(message: ServerMessage) {
 function renderOnlineMetrics() {
   const output = document.querySelector<HTMLElement>('#online-metrics')
   if (!output || !online) return
-  const {ping,jitter,snapshotHz} = online.metrics
-  const text = `PING ${ping?Math.round(ping)+' ms':'—'} · JITTER ${ping?Math.round(jitter)+' ms':'—'} · SNAP ${snapshotHz?Math.round(snapshotHz)+' Hz':'—'}`
+  const {ping,jitter,snapshotHz,snapshotIntervalMs,pendingInputs} = online.metrics
+  const parts = [
+    `PING ${ping?Math.round(ping)+' ms':'—'}`,
+    `JITTER ${ping?Math.round(jitter)+' ms':'—'}`,
+    `SNAP ${snapshotHz?Math.round(snapshotHz)+' Hz':'—'}${snapshotIntervalMs?` (${Math.round(snapshotIntervalMs)} ms)`:''}`,
+    `PEND ${pendingInputs}`,
+  ]
+  if (match instanceof OnlineMatch) {
+    const corr = match.correctionsPerMinute()
+    parts.push(`CORR ${corr}/m`)
+    if (settings.metrics) {
+      const localClock = match.clocks[onlineSeat] ?? 0
+      const reason = match.diagnostics.lastReason ? ` (${match.diagnostics.lastReason})` : ''
+      parts.push(`TICK ${localClock}/${match.confirmedClock}`)
+      parts.push(`DIV ${match.diagnostics.divergences}${reason}`)
+    }
+  }
+  const text = parts.join(' · ')
   if (output.textContent!==text) output.textContent = text
 }
 
@@ -1396,9 +1422,17 @@ function frame(now: number) {
     const physical = inputs.consume()
     if (!match || page !== 'game' || phase === 'results') continue
     if (online) {
-      if (phase==='live') {
-        online.input(physical[0])
-        if (match instanceof OnlineMatch) match.predictMovement(onlineSeat,physical[0])
+      if (phase==='live' && match instanceof OnlineMatch) {
+        if (match.isSlotActive(onlineSeat)) {
+          const halfRttTicks = Math.round(((online.metrics.ping || 0)/2)*HZ/1000)
+          const maxAhead = Math.max(12,halfRttTicks+8)
+          if (match.clocks[onlineSeat]-match.confirmedClock<=maxAhead) {
+            const seq = online.input(physical[0])
+            const localEvents = match.stepLocal(onlineSeat,physical[0],seq)
+            steps++
+            for (const event of localEvents) if (LOCAL_BOARD_EVENTS.has(event.type)) playEvent(match,onlineSeat,event)
+          }
+        } else online.clearPending()
       }
       continue
     }

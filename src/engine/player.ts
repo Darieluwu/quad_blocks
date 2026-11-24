@@ -1,7 +1,7 @@
 import { emptyBoard, emptyRow, fits, landing, rotate, SHAPES, spawnPiece, type Board, type Piece } from './pieces'
-import type { Kind } from './random'
+import type { Kind, PieceSource, PieceSourceState } from './random'
 import { detectSpin, scoreClear, type Rotation } from './scoring'
-import { Garbage } from './garbage'
+import { Garbage, type GarbagePacket } from './garbage'
 import { Zone, type ZoneResult } from './zone'
 import { HEIGHT, HIDDEN, HZ, NEXT, SETTINGS, VISIBLE, WIDTH, ticks, type Rules } from './rules'
 
@@ -12,6 +12,25 @@ export const NO_INPUT: Input = {held:new Set(),pressed:[]}
 export type GameEvent = {type:string; detail?:string; source?:number; repeat?:true}
 export type PlayerStats = {pieces:number; lines:number; sent:number; received:number; cancelled:number}
 export type CombatPlay = {kind:'lock'; qualifies:boolean; power:number; zoned:boolean} | {kind:'zoneEnd'}
+export type PlayerSnapshot = {
+  board: Board
+  active: Piece
+  hold: Kind | null
+  next: Kind[]
+  garbage: GarbagePacket[]
+  zone: ReturnType<Zone['save']>
+  stats: PlayerStats
+  dead: boolean
+  danger: number
+  revision: number
+  lastRotation: Rotation | null
+  sim: {
+    usedHold: boolean; combo: number; chain: boolean; gravity: number; softElapsed: number; warningAt: number
+    direction: number; dasElapsed: number; repeatElapsed: number; lockTimer: number; lockResets: number
+    zoneAllowed: boolean; outbox: number; finalZoneAttack: number
+    buffered: {action: Action; expires: number}[]; source: PieceSourceState | null
+  }
+}
 const clearNames = ['','single','double','triple','quad']
 export class Player {
   board: Board = emptyBoard()
@@ -43,7 +62,7 @@ export class Player {
   private softElapsed = 0
   private buffered: {action:Action; expires:number}[] = []
 
-  constructor(readonly rules: Rules, private source: () => Kind, private recordCombat = false) {
+  constructor(readonly rules: Rules, private source: PieceSource | (() => Kind), private recordCombat = false) {
     this.active = spawnPiece(source())
     for (let i = 0; i < NEXT; i++) this.next.push(source())
   }
@@ -174,6 +193,82 @@ export class Player {
     this.lockTimer = state.lockTimer
     this.lockResets = state.lockResets
     this.lastRotation = rotation
+  }
+
+  simState() {
+    return {
+      usedHold: this.usedHold,
+      combo: this.combo,
+      chain: this.chain,
+      gravity: this.gravity,
+      softElapsed: this.softElapsed,
+      warningAt: this.warningAt,
+      direction: this.direction,
+      dasElapsed: this.dasElapsed,
+      repeatElapsed: this.repeatElapsed,
+      lockTimer: this.lockTimer,
+      lockResets: this.lockResets,
+      zoneAllowed: this.zoneAllowed,
+      outbox: this.outbox,
+      finalZoneAttack: this.finalZoneAttack,
+      buffered: this.buffered.map(entry => ({...entry})),
+      source: 'save' in this.source ? this.source.save() : null,
+    }
+  }
+
+  loadSimState(state: ReturnType<Player['simState']>, rotation: Rotation|null) {
+    this.usedHold = state.usedHold
+    this.combo = state.combo
+    this.chain = state.chain
+    this.gravity = state.gravity
+    this.softElapsed = state.softElapsed
+    this.warningAt = state.warningAt
+    this.direction = state.direction
+    this.dasElapsed = state.dasElapsed
+    this.repeatElapsed = state.repeatElapsed
+    this.lockTimer = state.lockTimer
+    this.lockResets = state.lockResets
+    this.zoneAllowed = state.zoneAllowed
+    this.outbox = state.outbox
+    this.finalZoneAttack = state.finalZoneAttack
+    this.buffered = state.buffered.map(entry => ({...entry}))
+    this.lastRotation = rotation
+    if (state.source && 'restore' in this.source) this.source.restore(state.source)
+  }
+
+  exportState(): PlayerSnapshot {
+    return {
+      board: this.board.map(row => row.slice()),
+      active: {...this.active},
+      hold: this.hold,
+      next: this.next.slice(),
+      garbage: this.garbage.queue.map(packet => ({...packet})),
+      zone: this.zone.save(),
+      stats: {...this.stats},
+      dead: this.dead,
+      danger: this.danger,
+      revision: this.revision,
+      lastRotation: this.lastRotation ? {...this.lastRotation} : null,
+      sim: this.simState(),
+    }
+  }
+
+  importState(snapshot: PlayerSnapshot) {
+    for (let y = 0; y < this.board.length; y++) {
+      for (let x = 0; x < this.board[y].length; x++) this.board[y][x] = snapshot.board[y][x]
+    }
+    this.active = {...snapshot.active}
+    this.hold = snapshot.hold
+    this.next = snapshot.next.slice()
+    this.garbage.queue.splice(0, this.garbage.queue.length, ...snapshot.garbage.map(packet => ({...packet})))
+    this.zone.restore(snapshot.zone)
+    this.stats = {...snapshot.stats}
+    this.dead = snapshot.dead
+    this.danger = snapshot.danger
+    this.revision = snapshot.revision
+    this.loadSimState(snapshot.sim, snapshot.lastRotation ? {...snapshot.lastRotation} : null)
+    this.events.length = 0
+    this.combat.length = 0
   }
 
   send(lines: number) {

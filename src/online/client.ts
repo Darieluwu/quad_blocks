@@ -26,6 +26,8 @@ export class RoomClient {
   private jitter = 0
   private previousPing = 0
   private snapshotTimes: number[] = []
+  private snapshotIntervalMs = 0
+  private lastSnapshotAt = 0
   private token: string
 
   constructor(readonly code: string, private name: string, private create: boolean,
@@ -51,6 +53,7 @@ export class RoomClient {
         this.create = false
         this.attempts = 0
         this.inputSeq = Math.max(this.inputSeq,message.inputSeq)
+        this.pending = this.pending.filter(command=>command.seq>message.inputSeq)
         sessionStorage.setItem(this.key,this.token)
         this.pingTimer = window.setInterval(()=>this.measurePing(),2000)
       } else if (message.type==='pong' && this.pendingPing?.id===message.id) {
@@ -63,6 +66,8 @@ export class RoomClient {
         this.pendingPing = null
       } else if (message.type==='frame') {
         const now = performance.now()
+        if (this.lastSnapshotAt) this.snapshotIntervalMs = now-this.lastSnapshotAt
+        this.lastSnapshotAt = now
         this.snapshotTimes.push(now)
         this.snapshotTimes = this.snapshotTimes.filter(time=>now-time<=5000)
       }
@@ -90,25 +95,40 @@ export class RoomClient {
   input(input: Input) {
     const held = actionMask(input.held)
     const pressed = input.pressed.filter(action=>PLAY_ACTIONS.some(allowed=>allowed===action)).slice(0,PRESS_LIMIT)
-    if ((held!==this.held || pressed.length) && this.socket?.readyState===WebSocket.OPEN) {
+    if ((held!==0 || pressed.length>0 || held!==this.held) && this.socket?.readyState===WebSocket.OPEN) {
       const seq = ++this.inputSeq
       const message: ClientMessage = {type:'input',seq,held,pressed}
-      if (this.send(message)) this.pending.push({seq,input:{held:input.held,pressed}})
+      if (this.send(message)) {
+        this.pending.push({seq,input:{held:new Set(input.held),pressed:pressed.slice()}})
+        this.held = held
+        return seq
+      }
     }
     this.held = held
+    return 0
+  }
+
+  clearPending() {
+    this.pending.length = 0
+    this.held = 0
   }
 
   acknowledge(acks: readonly number[],slot: number) {
     const ack = acks[slot] ?? 0
-    const replay = this.pending.filter(command=>command.seq>ack).map(command=>command.input)
     this.pending = this.pending.filter(command=>command.seq>ack)
-    return replay
+    return this.pending.slice()
   }
 
   get metrics() {
     const times = this.snapshotTimes
     const snapshotHz = times.length>1 ? (times.length-1)*1000/(times[times.length-1]-times[0]) : 0
-    return {ping:this.ping,jitter:this.jitter,snapshotHz}
+    return {
+      ping:this.ping,
+      jitter:this.jitter,
+      snapshotHz,
+      snapshotIntervalMs:this.snapshotIntervalMs,
+      pendingInputs:this.pending.length,
+    }
   }
 
   private measurePing() {

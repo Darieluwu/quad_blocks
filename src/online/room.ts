@@ -1,10 +1,10 @@
 import type { BlitzMatch } from '../engine/blitz'
-import { NO_INPUT } from '../engine/player'
+import { NO_INPUT, type Action } from '../engine/player'
 import { HZ } from '../engine/rules'
 import { BATTLE_INTRO_TICKS } from '../battle-intro-config'
 import { chooseCharacter, uniqueCharacters } from '../characters/catalog'
-import { consumeRemote, makeMatch, randomId, snapshot, START_TICKS,
-  type ClientMessage, type Frame, type LobbyState, type MatchStart, type RemoteInput, type ServerMessage } from './protocol'
+import { heldActions, makeMatch, randomId, snapshot, START_TICKS,
+  type ClientMessage, type Frame, type LobbyState, type MatchStart, type ServerMessage } from './protocol'
 
 export const STEP_MS = 1000/HZ
 const FRAME_TICKS = 3
@@ -14,9 +14,9 @@ const INPUT_QUEUE_LIMIT = 128
 const SEATS = [0,2,1,3]
 
 export type Peer = {send:(data:string)=>void; close:(code:number,reason:string)=>void}
-type Member = {token:string; name:string; peer:Peer|null; ready:boolean; input:RemoteInput;
+type QueuedInput = {seq:number; held:number; pressed:Action[]}
+type Member = {token:string; name:string; peer:Peer|null; ready:boolean; held:number; queue:QueuedInput[];
   lastReceivedSeq:number; lastAppliedSeq:number}
-const emptyInput = (): RemoteInput => ({held:0,pressed:[]})
 
 export class OnlineRoom {
   private members: (Member|null)[] = [null,null,null,null]
@@ -29,6 +29,7 @@ export class OnlineRoom {
   private startInfo: MatchStart|null = null
   private countdown = 0
   private frameTicks = 0
+  private frameId = 0
   private events: Frame['events'] = []
   private fallen: number[] = []
   private pausedAt = 0
@@ -59,12 +60,13 @@ export class OnlineRoom {
       const member = this.members[found]!
       const previous = member.peer
       member.peer = peer
-      member.input = emptyInput()
+      member.held = 0
+      member.queue.length = 0
       if (previous!==peer) previous?.close(4002,'Otra pestaña tomó esta plaza')
       this.send(peer,{type:'welcome',slot:found,inputSeq:member.lastReceivedSeq})
       if (this.startInfo) {
         this.send(peer,{type:'start',...this.startInfo,countdown:this.countdown,rejoin:true})
-        if (this.match) this.send(peer,{type:'frame',state:snapshot(this.match),acks:this.acknowledgements(),events:[],fallen:[]})
+        if (this.match) this.send(peer,{type:'frame',frameId:this.frameId,state:snapshot(this.match),acks:this.acknowledgements(),events:[],fallen:[]})
       }
       if (this.phase==='paused' && this.members.every(member=>!member || member.peer)) {
         this.phase = this.countdown ? 'countdown' : 'playing'
@@ -78,7 +80,7 @@ export class OnlineRoom {
     if (this.phase!=='lobby') return this.error(peer,'La partida ya empezó. Pide otro enlace al anfitrión.',true)
     const slot = SEATS.find(i=>!this.members[i])
     if (slot===undefined) return this.error(peer,'La sala está llena.',true)
-    this.members[slot] = {token:message.token,name:message.name.trim(),peer,ready:false,input:emptyInput(),
+    this.members[slot] = {token:message.token,name:message.name.trim(),peer,ready:false,held:0,queue:[],
       lastReceivedSeq:0,lastAppliedSeq:0}
     this.botConfirmed[slot] = false
     if (this.host===-1) this.host = slot
@@ -96,18 +98,19 @@ export class OnlineRoom {
     if (message.type==='input') {
       if (this.phase!=='playing') return
       if (message.seq<=member.lastReceivedSeq) return
-      if (this.canInput(slot) && member.input.pressed.length+message.pressed.length>INPUT_QUEUE_LIMIT) {
+      const queuedPresses = member.queue.reduce((sum,item)=>sum+item.pressed.length,0)
+      if (this.canInput(slot) && queuedPresses+message.pressed.length>INPUT_QUEUE_LIMIT) {
         peer.close(1008,'Demasiadas acciones pendientes')
         return
       }
       member.lastReceivedSeq = message.seq
       if (!this.canInput(slot)) {
-        member.input = emptyInput()
+        member.held = 0
+        member.queue.length = 0
         member.lastAppliedSeq = message.seq
         return
       }
-      member.input.held = message.held
-      member.input.pressed.push(...message.pressed)
+      member.queue.push({seq:message.seq,held:message.held,pressed:message.pressed.slice()})
       return
     }
     if (message.type==='ready' && this.phase==='lobby') member.ready = message.value
@@ -146,6 +149,7 @@ export class OnlineRoom {
       const seed = this.seed()
       this.countdown = START_TICKS
       this.frameTicks = 0
+      this.frameId = 0
       this.events = []
       this.fallen = []
       this.startInfo = {seed,names,levels,countdown:this.countdown,characters:[...this.characters],presentation:BATTLE_INTRO_TICKS.blitz}
@@ -161,8 +165,9 @@ export class OnlineRoom {
     this.match = null
     this.startInfo = null
     this.countdown = 0
+    this.frameId = 0
     this.phase = 'lobby'
-    this.members = this.members.map(member=>member?.peer ? {...member,ready:false,input:emptyInput()} : null)
+    this.members = this.members.map(member=>member?.peer ? {...member,ready:false,held:0,queue:[]} : null)
     if (!this.members[this.host]) this.host = this.members.findIndex(Boolean)
   }
 
@@ -190,7 +195,8 @@ export class OnlineRoom {
       this.phase = 'paused'
       this.pausedAt = now
       for (const seat of this.members) if (seat) {
-        seat.input = emptyInput()
+        seat.held = 0
+        seat.queue.length = 0
         seat.lastAppliedSeq = seat.lastReceivedSeq
       }
     }
@@ -227,12 +233,18 @@ export class OnlineRoom {
     const inputs = this.members.map((seat,slot)=>{
       if (!seat) return NO_INPUT
       if (!this.canInput(slot)) {
-        seat.input = emptyInput()
+        seat.held = 0
+        seat.queue.length = 0
         seat.lastAppliedSeq = seat.lastReceivedSeq
         return NO_INPUT
       }
-      seat.lastAppliedSeq = seat.lastReceivedSeq
-      return consumeRemote(seat.input)
+      const next = seat.queue.shift()
+      if (next) {
+        seat.held = next.held
+        seat.lastAppliedSeq = next.seq
+        return {held:heldActions(next.held),pressed:next.pressed}
+      }
+      return {held:heldActions(seat.held),pressed:[]}
     })
     match.tick(inputs)
     for (const [slot,player] of match.players.entries()) {
@@ -242,7 +254,7 @@ export class OnlineRoom {
     }
     if (match.finished) this.fallen = match.players.flatMap((player,i)=>alive[i] && player.dead ? [i] : [])
     if (++this.frameTicks>=FRAME_TICKS || match.finished) {
-      this.broadcast({type:'frame',state:snapshot(match),acks:this.acknowledgements(),events:this.events,fallen:this.fallen})
+      this.broadcast({type:'frame',frameId:++this.frameId,state:snapshot(match),acks:this.acknowledgements(),events:this.events,fallen:this.fallen})
       this.events = []
       this.frameTicks = 0
     }

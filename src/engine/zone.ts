@@ -53,4 +53,21 @@ export class Zone {
     return {warning:false, lines:this.lines,
       attack:this.attack + (this.lines ? this.lines + rules.attack.zoneBonus : 0)}
   }
+
+  save() {
+    return {
+      energy: this.energy, remaining: this.remaining, duration: this.duration,
+      lines: this.lines, regularLines: this.regularLines, partial: this.partial, attack: this.attack,
+    }
+  }
+
+  restore(state: ReturnType<Zone['save']>) {
+    this.energy = state.energy
+    this.remaining = state.remaining
+    this.duration = state.duration
+    this.lines = state.lines
+    this.regularLines = state.regularLines
+    this.partial = state.partial
+    this.attack = state.attack
+  }
 }
