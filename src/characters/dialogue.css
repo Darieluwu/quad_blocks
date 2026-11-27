@@ -115,7 +115,7 @@
 }
 
 @media (max-width:850px) {
-  .arena-grid { grid-template-columns:repeat(2,minmax(0,1fr)) }
+  :is(.arena-grid,.stand-huds) { grid-template-columns:repeat(2,minmax(0,1fr)) }
 }
 @media (max-width:1499px) {
   .blitz-subtitle-layer { display:none }

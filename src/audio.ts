@@ -9,7 +9,9 @@ const tracks:Record<Music,string|undefined> = {blitz:blitzTrack,selection:option
 const optionalEffects = import.meta.glob<string>('./music/sfx/*.{mp3,ogg,wav}',{eager:true,import:'default',query:'?url&no-inline'})
 export type CinematicEffect =
   'battle-start'|'countdown-tick'|'battle-go'|'combo-rise'|'perfect-clear'|'danger-alert'|'surge-ready'|
-  'surge-activate'|'surge-finish'|'blitz-swap-warning'|'blitz-swap'|'teammate-down'|'teammate-revive'|'victory-stinger'
+  'surge-activate'|'surge-finish'|'blitz-swap-warning'|'blitz-swap'|'teammate-down'|'teammate-revive'|'victory-stinger'|
+  'last-stand-start'|'last-stand-spin'|'last-stand-reveal'|'double-last-stand-start'|'double-last-stand-reveal'|
+  'second-wind-activate'|'revive-complete'|'cursed-foundation-activate'|'last-stand-buff-expire'
 const BATTLE_EFFECTS = ['battle-start','countdown-tick','battle-go'] as const
 const effectSource = (name:string) => optionalEffects[`./music/sfx/${name}.mp3`] ??
   optionalEffects[`./music/sfx/${name}.ogg`] ?? optionalEffects[`./music/sfx/${name}.wav`]

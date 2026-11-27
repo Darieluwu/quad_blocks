@@ -2,7 +2,8 @@ import './style.css'
 import { Match, teamForSlot, type Participant } from './engine/match'
 import { BlitzMatch } from './engine/blitz'
 import { HZ, PLAYERS, SETTINGS } from './engine/rules'
-import { ACTIONS, NO_INPUT, type Action } from './engine/player'
+import { ACTIONS, NO_INPUT, type Action, type Input } from './engine/player'
+import { LastStandView } from './last-stand-view'
 import { BOT_LEVELS, botLevel } from './engine/bot'
 import { Inputs, actionNames as actionNamesOnline, automaticPadMap, conflict, defaultMap, keyboardClashes, label, padBindings, pressedButtons } from './input'
 import { Sound, comboRisePlaybackRate, type DialogueState } from './audio'
@@ -11,7 +12,7 @@ import { ATTACK_LABELS, BLITZ_NUMBERS, NUMBER_RULES, freshRules, loadSettings, s
 import { configuration, controls, credits, diagnostic, diagnosticsPage, escape, footer, header, home, icon, lobby, modeName, modeSelect, teamName, type Mode } from './menu'
 import { RoomClient, inviteCode } from './online/client'
 import { onlineMenu } from './online/menu'
-import { OnlineMatch, randomId, type LobbyState, type ServerMessage } from './online/protocol'
+import { OnlineMatch, OnlineTeamsMatch, randomId, type LobbyState, type ServerMessage } from './online/protocol'
 import { CHARACTERS, CHARACTER_IDS, chooseCharacter, isCharacterId, uniqueCharacters, type CharacterId, type CharacterOptions, type VoiceEvent } from './characters/catalog'
 import { ArcadePicker } from './characters/picker'
 import { artwork, japaneseVoice, subtitleFor } from './characters/assets'
@@ -32,6 +33,11 @@ const arcadePadPrior = new Map<number,{up:boolean;down:boolean;left:boolean;righ
 const criticalSeen = new Set<number>()
 const surgeReadySeen = new Set<number>()
 let battleIntro: BattleIntroSystem | null = null
+let lastStandView:LastStandView|null = null
+let lastStandStartedAt = 0
+let lastStandSampledAt = 0
+const blockedStandActions = new Map<number,Set<Action>>()
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)')
 let countdownReceivedAt = 0
 let victoryPlayed = false
 let blitzWarningSent = false
@@ -98,7 +104,7 @@ app.addEventListener('error',event=>{
   if (fallback && image.getAttribute('src')!==fallback) image.src = fallback
   else image.hidden = true
 },true)
-inputs.onBlur = () => { if (online) online.input(NO_INPUT); else if (page === 'game') pause('La ventana perdió el foco.') }
+inputs.onBlur = () => { if (online) online.input(NO_INPUT,match?.stand?.event?.id); else if (page === 'game') pause('La ventana perdió el foco.') }
 document.addEventListener('pointerdown', () => audio.wake())
 document.addEventListener('keydown', () => audio.wake())
 document.addEventListener('visibilitychange', () => {
@@ -174,6 +180,7 @@ function render() {
     }
   }
   if (characterFocus!==undefined) app.querySelector<HTMLButtonElement>(`[data-character="${characterFocus}"]`)?.focus()
+  if (focused?.lastStand) app.querySelector<HTMLSelectElement>('[data-last-stand]')?.focus({preventScroll:true})
   if (editorField && focused && Number(focused[editorField])===lobbyEditor) {
     const attr = editorField==='onlineBot' ? 'online-bot' : editorField
     app.querySelector<HTMLSelectElement>(`[data-${attr}="${lobbyEditor}"]`)?.focus({preventScroll:true})
@@ -202,6 +209,7 @@ function go(next: Page) {
   if (page === 'game') {
     battleIntro?.dispose()
     battleIntro = null
+    lastStandView = null
     match = null; arena = null; inputs.clear()
   }
   lobbyPadPrior = []
@@ -219,7 +227,8 @@ function start(roster: readonly Participant[]) {
   const seed = settings.rules.seed.trim() ||
     Array.from(crypto.getRandomValues(new Uint32Array(2)),value => value.toString(36)).join('-')
   const rules = structuredClone(settings.rules)
-  match = mode==='blitz' ? new BlitzMatch(rules,seed,roster,{...settings.blitz}) : new Match(rules,seed,roster)
+  match = mode==='blitz' ? new BlitzMatch(rules,seed,roster,{...settings.blitz}) :
+    new Match(rules,seed,roster,false,mode==='teams' && settings.lastStand)
   matchCharacters = [...settings.characters]
   const format = introMode(match)
   const presentation = !format || settings.battleIntro==='off' ? 0 :
@@ -255,15 +264,18 @@ function mountGame(current: Match, initialCountdown:number, presentation:number,
   lobbyEditor = null
   overlayState = ''
   finalFallen = []
+  blockedStandActions.clear()
   inputs.clear()
   app.innerHTML = `<header class="bar game-bar ${mode==='blitz'?'game-bar-blitz':''}"><div class="bar-inner">
     <button class="brand" ${online?'data-page="home" aria-label="Salir de la partida"':'data-do="pause" aria-label="Pausar partida"'}><span class="brand-icon">${icon('logo')}</span><span>TETRA<span>VOLT</span></span></button>
     <div class="game-info"><strong>${format}</strong><span>${modeName(mode)}</span>${mode==='blitz'?'':'<output id="elapsed">00:00</output>'}</div>
     <div class="game-buttons"><button class="icon-button audio-toggle" data-do="mute"></button>${online?`<span class="online-player">ONLINE · J${onlineSeat+1}</span><button class="secondary" data-page="home">Salir</button>`:`<button class="secondary" data-do="pause">${icon('pause')} Pausa</button>`}</div>
   </div></header><main class="game ${mode==='blitz'?'game-blitz':''}"><div id="arena"></div><div id="overlay" aria-live="polite"></div>
+    ${current.stand?'<section class="stand-overlay" hidden></section>':''}
     <div class="match-footer"><span>${online?'Sala privada':`Semilla <b>${escape(seed)}</b>`}</span><span id="metrics"></span>
       ${online?'<span id="online-metrics" aria-live="polite"></span>':''}<span>${online?'Reglas competitivas':escape(settings.profile)} · ${modeName(mode)}</span></div></main>`
   const arenaRoot = app.querySelector<HTMLElement>('#arena')!
+  lastStandView = current.stand ? new LastStandView(app.querySelector<HTMLElement>('.stand-overlay')!,audio,roster,matchCharacters,rejoin) : null
   arena = mountArena(arenaRoot,roster,current instanceof BlitzMatch,matchCharacters,settings.characterOptions.attackAnimations)
   arena.draw(current,displaySlots())
   const slots = displaySlots()
@@ -277,7 +289,7 @@ function mountGame(current: Match, initialCountdown:number, presentation:number,
 }
 
 function pause(reason = '') {
-  if (online) return
+  if (online || match?.standPaused) return
   if (phase !== 'live' && phase !== 'countdown') return
   resumePhase = phase
   phase = 'paused'
@@ -343,6 +355,19 @@ function drawOverlay() {
   game.classList.add('result-scene')
   game.classList.toggle('result-blitz',mode==='blitz')
   game.classList.toggle('result-draw',currentMatch.winnerBoards().length===0)
+  game.querySelector('.vs4-winner-art')?.remove()
+  if (mode==='versus' && currentMatch.roster.length===PLAYERS && currentMatch.winner!==null) {
+    const winnerSlot = currentMatch.roster[currentMatch.winner].slot
+    const id = matchCharacters[winnerSlot]
+    const src = artworkWinner(id)
+    if (src) {
+      const showcase = document.createElement('figure')
+      showcase.className = 'vs4-winner-art'
+      showcase.style.setProperty('--character-color',CHARACTERS[id].colors[0])
+      showcase.innerHTML = `<img src="${src}" alt="${CHARACTERS[id].name}" draggable="false"><figcaption>${CHARACTERS[id].name}</figcaption>`
+      game.insertBefore(showcase,game.querySelector('#arena'))
+    }
+  }
   overlay.className = 'results-panel'
   const winner = currentMatch.winner
   const team = currentMatch.winningTeam
@@ -434,6 +459,7 @@ function receiveOnline(message: ServerMessage) {
         if (page==='game') { audio.stopCharacterVoices(); lobbyPadPrior = [] }
         battleIntro?.dispose()
         battleIntro = null
+        lastStandView = null
         match = arena = null
         onlineNames = null
         page = 'online'
@@ -443,7 +469,7 @@ function receiveOnline(message: ServerMessage) {
         onlineNotice = `Esperando que vuelva ${message.lobby.missing.join(', ')}.`
         audio.pauseMusic()
         inputs.clear()
-        online?.input(NO_INPUT)
+        online?.input(NO_INPUT,match?.stand?.event?.id)
       } else if (page==='game' && message.lobby.phase!=='results') {
         const starting = phase==='countdown' && message.lobby.phase==='playing'
         phase = message.lobby.phase==='countdown' ? 'countdown' : 'live'
@@ -467,14 +493,14 @@ function receiveOnline(message: ServerMessage) {
       break
     }
     case 'start':
-      mode = 'blitz'
+      mode = message.format ?? 'blitz'
       onlineNames = message.names
-      if (match instanceof OnlineMatch && match.seed===message.seed) {
+      if ((match instanceof OnlineMatch || match instanceof OnlineTeamsMatch) && match.seed===message.seed && message.rejoin) {
         countdown = message.countdown
         countdownReceivedAt = performance.now()
       } else {
         matchCharacters = uniqueCharacters(message.characters)
-        match = new OnlineMatch(message)
+        match = mode==='teams' ? new OnlineTeamsMatch(message) : new OnlineMatch(message)
         mountGame(match,message.countdown,message.presentation ?? 0,message.rejoin)
       }
       break
@@ -484,11 +510,25 @@ function receiveOnline(message: ServerMessage) {
       countdownReceivedAt = performance.now()
       break
     case 'frame': {
-      if (!(match instanceof OnlineMatch) || phase==='results') return
+      if (!(match instanceof OnlineMatch || match instanceof OnlineTeamsMatch) || phase==='results') return
       const pending = online?.acknowledge(message.acks,onlineSeat) ?? []
-      const result = match.reconcile(message,onlineSeat,pending)
-      if (!result.accepted) return
-      if (!result.localActive) online?.clearPending()
+      let predicted = false
+      if (match instanceof OnlineTeamsMatch) {
+        const wasPaused = match.standPaused
+        if (!match.load(message)) return
+        lastStandSampledAt = performance.now()
+        if (wasPaused!==match.standPaused) {
+          inputs.poll()
+          standInputs(inputs.consume(),true)
+          inputs.clear()
+          online?.clearPending()
+        }
+      } else {
+        const result = match.reconcile(message,onlineSeat,pending)
+        if (!result.accepted) return
+        predicted = result.localActive
+        if (!predicted) online?.clearPending()
+      }
       renderOnlineMetrics()
       for (const [i,player] of match.players.entries()) {
         if (player.danger!==2) criticalSeen.delete(i)
@@ -497,7 +537,7 @@ function receiveOnline(message: ServerMessage) {
         } else surgeReadySeen.delete(i)
       }
       for (const {slot,event} of message.events) {
-        if (slot===onlineSeat && result.localActive && LOCAL_BOARD_EVENTS.has(event.type)) continue
+        if (slot===onlineSeat && predicted && LOCAL_BOARD_EVENTS.has(event.type)) continue
         playEvent(match,slot,event)
       }
       if (match.finished) {
@@ -569,7 +609,7 @@ app.addEventListener('submit',event=>{
       if (state==='closed') onlineLobby = null
       render()
     }
-  })
+  },create && form.get('format')==='teams' ? 'teams' : undefined)
   online.connect()
 })
 
@@ -577,6 +617,13 @@ app.addEventListener('change',event=>{
   const element = event.target
   if (element instanceof HTMLSelectElement && element.dataset.onlineBot!==undefined) {
     online?.send({type:'bot',slot:Number(element.dataset.onlineBot),level:Number(element.value)})
+  }
+  if (element instanceof HTMLSelectElement && element.dataset.lastStand==='online' && onlineLobby?.host===onlineSeat) {
+    online?.send({type:'lastStand',value:element.value==='on'})
+  }
+  if (element instanceof HTMLSelectElement && element.dataset.lastStand==='local' && page==='lobby' && mode==='teams') {
+    settings.lastStand = element.value==='on'
+    store()
   }
 })
 
@@ -1387,11 +1434,20 @@ function playEvent(activeMatch: Match, i: number, event: Match['players'][number
     audio.playEffect('blitz-swap',.82)
   } else if (event.type==='blitzRevived') {
     audio.playEffect('teammate-revive',.82)
+  } else if (event.type==='standRevived') {
+    audio.playEffect('revive-complete',.82)
+  } else if (event.type==='secondWindActivate') {
+    audio.playEffect('second-wind-activate',.82)
+  } else if (event.type==='cursedFoundationActivate') {
+    audio.playEffect('cursed-foundation-activate',.82)
+  } else if (event.type==='standExpire') {
+    audio.playEffect('last-stand-buff-expire',.72)
   } else if (event.type==='victory'||event.type==='blitzVictory') {
     // The definitive stinger is owned by drawOverlay() so rerenders and online frames cannot duplicate it.
   }
   if (event.type==='send') audio.playEffect('attack-send')
-  if (activeMatch instanceof BlitzMatch && (event.type==='eliminated' || event.type==='blitzRevived')) {
+  if ((activeMatch instanceof BlitzMatch && (event.type==='eliminated' || event.type==='blitzRevived')) ||
+      event.type==='standRevived') {
     const teammate = activeMatch.roster.findIndex((p,j)=>j!==i && p.team===activeMatch.roster[i].team && !activeMatch.players[j].dead)
     if (teammate>=0) {
       const teammateEvent=event.type==='eliminated'?'teammateDown':'teammateRevived'
@@ -1406,8 +1462,22 @@ function playEvent(activeMatch: Match, i: number, event: Match['players'][number
       activeArena.note(i,'impact',undefined,activeMatch.now)
       audio.playEffect('damage-impact',Math.min(1,0.55+Number(event.detail)*0.07))
       audio.play(event,activeMatch.roster[i].slot)
-    })
+    },event.secondary)
   } else if (!(activeMatch instanceof BlitzMatch && event.type==='eliminated')) audio.play(event,activeMatch.roster[i].slot)
+}
+
+function standInputs(physical:Input[], paused:boolean) {
+  return physical.map((input,slot)=>{
+    const blocked = blockedStandActions.get(slot) ?? new Set<Action>()
+    for (const action of blocked) if (!input.held.has(action)) blocked.delete(action)
+    if (paused) for (const action of input.held) blocked.add(action)
+    if (blocked.size) blockedStandActions.set(slot,blocked)
+    else blockedStandActions.delete(slot)
+    if (paused) return NO_INPUT
+    if (!blocked.size) return input
+    return {held:new Set([...input.held].filter(action=>!blocked.has(action))),
+      pressed:input.pressed.filter(action=>!blocked.has(action))}
+  })
 }
 
 function frame(now: number) {
@@ -1419,8 +1489,18 @@ function frame(now: number) {
   if (!online && page === 'game' && match && disconnected(match.roster).length) pause()
   while (accumulator >= frameStep) {
     accumulator -= frameStep
-    const physical = inputs.consume()
+    const raw = inputs.consume()
     if (!match || page !== 'game' || phase === 'results') continue
+    const physical = match.stand ? standInputs(raw,match.standPaused) : raw
+    if (!online && match.standPaused) {
+      match.advanceStand(now-lastStandStartedAt)
+      if (!match.standPaused) {
+        inputs.clear()
+        accumulator = 0
+        for (const [i,p] of match.players.entries()) for (const event of p.events.splice(0)) playEvent(match,i,event)
+      }
+      continue
+    }
     if (online) {
       if (phase==='live' && match instanceof OnlineMatch) {
         if (match.isSlotActive(onlineSeat)) {
@@ -1433,6 +1513,9 @@ function frame(now: number) {
             for (const event of localEvents) if (LOCAL_BOARD_EVENTS.has(event.type)) playEvent(match,onlineSeat,event)
           }
         } else online.clearPending()
+      } else if (phase==='live' && match instanceof OnlineTeamsMatch && match.synced &&
+          !match.standPaused && !match.players[onlineSeat]?.dead && onlineSeat>=0) {
+        online.input(physical[0],match.stand?.event?.id)
       }
       continue
     }
@@ -1453,6 +1536,11 @@ function frame(now: number) {
     }
     const alive = match.players.map(p=>!p.dead)
     match.tick(sample)
+    if (match.standPaused) {
+      lastStandStartedAt = now
+      standInputs(raw,true)
+      inputs.clear()
+    }
     steps++
     match.players.forEach((p,i) => {
       if (p.zone.active && p.zone.remaining % (HZ*2) === 0 && p.zone.remaining !== p.zone.duration) p.event('zoneLoop')
@@ -1475,6 +1563,9 @@ function frame(now: number) {
   if (match && page === 'game') {
     arena?.draw(match,displaySlots())
     drawOverlay()
+    const standElapsed = (match.stand?.elapsed ?? 0)+(online && phase==='live' ? Math.max(0,Math.min(50,now-lastStandSampledAt)) : 0)
+    lastStandView?.draw(match,settings.reduced || reducedMotion.matches,standElapsed,
+      phase==='live' && (!online || onlineConnected))
     const time = formatTime(match.now)
     const elapsed = document.querySelector('#elapsed')
     if (elapsed && (time!==clockText || elapsed.textContent!==time)) elapsed.textContent = clockText = time

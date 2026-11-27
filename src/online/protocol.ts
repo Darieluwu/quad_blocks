@@ -1,5 +1,5 @@
 import { BlitzMatch, type Stance } from '../engine/blitz'
-import { teamForSlot } from '../engine/match'
+import { Match, teamForSlot } from '../engine/match'
 import { ACTIONS, NO_INPUT, type Action, type GameEvent, type Input, type PlayerSnapshot, type PlayerStats } from '../engine/player'
 import { DEFAULT_RULES, SETTINGS } from '../engine/rules'
 import { isCharacterId, type CharacterId } from '../characters/catalog'
@@ -15,14 +15,17 @@ export const actionMask = (actions: ReadonlySet<Action>) =>
 export const heldActions = (mask: number) => new Set(PLAY_ACTIONS.filter((_,i)=>mask & (1<<i)))
 
 export type Seat = {name:string; connected:boolean; ready:boolean; botLevel:number; character?:CharacterId; characterConfirmed?:boolean}
-export type LobbyState = {host:number; seats:Seat[]; phase:'lobby'|'countdown'|'playing'|'paused'|'results'; missing:string[]}
+export type OnlineFormat = 'blitz'|'teams'
+export type LobbyState = {host:number; seats:Seat[]; phase:'lobby'|'countdown'|'playing'|'paused'|'results'; missing:string[];
+  format?:OnlineFormat; lastStand?:boolean}
 export type ClientMessage =
-  | {type:'join'; token:string; name:string; create:boolean}
+  | {type:'join'; token:string; name:string; create:boolean; format?:OnlineFormat}
   | {type:'ready'; value:boolean}
+  | {type:'lastStand'; value:boolean}
   | {type:'character'; slot:number; id:CharacterId; request?:number}
   | {type:'bot'; slot:number; level:number}
   | {type:'start'|'lobby'|'leave'}
-  | {type:'input'; seq:number; held:number; pressed:Action[]}
+  | {type:'input'; seq:number; held:number; pressed:Action[]; standId?:number}
   | {type:'ping'; id:number}
 
 export function parseClient(raw: unknown): ClientMessage | null {
@@ -32,13 +35,15 @@ export function parseClient(raw: unknown): ClientMessage | null {
     if (!message || typeof message!=='object') return null
     switch (message.type) {
       case 'join': return typeof message.token==='string' && ROOM_ID.test(message.token) &&
-        typeof message.name==='string' && message.name.trim().length>0 && message.name.length<=24 && typeof message.create==='boolean' ? message : null
-      case 'ready': return typeof message.value==='boolean' ? message : null
+        typeof message.name==='string' && message.name.trim().length>0 && message.name.length<=24 && typeof message.create==='boolean' &&
+        (message.format===undefined || message.format==='blitz' || message.format==='teams') ? message : null
+      case 'ready': case 'lastStand': return typeof message.value==='boolean' ? message : null
       case 'character': return Number.isInteger(message.slot) && message.slot>=0 && message.slot<4 && isCharacterId(message.id) &&
         (message.request===undefined || Number.isSafeInteger(message.request) && message.request>0) ? message : null
       case 'bot': return Number.isInteger(message.slot) && message.slot>=0 && message.slot<4 &&
         Number.isInteger(message.level) && message.level>=1 && message.level<=10 ? message : null
       case 'input': return Number.isSafeInteger(message.seq) && message.seq>0 &&
+        (message.standId===undefined || Number.isSafeInteger(message.standId) && message.standId>0) &&
         Number.isInteger(message.held) && message.held>=0 && message.held<(1<<PLAY_ACTIONS.length) &&
         Array.isArray(message.pressed) && message.pressed.length<=PRESS_LIMIT &&
         message.pressed.every(action=>PLAY_ACTIONS.some(allowed=>allowed===action)) ? message : null
@@ -51,27 +56,37 @@ export function parseClient(raw: unknown): ClientMessage | null {
 
 export const makeMatch = (seed: string, levels: (number|null)[]) => new BlitzMatch(ONLINE_RULES,seed,
   levels.map((level,slot)=>({slot,team:teamForSlot(slot),level:level??undefined})))
+export const makeTeamsMatch = (start:MatchStart) => new Match(ONLINE_RULES,start.seed,
+  start.levels.map((level,slot)=>({slot,team:teamForSlot(slot),level:level??undefined})),false,start.lastStand ?? true)
 
-const CELLS = [null,'I','J','L','O','S','T','Z','G','zone'] as const
-const boardText = (p: BlitzMatch['players'][number]) => p.board.map(row=>row.map(cell=>CELLS.indexOf(cell)).join('')).join('')
+const CELLS = [null,'I','J','L','O','S','T','Z','G','zone','foundation'] as const
+const boardText = (p: Match['players'][number]) => p.board.map(row=>row.map(cell=>CELLS.indexOf(cell).toString(16)).join('')).join('')
+const loadBoard = (board:PlayerSnapshot['board'],text:string) => {
+  let column = 0
+  for (const row of board) for (let x=0;x<row.length;x++) row[x] = CELLS[parseInt(text[column++],16)]
+}
 
-export function snapshot(match: BlitzMatch) {
+export function snapshot(match: Match) {
+  const blitz = match instanceof BlitzMatch ? match : null
   return {
-    now:match.now, left:match.left, transition:match.transition, rotation:match.rotation, turn:match.turn,
-    finished:match.finished, winningTeam:match.winningTeam, stances:match.stances.slice(),
-    sides:match.sides.map(side=>({...side,members:side.members.slice(),rescue:side.rescue?{...side.rescue}:null})),
-    clocks:match.clocks.slice(), zonePhase:match.zonePhase,
+    now:match.now, left:blitz?.left ?? 0, transition:blitz?.transition ?? 0, rotation:blitz?.rotation ?? 'normal', turn:blitz?.turn ?? 0,
+    finished:match.finished, winningTeam:match.winningTeam, stances:blitz?.stances.slice() ?? [],
+    sides:blitz?.sides.map(side=>({...side,members:side.members.slice(),rescue:side.rescue?{...side.rescue}:null})) ?? [],
+    clocks:blitz?.clocks.slice() ?? [], zonePhase:match.zonePhase,
+    ...(blitz ? {} : {teams:{targets:match.targets.slice(),eliminated:match.eliminated.map(group=>group.slice()),
+      stand:match.stand ? structuredClone(match.stand) : null}}),
     totals:match.finished ? match.players.map((_,i)=>match.statsFor(i)) : null,
     players:match.players.map(p=>({board:boardText(p),active:{...p.active},lastRotation:p.lastRotation?{...p.lastRotation}:null,
       sim:p.simState(),hold:p.hold,next:p.next.slice(),dead:p.dead,
       stats:{...p.stats},danger:p.danger,garbage:p.garbage.queue.map(packet=>({...packet})),
-      zone:p.zone.save()})),
+      zone:p.zone.save(), ...(p.stand ? {stand:{...p.stand}} : {}),
+      ...(p.foundationUntil ? {foundationUntil:p.foundationUntil} : {})})),
   }
 }
 
 export type Snapshot = ReturnType<typeof snapshot>
 export type MatchStart = {seed:string; names:string[]; levels:(number|null)[]; countdown:number; characters?:CharacterId[];
-  presentation?:number; rejoin?:boolean}
+  presentation?:number; rejoin?:boolean; format?:OnlineFormat; lastStand?:boolean}
 export type Frame = {type:'frame'; frameId?:number; state:Snapshot; acks:number[]; events:{slot:number; event:GameEvent}[]; fallen:number[]}
 export type ServerMessage = {type:'welcome'; slot:number; inputSeq:number} | {type:'lobby'; lobby:LobbyState} |
   {type:'characterConfirmed'; slot:number; id:CharacterId; request:number; accepted:boolean} |
@@ -86,6 +101,45 @@ type LocalHistoryEntry = {
   board: string
   state: PlayerSnapshot
   stance: Stance
+}
+
+export class OnlineTeamsMatch extends Match {
+  private lastFrameId = 0
+  private totals:PlayerStats[]|null = null
+  private boards:string[] = []
+  synced = false
+
+  constructor(start:MatchStart) {
+    super(ONLINE_RULES,start.seed,start.levels.map((level,slot)=>({slot,team:teamForSlot(slot),level:level??undefined})),
+      false,start.lastStand ?? true)
+  }
+
+  override statsFor(index:number) { return this.totals?.[index] ?? super.statsFor(index) }
+
+  load(frame:Frame) {
+    if (!frame.state.teams || frame.frameId && frame.frameId<=this.lastFrameId) return false
+    const {state} = frame
+    const {targets,eliminated,stand} = frame.state.teams
+    this.lastFrameId = frame.frameId ?? this.lastFrameId
+    this.synced = true
+    this.now = state.now
+    this.finished = state.finished
+    this.winningTeam = state.winningTeam
+    this.zonePhase = state.zonePhase
+    this.totals = state.totals
+    this.targets = targets.slice()
+    this.eliminated = eliminated.map(group=>group.slice())
+    this.stand = stand ? structuredClone(stand) : null
+    for (const [i,view] of state.players.entries()) {
+      const player = this.players[i]
+      const changed = this.boards[i]!==view.board
+      const board = changed ? player.board.map(row=>row.slice()) : player.board
+      if (changed) loadBoard(board,view.board)
+      this.boards[i] = view.board
+      player.importState({...view,board,revision:player.revision+Number(changed)})
+    }
+    return true
+  }
 }
 
 const cloneInput = (input: Input): Input => ({held: new Set(input.held), pressed: input.pressed.slice()})
@@ -119,8 +173,7 @@ export class OnlineMatch extends BlitzMatch {
     this.stances[i] = stance
     if (this.boards[i]!==view.board) {
       this.boards[i] = view.board
-      let column = 0
-      for (const row of player.board) for (let x=0;x<row.length;x++) row[x] = CELLS[Number(view.board[column++])]
+      loadBoard(player.board,view.board)
       player.revision++
     }
     player.active = {...view.active}

@@ -29,7 +29,7 @@ function cleared(result: number[], banked: number, zoned: boolean) {
   const remaining = playable.filter(row => row !== FULL)
   const lines = playable.length-remaining.length
   if (zoned) return {rows:remaining.concat(Array<number>(banked+lines).fill(FULL)),lines,banked:banked+lines}
-  return {rows:Array<number>(lines).fill(0).concat(remaining),lines,banked:0}
+  return {rows:Array<number>(lines).fill(0).concat(remaining,result.slice(playable.length)),lines,banked}
 }
 
 function projection(rows: readonly number[], piece: Piece, banked: number, zoned: boolean) {
@@ -132,6 +132,7 @@ export class Bot {
     if (!fits(board,piece)) return
     const level = this.level
     const zoned = player.zone.active
+    const sealed = player.foundationRows+(zoned ? player.zone.lines : 0)
     const extra = level >= 7 && player.rules.lock >= 70
     const well = level >= 5 && !player.zone.active
     const sweep = player.rules.das===0 && player.rules.arr===0
@@ -156,7 +157,7 @@ export class Bot {
       const dropped = {...p,y:p.y+distance}
       const id = `${dropped.x},${dropped.y},${p.rotation},${spin || ''}`
       if (!placements.has(id)) {
-        const {rows:after,lines,banked} = projection(rows,dropped,zoned ? player.zone.lines : 0,zoned)
+        const {rows:after,lines,banked} = projection(rows,dropped,sealed,zoned)
         const visible = SHAPES[p.kind][p.rotation].some(([,y])=>dropped.y+y>=HIDDEN)
         if (visible || lines>0 || (zoned && player.zone.lines>=VISIBLE)) {
           const perfect = lines>0 && !after.some((row,y)=>y<HEIGHT-banked && row)

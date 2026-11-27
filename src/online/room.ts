@@ -1,10 +1,11 @@
-import type { BlitzMatch } from '../engine/blitz'
+import { BlitzMatch } from '../engine/blitz'
+import type { Match } from '../engine/match'
 import { NO_INPUT, type Action } from '../engine/player'
-import { HZ } from '../engine/rules'
+import { HZ, SETTINGS } from '../engine/rules'
 import { BATTLE_INTRO_TICKS } from '../battle-intro-config'
 import { chooseCharacter, uniqueCharacters } from '../characters/catalog'
-import { heldActions, makeMatch, randomId, snapshot, START_TICKS,
-  type ClientMessage, type Frame, type LobbyState, type MatchStart, type ServerMessage } from './protocol'
+import { heldActions, makeMatch, makeTeamsMatch, randomId, snapshot, START_TICKS,
+  type ClientMessage, type Frame, type LobbyState, type MatchStart, type OnlineFormat, type ServerMessage } from './protocol'
 
 export const STEP_MS = 1000/HZ
 const FRAME_TICKS = 3
@@ -25,7 +26,10 @@ export class OnlineRoom {
   private botConfirmed = [false,false,false,false]
   private host = -1
   private phase: LobbyState['phase'] = 'lobby'
-  private match: BlitzMatch|null = null
+  private match: Match|null = null
+  private format: OnlineFormat = 'blitz'
+  private lastStand = true
+  private standStartedAt = 0
   private startInfo: MatchStart|null = null
   private countdown = 0
   private frameTicks = 0
@@ -48,6 +52,7 @@ export class OnlineRoom {
   }
   private lobbyUpdate() {
     this.broadcast({type:'lobby',lobby:{host:this.host,phase:this.phase,
+      format:this.format,...(this.format==='teams' ? {lastStand:this.lastStand} : {}),
       missing:this.members.flatMap(member=>member && !member.peer ? [member.name] : []),
       seats:this.members.map((member,slot)=>({name:member?.name ?? '',connected:!!member?.peer,
         ready:!!member?.ready,botLevel:this.botLevels[slot],character:this.characters[slot],
@@ -69,6 +74,7 @@ export class OnlineRoom {
         if (this.match) this.send(peer,{type:'frame',frameId:this.frameId,state:snapshot(this.match),acks:this.acknowledgements(),events:[],fallen:[]})
       }
       if (this.phase==='paused' && this.members.every(member=>!member || member.peer)) {
+        if (this.match?.standPaused) this.standStartedAt += now-this.pausedAt
         this.phase = this.countdown ? 'countdown' : 'playing'
         if (this.countdown) this.broadcast({type:'countdown',left:this.countdown})
       }
@@ -83,7 +89,11 @@ export class OnlineRoom {
     this.members[slot] = {token:message.token,name:message.name.trim(),peer,ready:false,held:0,queue:[],
       lastReceivedSeq:0,lastAppliedSeq:0}
     this.botConfirmed[slot] = false
-    if (this.host===-1) this.host = slot
+    if (this.host===-1) {
+      this.host = slot
+      this.format = message.format ?? 'blitz'
+      this.lastStand = true
+    }
     this.lastActivity = now
     this.send(peer,{type:'welcome',slot,inputSeq:0})
     this.lobbyUpdate()
@@ -104,7 +114,7 @@ export class OnlineRoom {
         return
       }
       member.lastReceivedSeq = message.seq
-      if (!this.canInput(slot)) {
+      if (!this.canInput(slot) || message.standId!==this.match?.stand?.event?.id) {
         member.held = 0
         member.queue.length = 0
         member.lastAppliedSeq = message.seq
@@ -114,6 +124,9 @@ export class OnlineRoom {
       return
     }
     if (message.type==='ready' && this.phase==='lobby') member.ready = message.value
+    else if (message.type==='lastStand' && this.phase==='lobby' && slot===this.host && this.format==='teams') {
+      this.lastStand = message.value
+    }
     else if (message.type==='character') {
       const {slot:target,id,request} = message
       const reply = (accepted:boolean) => {
@@ -147,13 +160,15 @@ export class OnlineRoom {
       const levels = this.members.map((seat,i)=>seat ? null : this.botLevels[i])
       const names = this.members.map((seat,i)=>seat?.name ?? `IA ${this.botLevels[i]}`)
       const seed = this.seed()
-      this.countdown = START_TICKS
+      const presentation = BATTLE_INTRO_TICKS[this.format]
+      this.countdown = this.format==='blitz' ? START_TICKS : SETTINGS.countdown+presentation
       this.frameTicks = 0
       this.frameId = 0
       this.events = []
       this.fallen = []
-      this.startInfo = {seed,names,levels,countdown:this.countdown,characters:[...this.characters],presentation:BATTLE_INTRO_TICKS.blitz}
-      this.match = makeMatch(seed,levels)
+      this.startInfo = {seed,names,levels,countdown:this.countdown,characters:[...this.characters],presentation,
+        format:this.format,...(this.format==='teams' ? {lastStand:this.lastStand} : {})}
+      this.match = this.format==='blitz' ? makeMatch(seed,levels) : makeTeamsMatch(this.startInfo)
       this.phase = 'countdown'
       this.broadcast({type:'start',...this.startInfo})
     } else return
@@ -172,8 +187,17 @@ export class OnlineRoom {
   }
 
   private canInput(slot: number) {
-    return this.phase==='playing' && !!this.match && !this.match.transition &&
-      !this.match.players[slot]?.dead && this.match.sides.some(side=>side.active===slot)
+    const match = this.match
+    return this.phase==='playing' && !!match && !match.standPaused && !match.players[slot]?.dead &&
+      (!(match instanceof BlitzMatch) || !match.transition && match.sides.some(side=>side.active===slot))
+  }
+
+  private clearInputs() {
+    for (const seat of this.members) if (seat) {
+      seat.held = 0
+      seat.queue.length = 0
+      seat.lastAppliedSeq = seat.lastReceivedSeq
+    }
   }
 
   private acknowledgements() {
@@ -194,11 +218,7 @@ export class OnlineRoom {
     } else if (this.phase==='playing' || this.phase==='countdown') {
       this.phase = 'paused'
       this.pausedAt = now
-      for (const seat of this.members) if (seat) {
-        seat.held = 0
-        seat.queue.length = 0
-        seat.lastAppliedSeq = seat.lastReceivedSeq
-      }
+      this.clearInputs()
     }
     if (leave) peer.close(1000,'Salió de la sala')
     this.lastActivity = now
@@ -229,8 +249,10 @@ export class OnlineRoom {
     }
     if (this.phase!=='playing' || !this.match) return
     const match = this.match
+    const wasPaused = match.standPaused
     const alive = match.players.map(player=>!player.dead)
-    const inputs = this.members.map((seat,slot)=>{
+    if (wasPaused) match.advanceStand(now-this.standStartedAt)
+    else match.tick(this.members.map((seat,slot)=>{
       if (!seat) return NO_INPUT
       if (!this.canInput(slot)) {
         seat.held = 0
@@ -245,15 +267,19 @@ export class OnlineRoom {
         return {held:heldActions(next.held),pressed:next.pressed}
       }
       return {held:heldActions(seat.held),pressed:[]}
-    })
-    match.tick(inputs)
+    }))
+    const changedPause = wasPaused!==match.standPaused
+    if (match.standPaused && !wasPaused) {
+      this.standStartedAt = now
+      this.clearInputs()
+    }
     for (const [slot,player] of match.players.entries()) {
-      if (player.zone.active && player.zone.remaining%(HZ*2)===0 && player.zone.remaining!==player.zone.duration) player.event('zoneLoop')
+      if (!wasPaused && player.zone.active && player.zone.remaining%(HZ*2)===0 && player.zone.remaining!==player.zone.duration) player.event('zoneLoop')
       for (const event of player.events) this.events.push({slot,event})
       player.events.length = 0
     }
     if (match.finished) this.fallen = match.players.flatMap((player,i)=>alive[i] && player.dead ? [i] : [])
-    if (++this.frameTicks>=FRAME_TICKS || match.finished) {
+    if (++this.frameTicks>=FRAME_TICKS || match.finished || changedPause) {
       this.broadcast({type:'frame',frameId:++this.frameId,state:snapshot(match),acks:this.acknowledgements(),events:this.events,fallen:this.fallen})
       this.events = []
       this.frameTicks = 0

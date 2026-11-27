@@ -17,11 +17,12 @@ import { characterVisuals, type CharacterVisual } from './characters/visuals'
 import { impactFeedback, portraitFeedback } from './characters/feedback'
 import './characters/hud-portrait.css'
 import type { GameEvent } from './engine/player'
+import { standHud } from './last-stand-view'
 
 export const COLORS = ['#ff5266','#59aaff','#58e39a','#be86fa']
 const PIECES: Record<Exclude<Cell,null>,string> = {
   I:'#45d8ec',J:'#5783fc',L:'#ffad51',O:'#f5dc58',S:'#57da91',T:'#b27cfa',Z:'#f75d73',G:'#76869b',
-  zone:'#ffda78',
+  zone:'#ffda78',foundation:'#784da5',
 }
 const WORDS: Record<string,string> = {
   single:'SINGLE',double:'DOUBLE',triple:'TRIPLE',quad:'TETRIS',mini:'T-SPIN MINI',tZero:'T-SPIN',
@@ -80,7 +81,7 @@ function preview(canvas: HTMLCanvasElement, kinds: Cell[], size = 12) {
   const ctx = canvas.getContext('2d')!
   ctx.clearRect(0,0,canvas.width,canvas.height)
   for (const [i,kind] of kinds.entries()) {
-    if (!kind || kind === 'G' || kind === 'zone') continue
+    if (!kind || kind === 'G' || kind === 'zone' || kind === 'foundation') continue
     const shape = SHAPES[kind][0]
     const left = Math.min(...shape.map(([x]) => x))
     const right = Math.max(...shape.map(([x]) => x))
@@ -147,7 +148,9 @@ export function mountArena(root: HTMLElement, roster: readonly Participant[], bl
       </aside>
       <div class="blitz-stack">${roster.filter(p=>p.team===team).map(card).join('')}</div>
     </section>`).join('')}</div>` :
-    '<div class="arena-grid" style="--boards:'+roster.length+'">'+roster.map(card).join('')+'</div>'
+    `${roster.every(({team})=>team!==undefined) ? `<div class="stand-huds" style="--boards:${roster.length}">
+      ${roster.map(({slot})=>`<div class="stand-hud" data-slot="${slot}" style="--player:${COLORS[slot]}"></div>`).join('')}
+      </div>` : ''}<div class="arena-grid" style="--boards:${roster.length}">${roster.map(card).join('')}</div>`
   root.innerHTML = layout+(blitz?'<div class="blitz-subtitle-layer" aria-label="Diálogo de personajes"></div>':'')+'<div class="projectile-layer" aria-hidden="true"></div>'
   root.classList.toggle('no-attack-animation',!attackAnimations)
   return new Arena(root,roster,characters,attackAnimations)
@@ -205,7 +208,7 @@ class Arena {
         forecast:by<HTMLCanvasElement>(node,'.forecast').getContext('2d')!,
         marker:by(node,'.projection'),markerLabel:by(node,'.projection strong'),fx:by(node,'.board-fx'),
         well:by(node,'.well'),zoneBadge:by(node,'.zone-badge'),
-        zoneResult:by(node,'.zone-result'),resultUntil:0,
+        zoneResult:by(node,'.zone-result'),resultUntil:0,standHud:root.querySelector<HTMLElement>(`.stand-hud[data-slot="${slot}"]`),standKey:'',
         guide:by<HTMLCanvasElement>(node,'.spawn-guide').getContext('2d')!,
         guidance:by(node,'.spawn-label'),guideKey:'',player:null as Player|null,
         impact:by(node,'.impact'),impactUntil:0,forecastKey:'',relationKey:'',
@@ -288,7 +291,7 @@ class Arena {
     }
   }
 
-  attack(from: number, to: number, tick:number, arrive: () => void) {
+  attack(from: number, to: number, tick:number, arrive: () => void, secondary=false) {
     const origin = this.views[from]
     const victim = this.views[to]
     this.cinematics.delivered(origin.node,victim.node,tick)
@@ -302,14 +305,14 @@ class Arena {
       requestAnimationFrame(()=>{
         if (!this.layer.isConnected) return
         if (this.reduced.matches || this.layer.closest('.reduced')) arrive()
-        else this.animateAttack(origin,victim,theme,tick,arrive)
+        else this.animateAttack(origin,victim,theme,tick,arrive,secondary)
       })
-    } else this.animateAttack(origin,victim,theme,tick,arrive)
+    } else this.animateAttack(origin,victim,theme,tick,arrive,secondary)
   }
 
   private animateAttack(origin:Arena['views'][number],victim:Arena['views'][number],
     theme:CharacterVisual['theme']|undefined,
-    tick:number,arrive:()=>void) {
+    tick:number,arrive:()=>void,secondary:boolean) {
     const electric = theme==='electric'
     const cosmic = theme==='cosmic'
     const fire = theme==='fire'
@@ -326,9 +329,10 @@ class Arena {
     const x = (direction>0 ? start.right : start.left)-bounds.left
     const y = Math.max(18,Math.min(start.top,end.top)-bounds.top-12)
     const dx = (direction>0 ? end.left : end.right)-bounds.left-x
-    const arc = Math.min(variation==='tetris'?34:16,Math.abs(dx)*.10,y-8)
+    const arc = Math.min(variation==='tetris'?34:16,Math.abs(dx)*.10,y-8)*(secondary ? -1 : 1)
     const projectile = document.createElement('span')
     projectile.className = 'projectile'
+    if (secondary) projectile.dataset.secondary = 'true'
     if (theme) projectile.classList.add(`projectile-${theme}`)
     if (cosmic || fire || lunar) projectile.dataset.strike = variation ?? 'simple'
     projectile.dataset.from = origin.node.dataset.player
@@ -580,6 +584,14 @@ class Arena {
       for (let y = 0; y < HEIGHT; y++) for (let x = 0; x < WIDTH; x++) {
         const kind = p.board[y][x]
         if (kind) square(view.stackCtx,x*CELL,y*CELL,CELL,PIECES[kind])
+        if (kind==='foundation') {
+          const ctx = view.stackCtx
+          ctx.strokeStyle = '#dec2ff'
+          ctx.beginPath()
+          ctx.moveTo(x*CELL+6,y*CELL+CELL-5)
+          ctx.lineTo(x*CELL+CELL-5,y*CELL+6)
+          ctx.stroke()
+        }
       }
     }
     view.ctx.drawImage(view.stack,0,0)
@@ -610,7 +622,8 @@ class Arena {
     const color = height>=SETTINGS.critical ? '#ff5270' : '#ffb36b'
     ctx.fillStyle = color
     ctx.strokeStyle = color
-    for (let y=0;y<HEIGHT;y++) {
+    const foundation = p.foundationRows
+    for (let y=0;y<HEIGHT-foundation;y++) {
       const projected = y-holes.length
       if (projected<0 || projected>=HEIGHT) continue
       ctx.globalAlpha = .25
@@ -619,7 +632,7 @@ class Arena {
       }
     }
     holes.forEach((hole,index) => {
-      const y = (HEIGHT-holes.length+index)*CELL
+      const y = (HEIGHT-foundation-holes.length+index)*CELL
       for (let x=0;x<WIDTH;x++) if (x!==hole) {
         ctx.globalAlpha = .10
         ctx.fillRect(x*CELL+1,y+1,CELL-2,CELL-2)
@@ -786,6 +799,13 @@ class Arena {
       this.drawProjection(view,p)
       this.drawSpawnGuide(view,p)
       this.drawCombat(view,i,match,slots)
+      if (view.standHud) {
+        const markup = standHud(p,match,match.roster[i].slot)
+        if (view.standKey!==markup) {
+          view.standKey = markup
+          view.standHud.innerHTML = markup
+        }
+      }
       if (!view.zoneResult.hidden && performance.now()>=view.resultUntil) view.zoneResult.hidden = true
       const signature = [p.hold,...p.next].join(',')
       if (view.signature !== signature) {

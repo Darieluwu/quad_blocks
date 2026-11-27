@@ -8,6 +8,7 @@ import { lobbyEditors, lobbyFighter, lobbyLineup, seatEditor } from './lobby-vie
 import { artwork } from './characters/assets'
 import { CHARACTERS } from './characters/catalog'
 import { BATTLE_INTRO_OPTIONS } from './battle-intro-config'
+import { standRule } from './last-stand-copy'
 
 export type Mode = 'versus'|'teams'|'blitz'
 export const teamName = (team: number) => team===0 ? 'Equipo A' : 'Equipo B'
@@ -121,6 +122,7 @@ export function lobby(settings: Settings, inputs: Inputs, ready: boolean[], mode
       readyAction:`<button class="secondary ready ${ready[i]?'is-ready':''}" data-ready="${i}" aria-pressed="${ready[i]}" ${!controller.bot&&slot.device&&!assigned?'disabled':''}>${ready[i]?'Quitar listo':'Marcar listo'}</button>`})
   })
   return `<main class="panel match-lobby">${intro('Sala '+modeName(mode),description,'home')}
+  ${mode==='teams' ? standRule(settings.lastStand) : ''}
   ${lobbyLineup(fighters,teams,ready.every(Boolean))}
   <div class="panel-actions"><button class="secondary" data-page="settings">${icon('settings')} Reglas de partida</button><button class="secondary" data-page="controls">${icon('controls')} Controles</button>
   ${mode==='blitz' ? '' : `<label class="lobby-target">Objetivos<select data-rule="target">${targetOptions(settings.rules.target)}</select></label>`}

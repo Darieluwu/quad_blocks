@@ -2,13 +2,17 @@ import { escape } from '../menu'
 import { uniqueCharacters } from '../characters/catalog'
 import { lobbyEditors, lobbyFighter, lobbyLineup, seatEditor } from '../lobby-view'
 import type { LobbyState } from './protocol'
+import { lastStandCopy, standLanguage, standRule } from '../last-stand-copy'
 
 export function onlineMenu(lobby: LobbyState|null, seat: number, invite: string, name: string, notice: string, waiting: boolean, retry: boolean) {
   const status = `<p class="online-status" role="status">${escape(notice)}</p>`
+  const lang = standLanguage()
+  const copy = lastStandCopy(lang)
   if (!lobby) return `<main class="panel online-panel"><button class="back" data-page="home">Volver</button>
-    <h1>Blitz online</h1><p class="desc">Invita a tus amigos a una sala privada. Cada persona juega desde su navegador con los controles locales de J1.</p>
+    <h1 lang="${lang}">${copy.online}</h1><p class="desc">Invita a tus amigos a una sala privada. Cada persona juega desde su navegador con los controles locales de J1.</p>
     ${status}<form id="online-connect" class="settings-card online-form">
       <label>Nombre <input name="name" value="${escape(name)}" maxlength="24" required autocomplete="nickname"></label>
+      <label lang="${lang}">${copy.format}<select name="format"><option value="blitz">2v2 Blitz</option><option value="teams">${copy.teams}</option></select></label>
       <label>Enlace o código de sala <input name="invite" value="${escape(invite)}" maxlength="240" autocomplete="off"></label>
       <div class="modal-actions"><button class="primary" name="join" ${waiting?'disabled':''}>${retry?'Reconectar':'Unirse'}</button>
       <button class="secondary" name="create" ${waiting?'disabled':''}>Crear sala</button></div>
@@ -31,8 +35,9 @@ export function onlineMenu(lobby: LobbyState|null, seat: number, invite: string,
       readyAction:i===seat?`<button class="secondary ready" data-online="ready" aria-pressed="${p.ready}">${p.ready?'Quitar listo':'Marcar listo'}</button>`:undefined})
   })
   return `<main class="panel match-lobby"><button class="back" data-page="home">Salir de la sala</button>
-    <h1>Sala Blitz online</h1>${status}<div class="online-invite"><label>Enlace de invitación <input id="online-link" readonly value="${escape(invite)}"></label>
-    <button class="secondary" data-online="copy">Copiar enlace</button></div>${lobbyLineup(seats,true,canStart)}
+    <h1 lang="${lobby.format==='teams'?lang:'es'}">${lobby.format==='teams'?copy.teamsRoom:'Sala Blitz online'}</h1>${status}<div class="online-invite"><label>Enlace de invitación <input id="online-link" readonly value="${escape(invite)}"></label>
+    <button class="secondary" data-online="copy">Copiar enlace</button></div>
+    ${lobby.format==='teams'?standRule(lobby.lastStand ?? true,true,host):''}${lobbyLineup(seats,true,canStart)}
     <div class="panel-actions"><span class="lobby-count" role="status">${readyCount} de ${humans.length} personas listas</span>
       ${host?`<button class="primary" data-online="start" ${canStart?'':'disabled'}>Iniciar partida</button>`:'<span>El anfitrión inicia la partida.</span>'}</div>
     ${lobbyEditors(editors)}

@@ -24,7 +24,7 @@ export class Zone {
   }
 
   clear(lines: number, attack: number, rules: Rules,
-    quarterLines = rules.zoneQuarterLines || ZONE_PHASES[0].lines) {
+    quarterLines = rules.zoneQuarterLines || ZONE_PHASES[0].lines, chargeRate = 1) {
     if (this.active) {
       this.lines += lines
       this.attack += attack
@@ -33,7 +33,7 @@ export class Zone {
     if (rules.zone && lines>0) {
       this.regularLines += lines
       const progress = this.partial+lines
-      this.energy = Math.min(100,this.energy+25*Math.floor(progress/quarterLines))
+      this.energy = Math.min(100,this.energy+25*Math.floor(progress/quarterLines)*chargeRate)
       this.partial = progress%quarterLines
     }
     return attack

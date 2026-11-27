@@ -11,7 +11,7 @@ export type OnlineDevice = 'keyboard'|'pad'
 export type Settings = {rules:Rules; profile:Profile; reduced:boolean; metrics:boolean; audio:Mix; slots:Slot[];
   online: {device:OnlineDevice; keyboard:MapFor; pad:MapFor; padId:{id:string;index:number}|null};
   controllers: {bot:boolean; level:number}[]; blitz:BlitzRules; characters:CharacterId[]; characterOptions:CharacterOptions;
-  battleIntro:BattleIntroPreference}
+  battleIntro:BattleIntroPreference; lastStand:boolean}
 type StoredSettings = Partial<Omit<Settings,'rules'>> & {rules?:Partial<Rules> & {charge?:number}}
 const STORAGE = 'quad-blocks-v1'
 export const NUMBER_RULES = {
@@ -39,7 +39,7 @@ export function loadSettings(): Settings {
     audio:{...MIX,mute:false},slots:Array.from({length:4},(_,i) => defaultSlot(i)),
     online:{device:'keyboard',keyboard:defaultMap(0,'keys'),pad:defaultMap(0,'pad'),padId:null},
     controllers:Array.from({length:4},()=>({bot:false,level:5})),blitz:{...DEFAULT_BLITZ},
-    characters:uniqueCharacters(null),characterOptions:{...CHARACTER_OPTIONS},battleIntro:'full'}
+    characters:uniqueCharacters(null),characterOptions:{...CHARACTER_OPTIONS},battleIntro:'full',lastStand:true}
   try {
     const value = JSON.parse(localStorage.getItem(STORAGE) ?? 'null') as StoredSettings|null
     if (!value) return defaults
@@ -106,6 +106,7 @@ export function loadSettings(): Settings {
       audio.voices=.85
     }
     return {...defaults,...value,rules,audio,controllers,slots,online,blitz,
+      lastStand:typeof value.lastStand==='boolean' ? value.lastStand : defaults.lastStand,
       battleIntro:isBattleIntroPreference(value.battleIntro) ? value.battleIntro : defaults.battleIntro,
       characters:uniqueCharacters(value.characters),characterOptions}
   } catch { return defaults }

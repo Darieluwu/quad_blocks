@@ -4,12 +4,13 @@ import { detectSpin, scoreClear, type Rotation } from './scoring'
 import { Garbage, type GarbagePacket } from './garbage'
 import { Zone, type ZoneResult } from './zone'
 import { HEIGHT, HIDDEN, HZ, NEXT, SETTINGS, VISIBLE, WIDTH, ticks, type Rules } from './rules'
+import { chargeSecondWind, scaleLines, STAND, type StandEffect } from './last-stand'
 
 export const ACTIONS = ['left','right','soft','hard','cw','ccw','half','hold','zone','prev','next','pause','stance'] as const
 export type Action = typeof ACTIONS[number]
 export type Input = {held: ReadonlySet<Action>; pressed: readonly Action[]}
 export const NO_INPUT: Input = {held:new Set(),pressed:[]}
-export type GameEvent = {type:string; detail?:string; source?:number; repeat?:true}
+export type GameEvent = {type:string; detail?:string; source?:number; repeat?:true; secondary?:true}
 export type PlayerStats = {pieces:number; lines:number; sent:number; received:number; cancelled:number}
 export type CombatPlay = {kind:'lock'; qualifies:boolean; power:number; zoned:boolean} | {kind:'zoneEnd'}
 export type PlayerSnapshot = {
@@ -24,6 +25,8 @@ export type PlayerSnapshot = {
   danger: number
   revision: number
   lastRotation: Rotation | null
+  stand?: StandEffect|null
+  foundationUntil?: number
   sim: {
     usedHold: boolean; combo: number; chain: boolean; gravity: number; softElapsed: number; warningAt: number
     direction: number; dasElapsed: number; repeatElapsed: number; lockTimer: number; lockResets: number
@@ -52,6 +55,8 @@ export class Player {
   danger = 0
   revision = 0
   lastRotation: Rotation | null = null
+  stand: StandEffect|null = null
+  foundationUntil = 0
   private gravity = 0
   private lockTimer = 0
   private lockResets = 0
@@ -94,7 +99,76 @@ export class Player {
   }
 
   previewSpawn(kind = this.next[0]) {
-    return spawnPiece(kind,this.zone.active ? this.zone.lines : 0)
+    return spawnPiece(kind,(this.zone.active ? this.zone.lines : 0)+this.foundationRows)
+  }
+
+  get foundationRows() {
+    return this.board[HEIGHT-1][0]==='foundation' ? STAND.cursedFoundation.rows : 0
+  }
+
+  placeFoundation(now:number) {
+    const {rows,duration} = STAND.cursedFoundation
+    if (this.foundationRows || this.board.slice(0,rows).some(row=>row.some(Boolean))) return
+    const board = this.board.slice(rows).concat(Array.from({length:rows},()=>emptyRow().fill('foundation')))
+    const banked = this.zone.active ? this.zone.lines : 0
+    if (!fits(board,this.active,0,-rows) || !fits(board,spawnPiece(this.next[0],banked+rows))) return
+    this.board = board
+    this.active.y -= rows
+    this.foundationUntil = now+duration
+    this.lastRotation = null
+    this.revision++
+    this.event('cursedFoundationActivate')
+    return true
+  }
+
+  clearFoundation() {
+    const rows = this.foundationRows
+    this.foundationUntil = 0
+    if (!rows) return
+    this.board = Array.from({length:rows},emptyRow).concat(this.board.slice(0,-rows))
+    this.active.y += rows
+    this.lastRotation = null
+    this.revision++
+    return true
+  }
+
+  cleanSlate() {
+    const bottom = HEIGHT-(this.zone.active ? this.zone.lines : 0)-this.foundationRows
+    let rows = 0
+    for (const row of this.board.slice(0,bottom).reverse()) {
+      if (rows===STAND.cleanSlate.rows || row.filter(cell=>cell==='G').length<WIDTH-1 ||
+          row.some(cell=>cell!==null && cell!=='G')) break
+      rows++
+    }
+    if (!rows) return
+    const board = Array.from({length:rows},emptyRow).concat(this.board.slice(0,bottom-rows),this.board.slice(bottom))
+    // Keep the active piece in place if possible, otherwise follow the shifted stack.
+    const offsets = [0,rows,...Array.from({length:HEIGHT},(_,i)=>-i-1)]
+    const offset = offsets.find(dy=>fits(board,this.active,0,dy))
+    if (offset===undefined) return
+    this.board = board
+    this.active.y += offset
+    this.lastRotation = null
+    this.revision++
+    return true
+  }
+
+  expireStand() {
+    if (!this.stand) return
+    this.stand = null
+    if (!this.dead) this.event('standExpire')
+  }
+
+  receiveStand(lines:number) {
+    const effect = this.stand
+    if (effect?.prize==='secondWind' && effect.until!==null) return scaleLines(effect,lines,STAND.secondWind.received)
+    if (effect?.prize==='aegisCore') {
+      const absorbed = Math.min(lines,effect.progress)
+      effect.progress -= absorbed
+      if (!effect.progress) this.expireStand()
+      return lines-absorbed
+    }
+    return lines
   }
 
   restartFall() {
@@ -249,6 +323,8 @@ export class Player {
       danger: this.danger,
       revision: this.revision,
       lastRotation: this.lastRotation ? {...this.lastRotation} : null,
+      ...(this.stand ? {stand:{...this.stand}} : {}),
+      ...(this.foundationUntil ? {foundationUntil:this.foundationUntil} : {}),
       sim: this.simState(),
     }
   }
@@ -267,12 +343,15 @@ export class Player {
     this.danger = snapshot.danger
     this.revision = snapshot.revision
     this.loadSimState(snapshot.sim, snapshot.lastRotation ? {...snapshot.lastRotation} : null)
+    this.stand = snapshot.stand ? {...snapshot.stand} : null
+    this.foundationUntil = snapshot.foundationUntil ?? 0
     this.events.length = 0
     this.combat.length = 0
   }
 
   send(lines: number) {
     if (!Number.isSafeInteger(lines) || lines <= 0 || this.dead) return 0
+    if (this.stand?.prize==='overcharge') lines = scaleLines(this.stand,lines,100+STAND.overcharge.bonus)
     const surviving = this.garbage.cancel(lines)
     const cancelled = lines - surviving
     if (cancelled) {
@@ -285,7 +364,9 @@ export class Player {
 
   private resolveZone(result: ZoneResult, carryPiece: boolean) {
     if (result.lines) {
-      this.board = Array.from({length:result.lines},emptyRow).concat(this.board.slice(0,-result.lines))
+      const bottom = HEIGHT-this.foundationRows
+      this.board = Array.from({length:result.lines},emptyRow)
+        .concat(this.board.slice(0,bottom-result.lines),this.board.slice(bottom))
       if (carryPiece) this.active.y += result.lines
       this.revision++
     }
@@ -309,12 +390,13 @@ export class Player {
     for (const [x,y] of cells) this.board[piece.y+y][piece.x+x] = piece.kind
     const zoned = this.zone.active
     const banked = zoned ? this.zone.lines : 0
-    const playable = this.board.slice(0,HEIGHT-banked)
+    const bottom = HEIGHT-this.foundationRows
+    const playable = this.board.slice(0,bottom-banked)
     const remaining = playable.filter(row => row.some(cell => !cell))
     const lines = playable.length - remaining.length
     if (lines) this.board = zoned ?
-      remaining.concat(Array.from({length:banked+lines},()=>emptyRow().fill('zone'))) :
-      Array.from({length:lines},emptyRow).concat(remaining)
+      remaining.concat(Array.from({length:banked+lines},()=>emptyRow().fill('zone')),this.board.slice(bottom)) :
+      Array.from({length:lines},emptyRow).concat(remaining,this.board.slice(bottom))
     this.revision++
     this.stats.pieces++
     this.stats.lines += lines
@@ -333,7 +415,26 @@ export class Player {
     if (this.combo > 0) this.event('combo',String(this.combo))
     if (!zoned && hidden && !lines) { this.eliminate(); return }
 
-    const attack = this.send(this.zone.clear(lines,result.attack,this.rules,quarterLines))
+    let power = result.attack
+    let chargeRate = 1
+    const effect = this.stand
+    if (effect) {
+      if (effect.prize==='secondWind' && effect.until===null) {
+        effect.progress = Math.min(STAND.secondWind.goal,effect.progress+chargeSecondWind(lines,spin,perfect,this.combo))
+        if (effect.progress===STAND.secondWind.goal) {
+          effect.until = now+STAND.secondWind.duration
+          this.event('secondWindActivate')
+        }
+      } else if (effect.prize==='revive') {
+        effect.tetris ||= lines===4
+        effect.spin ||= lines>0 && (spin==='T' || spin==='mini')
+      } else if ((effect.prize==='finalGambit' || effect.prize==='precisionStrike') &&
+          power>0 && lines>0 && (lines===4 || spin==='T' || spin==='mini' || !!spin && this.rules.extraSpins)) {
+        power += STAND[effect.prize].bonus
+        if (effect.prize==='precisionStrike' && !--effect.progress) this.expireStand()
+      } else if (effect.prize==='surgeBreak' || effect.prize==='surgeResonance') chargeRate = STAND[effect.prize].rate
+    }
+    const attack = this.send(this.zone.clear(lines,power,this.rules,quarterLines,chargeRate))
     const special = !!spin || lines >= 4 || this.combo >= 3
     if (!zoned && attack>0 && !special) this.event('simpleAttack')
     if (zoned && hidden && !lines && banked<VISIBLE) this.resolveZone(this.zone.finish(this.rules),false)
@@ -342,7 +443,8 @@ export class Player {
       if (holes.length) {
         const displaced = this.board.splice(0,holes.length)
         const overflow = displaced.some(row => row.some(Boolean))
-        for (const hole of holes) this.board.push(Array.from({length:WIDTH},(_,x) => x === hole ? null : 'G'))
+        this.board.splice(bottom-holes.length,0,
+          ...holes.map(hole=>Array.from({length:WIDTH},(_,x) => x === hole ? null : 'G') as Board[number]))
         this.stats.received += holes.length
         this.revision++
         this.event('receive',String(holes.length))

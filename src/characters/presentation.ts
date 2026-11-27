@@ -18,6 +18,7 @@ const cues: Record<string,Cue> = {
   blitzGuard:{portrait:'support',voice:'teamDefense',priority:5},blitzProtected:{portrait:'support',priority:4},
   teammateDown:{portrait:'support',voice:'teammateDown',priority:7},
   teammateRevived:{portrait:'support',voice:'teammateRevived',priority:7},blitzRevived:{portrait:'support',priority:5},
+  standRevived:{portrait:'support',priority:5},
 }
 export const isAttackVoice = (event:VoiceEvent) => event==='tetris' || event==='spin' || event==='combo' || event==='zoneFinish'
 export function cueFor(event:GameEvent) {

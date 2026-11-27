@@ -236,7 +236,7 @@ dd { margin:0; overflow-wrap:anywhere }
 .online-invite label { flex:1 1 250px; min-width:0 }
 .online-status { color:#ffc794 }
 .online-status:empty { display:none }
-.arena-grid { display:grid; grid-template-columns:repeat(var(--boards,4),minmax(0,1fr)); gap:14px;
+:is(.arena-grid,.stand-huds) { display:grid; grid-template-columns:repeat(var(--boards,4),minmax(0,1fr)); gap:14px;
   max-width:calc(var(--boards,4) * min(440px,max(200px,(100svh - 247px)*.58))); margin-inline:auto }
 .player { position:relative; min-width:0; padding:10px; background:#121825; border:1px solid #293347; border-top:2px solid var(--player); border-radius:10px }
 .player-head { display:flex; align-items:center; min-height:34px; gap:8px; margin-bottom:10px }
@@ -555,6 +555,25 @@ dd { margin:0; overflow-wrap:anywhere }
   display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); align-items:center; gap:clamp(12px,2vw,36px)
 }
 .result-scene #arena { grid-column:2; min-width:0 }
+.vs4-winner-art {
+  grid-column:1; grid-row:1; justify-self:end; align-self:center;
+  position:relative; margin:0; width:min(100%,460px); height:min(620px,calc(100svh - 140px));
+  display:flex; align-items:flex-end; justify-content:center;
+  pointer-events:none; animation:result-reveal .58s .18s both ease-out;
+}
+.vs4-winner-art img {
+  width:100%; height:100%; object-fit:contain; object-position:center bottom;
+  filter:drop-shadow(0 18px 34px #040914cc) drop-shadow(0 0 26px color-mix(in srgb,var(--character-color,#59aaff) 42%,transparent));
+  animation:blitz-winner-breathe 4.2s ease-in-out infinite;
+}
+.vs4-winner-art figcaption {
+  position:absolute; bottom:10px; left:50%; translate:-50% 0;
+  padding:4px 12px; border:1px solid color-mix(in srgb,var(--character-color,#59aaff) 55%,transparent);
+  border-radius:999px; background:#0b1220d9; color:#eef6ff;
+  font:900 clamp(11px,.9vw,15px) Consolas,monospace; letter-spacing:.12em; text-transform:uppercase;
+  text-shadow:0 2px 8px #050815; white-space:nowrap;
+}
+.reduced .vs4-winner-art,.reduced .vs4-winner-art img { animation:none }
 .result-scene .match-footer { grid-column:1/-1; position:static; margin:0 }
 .result-boards { display:flex; align-items:center; justify-content:center; gap:clamp(8px,1vw,20px) }
 .result-boards .player {
@@ -709,6 +728,7 @@ dd { margin:0; overflow-wrap:anywhere }
 @media (max-width:970px) {
   .game.result-scene { grid-template-columns:minmax(0,1fr); margin:0 auto }
   .result-scene #arena,.result-scene.result-draw #arena { grid-column:1; grid-row:1 }
+  .vs4-winner-art { grid-column:1; grid-row:2; justify-self:center; width:min(72vw,320px); height:min(320px,38svh) }
   .result-boards .player { width:min(67vw,330px) }
   .result-boards:has(.player:nth-child(2)) .player { width:min(42vw,300px) }
   .results-panel,.result-draw .results-panel { grid-column:1; width:min(100%,520px); justify-self:center }
@@ -748,7 +768,7 @@ dd { margin:0; overflow-wrap:anywhere }
   .local-seat-grid { grid-template-columns:repeat(2,minmax(0,1fr)) }
   .attack-settings .form-grid { grid-template-columns:repeat(2,minmax(0,1fr)) }
   .game { width:calc(100% - 12px); padding-top:12px }
-  .arena-grid { gap:4px }
+  :is(.arena-grid,.stand-huds) { gap:4px }
   .player { padding:4px; border-radius:5px }
   .player-head { min-height:24px; margin-bottom:4px; gap:3px }
   .combat-hud { grid-template-columns:minmax(0,1fr); gap:2px; padding:3px; margin-bottom:3px }

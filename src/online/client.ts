@@ -1,5 +1,5 @@
 import type { Input } from '../engine/player'
-import { actionMask, PLAY_ACTIONS, PRESS_LIMIT, randomId, ROOM_ID, type ClientMessage, type ServerMessage } from './protocol'
+import { actionMask, PLAY_ACTIONS, PRESS_LIMIT, randomId, ROOM_ID, type ClientMessage, type OnlineFormat, type ServerMessage } from './protocol'
 
 export function inviteCode(value: string) {
   const text = value.trim()
@@ -31,7 +31,8 @@ export class RoomClient {
   private token: string
 
   constructor(readonly code: string, private name: string, private create: boolean,
-    private receive: (message: ServerMessage)=>void, private connection: (state:'connecting'|'lost'|'closed')=>void) {
+    private receive: (message: ServerMessage)=>void, private connection: (state:'connecting'|'lost'|'closed')=>void,
+    private format?:OnlineFormat) {
     this.token = sessionStorage.getItem(this.key) ?? randomId()
   }
 
@@ -44,7 +45,7 @@ export class RoomClient {
     url.protocol = location.protocol==='https:' ? 'wss:' : 'ws:'
     const socket = this.socket = new WebSocket(url)
     this.held = 0
-    socket.addEventListener('open',()=>this.send({type:'join',token:this.token,name:this.name,create:this.create}))
+    socket.addEventListener('open',()=>this.send({type:'join',token:this.token,name:this.name,create:this.create,format:this.format}))
     socket.addEventListener('message',({data})=>{
       if (this.ended || this.socket!==socket) return
       const message = JSON.parse(data) as ServerMessage
@@ -92,12 +93,12 @@ export class RoomClient {
     return true
   }
 
-  input(input: Input) {
+  input(input: Input, standId?:number) {
     const held = actionMask(input.held)
     const pressed = input.pressed.filter(action=>PLAY_ACTIONS.some(allowed=>allowed===action)).slice(0,PRESS_LIMIT)
     if ((held!==0 || pressed.length>0 || held!==this.held) && this.socket?.readyState===WebSocket.OPEN) {
       const seq = ++this.inputSeq
-      const message: ClientMessage = {type:'input',seq,held,pressed}
+      const message: ClientMessage = {type:'input',seq,held,pressed,standId}
       if (this.send(message)) {
         this.pending.push({seq,input:{held:new Set(input.held),pressed:pressed.slice()}})
         this.held = held
