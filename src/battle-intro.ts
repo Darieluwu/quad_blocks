@@ -12,7 +12,7 @@ export const BATTLE_GO_MS = 560
 const ENTRY = ['-38vw,0','38vw,0','0,-55vh','0,55vh']
 const TITLES = {vs4:'FREE FOR ALL',teams:'VS',blitz:'2v2 BLITZ'}
 const FRAMING: Record<CharacterId, readonly [number,number]> = {
-  volt:[1.12,20],nix:[1.10,20],pix:[1.06,19],astra:[1.06,21],blaze:[1.04,17],pengu:[.89,30],
+  volt:[1.12,20],nix:[1.10,20],pix:[1.06,19],astra:[1.06,21],blaze:[1.04,17],pengu:[.89,30],kira:[1.06,20],
 }
 
 function fighterMarkup(fighter:Fighter,index:number,mode:BattleIntroMode,particles:number) {
