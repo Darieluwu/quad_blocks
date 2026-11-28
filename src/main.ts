@@ -64,7 +64,7 @@ function artworkWinner(id:CharacterId) {
 }
 function artworkLoser(id:CharacterId) {
   const assets=CHARACTERS[id].assets
-  return artwork(assets.portraits.defeat) ?? artwork(assets.portraits.damage) ?? artwork(assets.portraits.danger) ?? artwork(assets.portraits.neutral)
+  return artwork(assets.portraits.defeat) ?? artwork(assets.portraits.damage) ?? artwork(assets.portraits.danger) ?? artwork(assets.portraits.neutral) ?? artwork(assets.master)
 }
 let lobbyPadPrior: (ReadonlySet<Action>|undefined)[] = []
 const selectionCaptions = new Map<number,{id:CharacterId;text:string}>()

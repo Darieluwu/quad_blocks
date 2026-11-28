@@ -181,7 +181,7 @@ export class ZoneCinematics {
 
   private play(id:CharacterId,scene:Scene,origin:HTMLElement,target:HTMLElement|undefined,team?:0|1) {
     const {zonePose,zoneBackground} = CHARACTERS[id].assets
-    const pose = artwork(zonePose) ?? artwork(CHARACTERS[id].assets.portraits.neutral)
+    const pose = artwork(zonePose) ?? artwork(CHARACTERS[id].assets.portraits.neutral) ?? artwork(CHARACTERS[id].assets.master)
     const background = artwork(zoneBackground) ?? artwork(CHARACTERS[id].assets.portraits.zone)
     const teamNode = origin.closest<HTMLElement>('.blitz-team')
     const clockwise = teamNode ? teamNode.dataset.side==='0' : !target || target.offsetLeft>origin.offsetLeft
@@ -256,9 +256,9 @@ export class ZoneCinematics {
     stage.style.setProperty('--scene-entry',entry?'-1':'1')
     stage.style.setProperty('--scene-time',`${DURATION}ms`)
     const fx = particles[scene.theme]
-    stage.innerHTML = `<img class="cinematic-background" src="${background}" alt="">
+    stage.innerHTML = `${background?`<img class="cinematic-background" src="${background}" alt="">`:``}
       <span class="cinematic-grid" aria-hidden="true"></span>${fx.aura}
-      <img class="cinematic-pose" src="${pose}" alt="">
+      ${pose?`<img class="cinematic-pose" src="${pose}" alt="">`:``}
       <div class="cinematic-sparks" aria-hidden="true">${Array.from({length:14},(_,i)=>
         `<i style="--angle:${i*137.5}deg;--distance:${48+(i%5)*23}px;--delay:${i%4*19}ms"></i>`).join('')}</div>
       ${fx.discharge}<div class="cinematic-title"><small>${CHARACTERS[id].name} · SURGE</small>

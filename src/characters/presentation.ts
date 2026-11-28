@@ -34,7 +34,7 @@ export function cueFor(event:GameEvent) {
 
 export function portraitMarkup(id:CharacterId,preview = false) {
   const c = CHARACTERS[id]
-  const src = (preview && artwork(c.assets.master)) || artwork(c.assets.portraits.neutral)
+  const src = (preview && artwork(c.assets.master)) || artwork(c.assets.portraits.neutral) || artwork(c.assets.master)
   return `<span class="character-portrait${preview?' character-preview':''}" data-character-id="${id}" data-portrait="neutral"
     style="--character-color:${c.colors[0]};--character-light:${c.colors[1]}" aria-hidden="true"><span>${c.name.slice(0,2)}</span>
     <img alt="" draggable="false" ${src?`src="${src}"`:'hidden'}></span>`
@@ -62,7 +62,7 @@ export class Portrait {
 
   private image(state:PortraitState) {
     const a = CHARACTERS[this.id].assets
-    const keys = [a.portraits[state],state==='attack'?a.attackPose:state==='zone'?a.zonePose:'',a.portraits.neutral]
+    const keys = [a.portraits[state],state==='attack'?a.attackPose:state==='zone'?a.zonePose:'',a.portraits.neutral,a.master]
     const url = keys.map(artwork).find(src=>src && !this.failed.has(src))
     this.img.hidden = !url
     if (url && this.img.getAttribute('src')!==url) this.img.src = url

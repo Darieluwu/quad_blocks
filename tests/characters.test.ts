@@ -2,7 +2,7 @@ import { expect, it, vi } from 'vitest'
 import { CHARACTERS, CHARACTER_IDS, PORTRAITS, VOICE_EVENTS, chooseCharacter, uniqueCharacters } from '../src/characters/catalog'
 import { artwork, findAsset, japaneseVoice, subtitleFor } from '../src/characters/assets'
 import subtitles from '../src/characters/subtitles/es.json'
-import { cueFor, isAttackVoice } from '../src/characters/presentation'
+import { cueFor, isAttackVoice, portraitMarkup } from '../src/characters/presentation'
 import { loadSettings, saveSettings, MIX } from '../src/settings'
 
 it('carga los subtítulos oficiales con sus claves y su texto exacto',()=>{
@@ -14,18 +14,19 @@ it('carga los subtítulos oficiales con sus claves y su texto exacto',()=>{
 })
 
 it('resuelve todas las voces de personaje a su archivo japonés exacto',()=>{
-  const clips = import.meta.glob('../src/characters/voices/ja/*/*.ogg',{
+  const clips = import.meta.glob('../src/characters/voices/ja/*/*.{ogg,mp3}',{
     eager:true,import:'default',query:'?url&no-inline',
   })
   for (const id of CHARACTER_IDS) for (const event of VOICE_EVENTS) {
-    const path = `../src/characters/voices/ja/${id}/${event}.ogg`
+    const extension = id==='kira' && (event==='simpleAttack1' || event==='simpleAttack2') ? 'mp3' : 'ogg'
+    const path = `../src/characters/voices/ja/${id}/${event}.${extension}`
     expect(clips[path],path).toBeDefined()
     expect(japaneseVoice(id,event),path).toBe(clips[path])
   }
 })
 
-it('registra los seis personajes, los nueve retratos y las diecisiete voces de cada uno',()=>{
-  expect(CHARACTER_IDS).toEqual(['volt','nix','pix','astra','blaze','pengu'])
+it('registra los siete personajes, los nueve retratos y las diecisiete voces de cada uno',()=>{
+  expect(CHARACTER_IDS).toEqual(['volt','nix','pix','astra','blaze','pengu','kira'])
   for (const id of CHARACTER_IDS) {
     const {assets} = CHARACTERS[id]
     expect(Object.keys(assets.portraits)).toEqual(PORTRAITS)
@@ -87,4 +88,11 @@ it('conserva la selección y las preferencias al recuperar la configuración',()
     expect(saveSettings(settings)).toBe(true)
     expect(loadSettings().characterOptions).toEqual({attackAnimations:false,attackVoices:false,subtitles:false})
   } finally { vi.unstubAllGlobals() }
+})
+
+it('permite seleccionar a Kira y muestra su master mientras faltan retratos',()=>{
+  expect(uniqueCharacters(['kira','volt','nix','pix'])[0]).toBe('kira')
+  expect(chooseCharacter(['volt','nix','pix','pengu'],0,'kira',[])).toEqual(['kira','nix','pix','pengu'])
+  expect(artwork(CHARACTERS.kira.assets.master)).toMatch(/\.png$/)
+  expect(portraitMarkup('kira')).toContain(artwork(CHARACTERS.kira.assets.portraits.neutral) ?? artwork(CHARACTERS.kira.assets.master))
 })

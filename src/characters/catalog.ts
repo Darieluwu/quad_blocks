@@ -1,4 +1,4 @@
-export const CHARACTER_IDS = ['volt','nix','pix','astra','blaze','pengu'] as const
+export const CHARACTER_IDS = ['volt','nix','pix','astra','blaze','pengu','kira'] as const
 export type CharacterId = typeof CHARACTER_IDS[number]
 export const PORTRAITS = ['neutral','blink','attack','danger','damage','victory','defeat','support','zone'] as const
 export type PortraitState = typeof PORTRAITS[number]
@@ -31,6 +31,7 @@ export const CHARACTERS = {
   astra:define('astra','Cosmos',['#bf92ff','#f8e1b0'],'Viajera dimensional enigmática. Lee las órbitas y dobla el espacio con serena precisión.'),
   blaze:define('blaze','Combustión',['#ff742d','#ffd789'],'Piloto de combustión obsesionado con el fuego. Temerario en combate y leal a su equipo.'),
   pengu:define('pengu','Magia lunar',['#bd8bff','#ffd670'],'Archimago dormilón, tranquilo y sorprendentemente poderoso.'),
+  kira:define('kira','Energía cinética',['#ff65b9','#62efff'],'Patinadora felina de cabello blanco, traviesa y veloz. Convierte su energía cinética en destellos de neón.'),
 } satisfies Record<CharacterId,Character>
 
 export const isCharacterId = (value:unknown): value is CharacterId => CHARACTER_IDS.some(id=>id===value)

@@ -90,7 +90,7 @@
   filter:drop-shadow(0 8px 16px #08101e99);
 }
 .arcade-confirm-pose { inset:auto 5% 8% auto; width:34%; height:43%; object-position:bottom right; filter:drop-shadow(0 0 14px var(--fighter)) }
-.arcade-roster { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:8px }
+.arcade-roster { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:8px }
 .arcade-fighter {
   position:relative;
   min-width:0;

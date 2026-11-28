@@ -112,5 +112,24 @@
     "teamDefense": "Qué remedio... te protegeré.",
     "teammateDown": "Mmm... despierta.",
     "teammateRevived": "Bienvenido de vuelta... un esfuerzo más."
+  },
+  "kira": {
+    "selection": "¡Déjamelo a mí, nya!",
+    "simpleAttack1": "¡Toma esto, nya!",
+    "simpleAttack2": "¡Atrápame si puedes, nya!",
+    "tetris": "¡Tetris perfecto, nya!",
+    "tetris2": "¡Tetris, nya! ¿Será que soy una genia?",
+    "spin": "¡Una vueltecita, nya!",
+    "combo": "¡Esto no termina, nya!",
+    "combo2": "¡Voy todavía más rápido, nya!",
+    "combo3": "¡¡Nyajaja!! ¡¡Nadie puede detenerme, nyaaa!!",
+    "zoneStart": "¡Ahora sí voy en serio, nya!",
+    "zoneFinish": "¡NEON CATACLYSM!",
+    "danger": "¿¡Nya!? ¡Estoy en problemas!",
+    "victory": "¡La victoria es mía, nyaaa!",
+    "defeat": "¡Muuuh! ¡Qué rabia, nya!",
+    "teamDefense": "¡Yo te protejo, nya!",
+    "teammateDown": "¿¡Nya!? ¿Estás bien?",
+    "teammateRevived": "¡Qué bueno que volviste, nya!"
   }
 }
