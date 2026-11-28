@@ -229,7 +229,19 @@ export class ZoneCinematics {
       const height = sideHeight(y)
       if (width>=180 && height>=150) box = {x:clockwise?left.left-arena.left-width-14:right.right-arena.left+14,y,width,height}
     }
-    // Compact scenes occupy their own portrait, preserving team tags, captions and matrices.
+    // Standard VS4 and 2v2: use the caster's entire HUD above the board.
+    // Blitz retains its existing central/side/compact placement unchanged.
+    if (team===undefined && !teamNode && origin.closest('.arena-grid')) {
+      const header = origin.querySelector('.player-banner')?.getBoundingClientRect()
+      const body = origin.querySelector('.player-body')?.getBoundingClientRect()
+      if (header && body && header.width>0 && body.top-header.top>8) {
+        box = {x:header.left-arena.left,y:header.top-arena.top,
+          width:header.width,height:body.top-header.top-4}
+        stageLayout = 'vs4'
+        sidePanels = []
+      }
+    }
+    // Compact fallback for Blitz and unavailable standard HUD geometry.
     if (!box && origin.dataset.featured!=='false' && (team===undefined || scene.theme==='kinetic')) {
       const portrait=origin.querySelector('.hud-portrait')?.getBoundingClientRect()
       if (portrait?.width) {
@@ -255,6 +267,7 @@ export class ZoneCinematics {
     stage.dataset.direction = clockwise ? 'right' : 'left'
     stage.dataset.layout = stageLayout==='vs4' ? 'vs4' : central ? 'center' : 'side'
     if (team!==undefined) stage.dataset.channel=team===0?'team-a':'team-b'
+    if (team===undefined && !teamNode && origin.closest('.arena-grid')) stage.dataset.presentation = 'wide-hud'
     stage.dataset.delivery = String(!!target)
     stage.style.setProperty('--scene-color',scene.color)
     stage.style.setProperty('--scene-light',scene.light)
