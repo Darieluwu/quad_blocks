@@ -4,7 +4,7 @@ export type CharacterVisual = {
   title:readonly [string,string]
   color:string
   light:string
-  theme:'electric'|'digital'|'frost'|'cosmic'|'fire'|'lunar'
+  theme:'electric'|'digital'|'frost'|'cosmic'|'fire'|'lunar'|'kinetic'
   entry:'caster'|'opponent'
 }
 
@@ -15,6 +15,8 @@ export const characterVisuals:Partial<Record<CharacterId,CharacterVisual>> = {
   astra:{title:['EVENT','HORIZON'],color:'#bf92ff',light:'#f8e1b0',theme:'cosmic',entry:'caster'},
   blaze:{title:['INFERNO','BREAK'],color:'#ff742d',light:'#ffd789',theme:'fire',entry:'caster'},
   pengu:{title:['MIDNIGHT','REVERIE'],color:'#bd8bff',light:'#ffd670',theme:'lunar',entry:'caster'},
-  // Shared digital effects until Kira receives her dedicated cinematic artwork.
-  kira:{title:['NEON','CATACLYSM'],color:'#ff65b9',light:'#62efff',theme:'digital',entry:'caster'},
+  kira:{title:['NEON','CATACLYSM'],color:'#ff65b9',light:'#62efff',theme:'kinetic',entry:'caster'},
 }
+
+export const variesByStrike = (theme:CharacterVisual['theme']|undefined) =>
+  theme==='cosmic' || theme==='fire' || theme==='lunar' || theme==='kinetic'

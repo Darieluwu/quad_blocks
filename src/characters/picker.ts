@@ -137,7 +137,8 @@ export class ArcadePicker {
     this.art.append(scene)
     if (motion) {
       const lunar = id==='pengu'
-      scene.animate([{opacity:0,transform:lunar?'translateY(8px)':'translateX(20px)'},{opacity:1,transform:'none'}],
+      const entry = id==='kira' ? 'translateX(34px) skewX(-6deg)' : lunar ? 'translateY(8px)' : 'translateX(20px)'
+      scene.animate([{opacity:0,transform:entry},{opacity:1,transform:'none'}],
         {duration:lunar?280:210,easing:'cubic-bezier(.18,.68,.26,1)'})
     }
   }

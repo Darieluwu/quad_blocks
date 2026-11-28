@@ -36,7 +36,7 @@ it('registra los siete personajes, los nueve retratos y las diecisiete voces de 
   }
 })
 
-it.each(['volt','pix','nix','astra','blaze','pengu'] as const)('resuelve la maestra, las nueve expresiones, las poses y el fondo de %s',id=>{
+it.each(['volt','pix','nix','astra','blaze','pengu','kira'] as const)('resuelve la maestra, las nueve expresiones, las poses y el fondo de %s',id=>{
   const assets = CHARACTERS[id].assets
   for (const key of [assets.master,...Object.values(assets.portraits),assets.attackPose,assets.zonePose,assets.zoneBackground]) {
     expect(artwork(key),key).toMatch(/\.png$/)
@@ -90,9 +90,9 @@ it('conserva la selección y las preferencias al recuperar la configuración',()
   } finally { vi.unstubAllGlobals() }
 })
 
-it('permite seleccionar a Kira y muestra su master mientras faltan retratos',()=>{
+it('permite seleccionar a Kira y usa su retrato neutral',()=>{
   expect(uniqueCharacters(['kira','volt','nix','pix'])[0]).toBe('kira')
   expect(chooseCharacter(['volt','nix','pix','pengu'],0,'kira',[])).toEqual(['kira','nix','pix','pengu'])
   expect(artwork(CHARACTERS.kira.assets.master)).toMatch(/\.png$/)
-  expect(portraitMarkup('kira')).toContain(artwork(CHARACTERS.kira.assets.portraits.neutral) ?? artwork(CHARACTERS.kira.assets.master))
+  expect(portraitMarkup('kira')).toContain(artwork(CHARACTERS.kira.assets.portraits.neutral))
 })

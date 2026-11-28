@@ -57,6 +57,14 @@ const lunarWave = `<svg class="cinematic-beam" viewBox="0 0 320 72" preserveAspe
   <path class="moon-crescent" d="M117 15a16 16 0 1 0 17 18 13 13 0 0 1-17-18ZM222 4a20 20 0 1 0 21 22 17 17 0 0 1-21-22Z"/>
   <path d="M162 10v16m-8-8h16m94 29v16m-8-8h16m18-39v12m-6-6h12"/>
 </svg>`
+const neonTrack = `<svg class="cinematic-electricity cinematic-track" viewBox="0 0 320 300" preserveAspectRatio="none" aria-hidden="true">
+  <path d="M-10 237C71 125 231 271 330 108M-10 255C71 143 231 289 330 126"/>
+  <path d="M-10 213C71 101 231 247 330 84M-10 225C71 113 231 259 330 96"/>
+</svg>`
+const neonDischarge = `<svg class="cinematic-beam" viewBox="0 0 320 72" preserveAspectRatio="none" aria-hidden="true">
+  <path d="M-4 48Q68 7 163 30T326 17M-4 58Q68 17 163 40T326 27"/>
+  <path d="M17 59Q101 40 182 51T326 35M135 60Q208 59 256 53T326 44"/>
+</svg>`
 const particles = {
   electric:{aura:electricity,discharge:beam},
   digital:{aura:digitalGrid,discharge:digitalBeam},
@@ -64,6 +72,7 @@ const particles = {
   cosmic:{aura:cosmicOrbit,discharge:cosmicWave},
   fire:{aura:combustion,discharge:flameWave},
   lunar:{aura:lunarSeal,discharge:lunarWave},
+  kinetic:{aura:neonTrack,discharge:neonDischarge},
 }
 
 function place(node:HTMLElement,x:number,y:number,width:number,height:number) {
@@ -203,23 +212,7 @@ export class ZoneCinematics {
     const sideTop = () => Math.max(team===1?split+8:8,
       Math.max(...sidePanels.map(panel=>panel.getBoundingClientRect().bottom))-arena.top+18)
     const sideHeight = (y:number)=>Math.min(480,(team===0?split:arena.height)-y-12)
-    if (team===undefined) {
-      const boardOrigin=origin.closest<HTMLElement>('.player')
-      if (boardOrigin) {
-        const banner=boardOrigin.querySelector<HTMLElement>('.player-banner')?.getBoundingClientRect()
-        const board=boardOrigin.getBoundingClientRect()
-        const players=[...this.arena.querySelectorAll<HTMLElement>('.arena-grid .player')]
-        const fixedWidth=players.length ? Math.max(180,Math.min(...players.map(player=>player.getBoundingClientRect().width))*1.08) : 260
-        const fixedHeight=Math.min(240,Math.max(150,arena.height*.26))
-        const lunarHeader = scene.theme==='lunar' && banner
-        const width=lunarHeader ? Math.min(board.width-16,fixedWidth) : fixedWidth
-        const height=lunarHeader ? banner.height : fixedHeight
-        const x=board.left-arena.left+(board.width-width)/2
-        const y=(lunarHeader ? banner.top : (banner?.bottom ?? board.top)+8)-arena.top
-        box={x,y,width,height}
-        stageLayout='vs4'
-      }
-    } else if (central) {
+    if (central) {
       const margin=8
       const clockReserve=clockBox ? Math.ceil(Math.max(clockBox.width,clockBox.height)+24) : 118
       const slotHeight=(arena.height-margin*2-clockReserve)/2
@@ -235,6 +228,18 @@ export class ZoneCinematics {
       const width = Math.min(340,clockwise ? left.left-arena.left-22 : arena.right-right.right-22)
       const height = sideHeight(y)
       if (width>=180 && height>=150) box = {x:clockwise?left.left-arena.left-width-14:right.right-arena.left+14,y,width,height}
+    }
+    // Compact scenes occupy their own portrait, preserving team tags, captions and matrices.
+    if (!box && origin.dataset.featured!=='false' && (team===undefined || scene.theme==='kinetic')) {
+      const portrait=origin.querySelector('.hud-portrait')?.getBoundingClientRect()
+      if (portrait?.width) {
+        const {left,top,width,height} = portrait
+        box = {x:left-arena.left,y:top-arena.top,width,height}
+        stageLayout = 'vs4'
+        sidePanels = []
+      }
+    } else if (box && central && scene.theme==='kinetic') {
+      box.height = Math.max(150,Math.min(box.height,innerHeight-arena.top-box.y-8))
     }
 
     if (!box) {

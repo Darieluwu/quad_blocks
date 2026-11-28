@@ -6,6 +6,7 @@ import './frost-feedback.css'
 import './cosmic-feedback.css'
 import './fire-feedback.css'
 import './lunar-feedback.css'
+import './kinetic-feedback.css'
 
 const fragments = '<i></i>'.repeat(6)
 type FeedbackTheme = Exclude<CharacterVisual['theme'],'electric'>
@@ -18,22 +19,28 @@ export function portraitFeedback(frame:HTMLElement,theme:FeedbackTheme,event:Gam
       theme!=='digital' && event.type==='simpleAttack' ? 'simple' : undefined)
   if (!effect) return
   const previous = frame.querySelector<HTMLElement>(`.${theme}-portrait`)
-  if (previous?.dataset.effect===effect) return
+  const level = theme==='kinetic' && effect==='combo' ? String(Math.min(6,Number(event.detail))) : undefined
+  if (previous?.dataset.effect===effect) {
+    if (level) previous.dataset.level = level
+    return
+  }
   previous?.remove()
   const layer = document.createElement('span')
   layer.className = `${theme}-portrait`
   layer.dataset.effect = effect
+  if (level) layer.dataset.level = level
   layer.setAttribute('aria-hidden','true')
   layer.innerHTML = fragments
   layer.addEventListener('animationend',event=>{ if (event.target===layer) layer.remove() })
   frame.append(layer)
 }
 
-export function impactFeedback(target:HTMLElement,theme:FeedbackTheme) {
+export function impactFeedback(target:HTMLElement,theme:FeedbackTheme,strike?:string) {
   if (target.dataset.featured==='false' || target.classList.contains('dead')) return
   target.querySelector(`.${theme}-impact`)?.remove()
   const layer = document.createElement('span')
   layer.className = `${theme}-impact`
+  if (strike) layer.dataset.strike = strike
   layer.innerHTML = fragments
   layer.setAttribute('aria-hidden','true')
   layer.addEventListener('animationend',event=>{ if (event.target===layer) layer.remove() })

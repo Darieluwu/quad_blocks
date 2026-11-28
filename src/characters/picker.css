@@ -43,6 +43,20 @@
     radial-gradient(ellipse at 73% 65%,color-mix(in srgb,var(--fighter) 51%,#101624),#101624 62%);
 }
 .arcade-scene.outgoing { z-index:1; pointer-events:none }
+.arcade-scene[data-preview="kira"] .arcade-figure::after {
+  content:"";position:absolute;inset:12% 0;pointer-events:none;opacity:0;
+  background:linear-gradient(118deg,transparent 19%,#ff65b95e 36%,transparent 42% 50%,#62efff64 63%,transparent 69%);
+  animation:kira-picker-dash 210ms ease-out both;
+}
+.reduced .arcade-scene[data-preview="kira"] .arcade-figure::after { animation:none }
+@media (prefers-reduced-motion:reduce) {
+  .arcade-scene[data-preview="kira"] .arcade-figure::after { animation:none }
+}
+@keyframes kira-picker-dash {
+  0% {opacity:0;transform:translateX(-25%)}
+  28% {opacity:.65}
+  100% {opacity:0;transform:translateX(12%)}
+}
 .arcade-identity { align-self:center; padding:clamp(14px,4vw,48px); z-index:1 }
 .arcade-element {
   color:color-mix(in srgb,var(--fighter) 72%,white);

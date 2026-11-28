@@ -9,6 +9,7 @@ test.describe('Last Stand local',()=>{
     await page.addInitScript(()=>{
       if (localStorage.getItem('quad-blocks-v1')) return
       localStorage.setItem('quad-blocks-v1',JSON.stringify({battleIntro:'off',rules:{seed:'local-stand-e2e',gravity:0},
+        characters:['volt','kira','pix','astra'],
         controllers:[{}, {bot:true,level:8}, {bot:true,level:8}, {bot:true,level:8}]}))
     })
     await page.goto('/')
@@ -39,7 +40,10 @@ test.describe('Last Stand local',()=>{
     await expect(cinematic.locator('.stand-wheel span')).toHaveCount(6)
     await expect(cinematic.locator('.stand-result')).toBeVisible()
     await expect(cinematic.locator('.stand-result-description')).toBeVisible()
-    await expect(cinematic.locator('.stand-portrait img')).toBeVisible()
+    await expect(cinematic.locator('.stand-portrait')).toContainText('KIRA')
+    const neutral=cinematic.locator('.stand-portrait img')
+    await expect(neutral).toHaveAttribute('src',/neutral-.+\.png$/)
+    expect(await neutral.evaluate((img:HTMLImageElement)=>img.naturalWidth)).toBe(512)
     await expect(page.locator('#elapsed')).toHaveText(time!)
     await page.screenshot({path:info.outputPath('last-stand-local.png')})
     await page.clock.runFor(3350)
@@ -72,6 +76,11 @@ test('dos clientes ven un Double Last Stand autoritativo en idiomas distintos',a
     await guest.goto(await host.locator('#online-link').inputValue())
     await guest.getByLabel('Nombre').fill('Guest')
     await guest.getByRole('button',{name:'Unirse'}).click()
+    await host.locator('[data-character="1"]').click()
+    await host.locator('[data-picker-id="kira"]').click()
+    await host.locator('[data-picker-confirm]').click()
+    await expect(host.locator('.arcade-feedback')).toHaveText('PERSONAJE CONFIRMADO')
+    await host.keyboard.press('Escape')
     const hostRule = host.getByLabel('Last Stand Roulette'), guestRule = guest.getByLabel('Last Stand Roulette')
     await expect(guestRule).toBeDisabled()
     await hostRule.selectOption('off')
@@ -97,6 +106,8 @@ test('dos clientes ven un Double Last Stand autoritativo en idiomas distintos',a
     await expect(guest.locator('.stand-overlay')).toContainText('Final Duel')
     await expect(guest.locator('.stand-overlay')).toHaveAttribute('data-reduced','true')
     await expect(host.locator('.stand-wheel')).toHaveCount(2)
+    await expect(host.locator('.stand-portrait').first()).toContainText('KIRA')
+    await expect(guest.locator('.stand-portrait').first().locator('img')).toHaveAttribute('src',/neutral-.+\.png$/)
     await expect(host.locator('.stand-result').first()).toBeVisible({timeout:12_000})
     await expect(guest.locator('.stand-result-description')).toHaveCount(2)
     expect(frames.get('host')?.state.now).toBe(frozen.now)

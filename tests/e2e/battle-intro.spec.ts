@@ -18,8 +18,8 @@ for (const {mode,title,width,height} of [
   test(`presentación ${mode} y transición al HUD`,async ({page},info)=>{
     await page.setViewportSize({width,height})
     await page.addInitScript(()=>{
-      localStorage.setItem('quad-blocks-v1',JSON.stringify({characters:['pengu','blaze','pix','astra'],
-        controllers:[{},{bot:true,level:8},{},{}]}))
+      localStorage.setItem('quad-blocks-v1',JSON.stringify({characters:['pengu','blaze','pix','kira'],
+        controllers:[{},{bot:true,level:8},{bot:true,level:5},{bot:true,level:5}]}))
     })
     await page.goto('/')
     await page.clock.install()
@@ -27,7 +27,7 @@ for (const {mode,title,width,height} of [
     await page.clock.pauseAt(await page.evaluate(()=>Date.now()+100))
     const intro = page.locator('.battle-intro')
     await expect(intro.locator('.intro-fighter')).toHaveCount(4)
-    for (const [slot,id] of ['pengu','blaze','pix','astra'].entries()) {
+    for (const [slot,id] of ['pengu','blaze','pix','kira'].entries()) {
       const fighter = intro.locator(`[data-slot="${slot}"]`)
       await expect(fighter).toHaveAttribute('data-character',id)
       await expect(fighter.locator('.intro-master')).toHaveCSS('object-fit','contain')

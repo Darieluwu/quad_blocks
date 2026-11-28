@@ -41,10 +41,11 @@ test('elige personajes con mando y teclado y los conserva al entrar a VS4',async
   j1Config.pad.right = 'B10'
   j1Config.pad.cw = 'B11'
   j1Config.device = {id:'Mando para personajes',index:0}
+  j2Config.deviceType = 'keyboard'
   j2Config.keys.left = 'KeyY'
   j2Config.keys.cw = 'KeyG'
   await page.addInitScript(slots=>{
-    localStorage.setItem('quad-blocks-v1',JSON.stringify({slots}))
+    localStorage.setItem('quad-blocks-v1',JSON.stringify({slots,controllers:[{},{},{bot:true,level:5},{bot:true,level:5}]}))
     const buttons = Array.from({length:17},()=>({pressed:false,value:0,touched:false}))
     Object.defineProperty(window,'characterButtons',{value:buttons})
     Object.defineProperty(navigator,'getGamepads',{value:()=>[
@@ -77,16 +78,16 @@ test('elige personajes con mando y teclado y los conserva al entrar a VS4',async
   await expect(picker.locator('[data-picker-id="nix"]')).toHaveAttribute('aria-pressed','true')
   await picker.locator('[data-picker-seat="1"]').click()
   await expect(picker.locator('[data-picker-id="nix"]')).toHaveAttribute('data-occupied','')
-  await expect(picker.locator('[data-picker-id="pengu"]')).toHaveAttribute('aria-pressed','true')
+  await expect(picker.locator('[data-picker-id="kira"]')).toHaveAttribute('aria-pressed','true')
   await page.keyboard.press('KeyG')
   await expect(page.locator('[data-ready="1"]')).toHaveAttribute('aria-pressed','true')
-  await expect(page.locator('[data-selection-caption="1"]')).toContainText(subtitles.pengu.selection)
+  await expect(page.locator('[data-selection-caption="1"]')).toContainText(subtitles.kira.selection)
   await expect(page.locator('[data-selection-caption="0"]')).toContainText(subtitles.nix.selection)
   await page.keyboard.press('Escape')
   for (const i of [2,3]) await page.locator(`[data-ready="${i}"]`).click()
   await page.getByRole('button',{name:'Iniciar partida'}).click()
   await expect(page.locator('.player[data-player="0"] .player-banner .character-portrait')).toHaveAttribute('data-character-id','nix')
-  await expect(page.locator('.player[data-player="1"] .player-banner .character-portrait')).toHaveAttribute('data-character-id','pengu')
+  await expect(page.locator('.player[data-player="1"] .player-banner .character-portrait')).toHaveAttribute('data-character-id','kira')
   await expect(page.locator('.player .player-banner .character-portrait')).toHaveCount(4)
   expect(errors).toEqual([])
 })

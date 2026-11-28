@@ -1,0 +1,75 @@
+.kinetic-portrait,.kinetic-impact {
+  position:absolute;inset:0;z-index:2;pointer-events:none;border-radius:inherit;
+  border:1px solid #ff65b9;box-shadow:0 0 16px #ff65b988,inset 0 0 10px #62efff24;
+  animation:kinetic-fade 530ms ease-out both;
+}
+.kinetic-portrait i,.kinetic-impact i {
+  position:absolute;inset:var(--lane,48%) 4% auto auto;width:52%;height:2px;
+  border-radius:50%;background:linear-gradient(90deg,transparent,var(--rail,#ff83ca));
+  filter:drop-shadow(0 0 4px var(--rail,#ff83ca));animation:kinetic-streak 420ms ease-out both;
+}
+.kinetic-portrait i:nth-child(even),.kinetic-impact i:nth-child(even) { --rail:#6fffff }
+.kinetic-portrait i:nth-child(1),.kinetic-impact i:nth-child(1) { --lane:2% }
+.kinetic-portrait i:nth-child(2),.kinetic-impact i:nth-child(2) { --lane:6% }
+.kinetic-portrait i:nth-child(3),.kinetic-impact i:nth-child(3) { --lane:93% }
+.kinetic-portrait i:nth-child(4),.kinetic-impact i:nth-child(4) { --lane:97% }
+.kinetic-portrait i:nth-child(n+5),.kinetic-impact i:nth-child(n+5) { display:none }
+.kinetic-portrait:is([data-effect="simple"],[data-effect="down"],[data-effect="damage"]) i:nth-child(n+3) { display:none }
+.kinetic-portrait[data-effect="down"] { border-color:#d391d0;box-shadow:0 0 6px #934575; }
+.kinetic-portrait[data-effect="danger"] { border-color:#ff86a6;box-shadow:0 0 19px #ff367c9c; }
+.kinetic-portrait[data-effect="damage"] { animation-name:kinetic-jolt }
+.kinetic-portrait:is([data-effect="spin"],[data-effect="shield"],[data-effect="reboot"])::before,
+.kinetic-impact[data-strike="spin"]::before {
+  content:"";position:absolute;inset:-6px;border-radius:50%;
+  background:conic-gradient(transparent 9%,#ff65b9 21%,transparent 36%,transparent 59%,#62efff 73%,transparent 94%);
+  mask:radial-gradient(transparent 64%,#000 66% 71%,transparent 74%);
+  animation:kinetic-turn 500ms ease-out both;
+}
+.kinetic-portrait[data-effect="shield"] { border:3px double #62efff;box-shadow:0 0 13px #62efff88,inset 0 0 14px #62efff44 }
+.kinetic-portrait[data-effect="shield"]::before { animation:kinetic-guard 500ms ease-out both }
+.kinetic-portrait[data-effect="reboot"]::before { animation-direction:reverse }
+.kinetic-portrait[data-effect="combo"] i { animation-iteration-count:1 }
+.kinetic-portrait[data-effect="combo"]:is([data-level="4"],[data-level="5"],[data-level="6"]) {
+  border-color:#62efff;box-shadow:0 0 9px #62efff,0 0 24px #ff65b999;
+}
+.kinetic-portrait[data-effect="combo"]:is([data-level="4"],[data-level="5"],[data-level="6"]) i:nth-child(even) { animation-delay:55ms }
+.kinetic-portrait[data-effect="combo"][data-level="6"] {
+  border-color:#dcffff;box-shadow:0 0 13px #62efff,0 0 28px #ff65b9,inset 0 0 11px #ff65b966;
+}
+.kinetic-portrait:is([data-effect="tetris"],[data-effect="spin"],[data-effect="combo"],[data-effect="shield"])::after {
+  position:absolute;bottom:4px;inset-inline:0;text-align:center;color:#fff;
+  font:italic 900 clamp(8px,.7vw,13px)/1 system-ui,sans-serif;letter-spacing:.035em;
+  background:linear-gradient(90deg,transparent,#170a2bee 18% 82%,transparent);
+  text-shadow:0 0 5px #ff65b9;
+}
+.kinetic-portrait[data-effect="tetris"]::after { content:"NEON DASH" }
+.kinetic-portrait[data-effect="spin"]::after { content:"CYCLONE SKATE" }
+.kinetic-portrait[data-effect="combo"]::after { content:"NEON OVERDRIVE" }
+.kinetic-portrait[data-effect="shield"]::after { content:"KINETIC GUARD" }
+.projectile-kinetic::before {
+  width:78px;height:8px;inset:-4px auto auto -75px;transform-origin:75px 4px;
+  background:linear-gradient(90deg,transparent,#ff65b9 68%,#62efff);
+  clip-path:polygon(0 35%,100% 3%,99% 33%,0 46%,0 61%,100% 52%,100% 94%,0 71%);
+}
+.projectile-kinetic[data-strike="tetris"]::before {
+  height:16px;top:-8px;transform-origin:75px 8px;width:79px;
+  clip-path:polygon(0 18%,100% 0,100% 15%,0 26%,0 36%,100% 29%,100% 43%,0 44%,0 57%,100% 58%,100% 72%,0 65%,0 75%,100% 85%,100% 100%,0 83%);
+}
+.projectile-kinetic::after { inset:-6px;background:#e4ffff;clip-path:polygon(0 100%,38% 0,100% 0,62% 100%) }
+.projectile-kinetic[data-strike="spin"]::before {
+  width:28px;height:28px;inset:-14px auto auto -14px;transform:none;clip-path:none;border-radius:50%;
+  background:conic-gradient(transparent,#ff65b9 38%,transparent 52%,#62efff 86%,transparent);
+  mask:radial-gradient(transparent 52%,#000 56%);
+}
+.kinetic-impact { inset:-2px;border-width:2px;animation-duration:340ms; }
+.kinetic-impact[data-strike="spin"]::before { inset:-4px;border-radius:inherit;animation-duration:340ms }
+.player.zoned .character-portrait[data-character-id="kira"] { filter:drop-shadow(0 0 10px #ff65b988); }
+.kira-showcase .character-cut-in { object-fit:contain;object-position:center }
+.reduced :is(.kinetic-portrait,.kinetic-impact),.no-attack-animation :is(.kinetic-portrait,.kinetic-impact) { visibility:hidden }
+@media (prefers-reduced-motion:reduce) { .kinetic-portrait,.kinetic-impact { visibility:hidden } }
+
+@keyframes kinetic-fade { 0%,100% {opacity:0} 19% {opacity:1} 66% {opacity:.72} }
+@keyframes kinetic-streak { from {opacity:0;transform:translateX(-52%) skewX(-24deg) scaleX(.2)} 25% {opacity:1} to {opacity:0;transform:translateX(24%) skewX(-24deg) scaleX(.85)} }
+@keyframes kinetic-turn { from {opacity:.9;transform:rotate(-95deg) scale(.7)} to {opacity:0;transform:rotate(212deg) scale(1.04)} }
+@keyframes kinetic-guard { from {opacity:1;transform:scale(.78)} to {opacity:0;transform:scale(1.13)} }
+@keyframes kinetic-jolt { 0%,100% {opacity:0} 27% {opacity:1;transform:translateX(3px)} 52% {opacity:.7;transform:translateX(-2px)} }

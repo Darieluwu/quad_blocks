@@ -4,7 +4,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { expect, test, type Page, type WebSocketRoute } from '@playwright/test'
 import { CHARACTER_IDS, VOICE_EVENTS, type CharacterId, type VoiceEvent } from '../../src/characters/catalog'
 import { characterVisuals } from '../../src/characters/visuals'
-import { makeMatch, snapshot, type Frame, type ServerMessage } from '../../src/online/protocol'
+import { makeMatch, makeTeamsMatch, snapshot, type Frame, type MatchStart, type ServerMessage } from '../../src/online/protocol'
 
 const digest = (url:URL) => createHash('sha256').update(readFileSync(url)).digest('hex')
 const original = new URL('../../src/characters/voices/ja/',import.meta.url)
@@ -12,16 +12,18 @@ const emitted = new URL('../../dist/assets/',import.meta.url)
 const translations = JSON.parse(readFileSync(new URL('../../src/characters/subtitles/es.json',import.meta.url),'utf8')) as Record<CharacterId,Record<VoiceEvent,string>>
 
 function voiceFiles() {
-  const filenames = readdirSync(emitted).filter(name=>name.endsWith('.ogg'))
+  const filenames = readdirSync(emitted).filter(name=>/\.(ogg|mp3)$/.test(name))
   const hashes = new Map(filenames.map(name=>[name,digest(new URL(name,emitted))]))
   return CHARACTER_IDS.flatMap(id=>{
     const directory = new URL(`${id}/`,original)
     const files = readdirSync(directory,{withFileTypes:true}).filter(file=>file.isFile()).map(file=>file.name)
-    const expected = VOICE_EVENTS.map(event=>`${event}.ogg`)
-    expect(files.sort(),`src/characters/voices/ja/${id}/`).toEqual(expected.sort())
-    return VOICE_EVENTS.map(event=>{
-      const path = `src/characters/voices/ja/${id}/${event}.ogg`
-      const hash = digest(new URL(`${id}/${event}.ogg`,original))
+    const expected = VOICE_EVENTS.map(event=>
+      `${event}.${id==='kira' && /^simpleAttack[12]$/.test(event) ? 'mp3' : 'ogg'}`)
+    expect(files.sort(),`src/characters/voices/ja/${id}/`).toEqual([...expected].sort())
+    return VOICE_EVENTS.map((event,i)=>{
+      const filename = expected[i]
+      const path = `src/characters/voices/ja/${id}/${filename}`
+      const hash = digest(new URL(`${id}/${filename}`,original))
       const file = filenames.find(name=>name.startsWith(`${event}-`) && hashes.get(name)===hash)
       expect(file,path).toBeDefined()
       return {id,event,path,url:`/assets/${file}`}
@@ -37,7 +39,7 @@ async function traceVoices(page:Page) {
     AudioContext.prototype.createMediaElementSource = function(track) {
       const node = real.call(this,track)
       const url = new URL(track.src).pathname
-      if (!url.endsWith('.ogg')) return node
+      if (!url.endsWith('.ogg') && !/\/simpleAttack[12]-.+\.mp3$/.test(url)) return node
       let active = false
       const finish = (events:string[])=>{ if (active) { active=false; events.push(url); log.active-- } }
       const pause = track.pause.bind(track)
@@ -197,9 +199,11 @@ test('la sala arcade reserva al confirmar y reproduce las voces de persona e IA'
 })
 
 async function playbackRoom(page:Page, options?:{attackVoices:boolean;subtitles:boolean;attackAnimations?:boolean},
-  lineup:readonly CharacterId[] = ['volt','nix','pix','pengu']) {
+  lineup:readonly CharacterId[] = ['volt','nix','pix','pengu'], seat=0, format:'blitz'|'teams'='blitz') {
   const levels = [null,5,null,5]
-  const match = makeMatch('voice-validation',levels)
+  const start:MatchStart={seed:'voice-validation',names:['Humano A','IA A','Humano B','IA B'],levels,countdown:0,characters:[...lineup],format}
+  const match = makeMatch(start.seed,levels)
+  const teams = format==='teams' ? makeTeamsMatch(start) : undefined
   let connection!:WebSocketRoute
   const send = (message:ServerMessage) => connection.send(JSON.stringify(message))
   await traceVoices(page)
@@ -208,16 +212,149 @@ async function playbackRoom(page:Page, options?:{attackVoices:boolean;subtitles:
     connection = socket
     socket.onMessage(message=>{
       if (JSON.parse(String(message)).type!=='join') return
-      send({type:'welcome',slot:0,inputSeq:0})
-      send({type:'start',seed:'voice-validation',names:['Humano A','IA A','Humano B','IA B'],levels,countdown:0,characters:[...lineup]})
+      send({type:'welcome',slot:seat,inputSeq:0})
+      send({type:'start',...start})
     })
   })
   await page.goto('/')
   await page.locator('[data-main-action="online"]').click()
   await page.getByRole('button',{name:'Crear sala'}).click()
-  await expect(page.locator('.online-player')).toHaveText('ONLINE · J1')
-  return {assets:voiceFiles(),lineup,match,frame:(events:Frame['events'])=>send({type:'frame',state:snapshot(match),acks:[0,0,0,0],events,fallen:[]})}
+  await expect(page.locator('.online-player')).toHaveText(`ONLINE · J${seat+1}`)
+  return {assets:voiceFiles(),lineup,match,teams,frame:(events:Frame['events'])=>send({type:'frame',state:snapshot(teams ?? match),acks:[0,0,0,0],events,fallen:[]})}
 }
+
+test('KIRA confirma en el lobby desde su ilustración maestra',async ({page},info)=>{
+  await page.addInitScript(()=>localStorage.setItem('quad-blocks-v1',JSON.stringify({characters:['kira','pix','volt','nix']})))
+  await traceVoices(page)
+  await page.goto('/')
+  await openLobby(page,'blitz')
+  const hero = page.locator('.lobby-fighter[data-slot="0"] .lobby-fighter-art img')
+  await expect.poll(()=>hero.evaluate((img:HTMLImageElement)=>img.naturalHeight)).toBe(1421)
+  await page.screenshot({path:info.outputPath('kira-lobby.png')})
+  await page.locator('[data-character="0"]').click()
+  const scene=page.locator('.arcade-scene:not(.outgoing)')
+  await expect(scene).toHaveAttribute('data-preview','kira')
+  await expect(scene.locator('.arcade-master')).toHaveAttribute('src',(await hero.getAttribute('src'))!)
+  await scene.locator('.arcade-master').evaluate((img:HTMLImageElement)=>img.decode())
+  await page.screenshot({path:info.outputPath('kira-selector.png')})
+  await page.locator('[data-picker-confirm]').click()
+  await expect(page.locator('.arcade-caption')).toContainText(translations.kira.selection)
+  const clip=voiceFiles().find(file=>file.id==='kira' && file.event==='selection')!
+  await expect.poll(async ()=>(await voices(page)).starts).toContain(clip.url)
+})
+
+test('KIRA distingue ataques, relevo y dos definitivas simultáneas en Blitz',async ({page},info)=>{
+  const {match,frame,assets}=await playbackRoom(page,undefined,['pix','volt','kira','nix'],1)
+  match.sides[0].active=0
+  match.sides[1].active=2
+  const publish=(events:Frame['events'])=>{ match.now++;frame(events) }
+  const play=(type:string,detail?:string)=>publish([{slot:2,event:{type,detail}}])
+  const player=page.locator('.player[data-player="2"]')
+  const portrait=player.locator('.hud-portrait .character-portrait')
+  const reaction=player.locator('.kinetic-portrait')
+  publish([])
+  await expect(player).toHaveAttribute('data-featured','true')
+  await expect(portrait).toHaveAttribute('data-portrait','neutral')
+  const victim=page.locator('.player[data-player="0"]')
+  await victim.evaluate(node=>{
+    new MutationObserver(records=>{
+      for (const record of records) for (const added of record.addedNodes) {
+        if (added instanceof HTMLElement && added.matches('.kinetic-impact')) {
+          (node as HTMLElement).dataset.observedStrike=added.dataset.strike
+        }
+      }
+    }).observe(node,{childList:true})
+  })
+  const hit=async (type:string,strike:string)=>{
+    publish([{slot:0,event:{type:'incoming',source:2,detail:'4'}},{slot:2,event:{type,detail:'4'}}])
+    await expect(page.locator(`.projectile-kinetic[data-from="2"][data-to="0"][data-strike="${strike}"]`)).toBeVisible()
+    await expect(victim).toHaveAttribute('data-observed-strike',strike)
+  }
+  await hit('quad','tetris')
+  await hit('tDouble','spin')
+  for (const level of [2,4,6,7]) {
+    play('combo',String(level))
+    await expect(reaction).toHaveAttribute('data-level',String(Math.min(level,6)))
+    if (level!==7) {
+      const name=level===2?'combo':level===4?'combo2':'combo3'
+      await expect.poll(async ()=>(await voices(page)).starts).toContain(assets.find(file=>file.id==='kira' && file.event===name)!.url)
+    }
+  }
+  for (const [event,effect] of [
+    ['receive','damage'],['critical','danger'],['blitzGuard','shield'],['teammateDown','down'],['teammateRevived','reboot'],
+  ]) {
+    play(event,'3')
+    await expect(reaction).toHaveAttribute('data-effect',effect)
+  }
+  play('zoneStart')
+  await expect(player.locator('.cinematic-charge.cinematic-kinetic img')).toBeVisible()
+  await expect(portrait).toHaveAttribute('data-portrait','zone')
+  publish([
+    {slot:0,event:{type:'zoneEnd',detail:'8'}},
+    {slot:2,event:{type:'zoneEnd',detail:'8'}},
+    {slot:0,event:{type:'incoming',source:2,detail:'4'}},
+  ])
+  const top=page.locator('.cinematic-digital[data-channel="team-a"]')
+  const bottom=page.locator('.cinematic-kinetic[data-channel="team-b"]')
+  await expect(top).toBeVisible()
+  await expect(bottom).toContainText(/NEON\s*CATACLYSM/)
+  await expect(top).toHaveAttribute('data-delivery','false')
+  await expect(bottom).toHaveAttribute('data-delivery','true')
+  await expect(blitzCaption(page,2).locator('.dialogue-text')).toHaveText(translations.kira.zoneFinish)
+  const region=(await bottom.boundingBox())!
+  for (const field of await page.locator('.player[data-featured="true"] .well').all()) {
+    const box=(await field.boundingBox())!
+    expect(region.x+region.width<=box.x || box.x+box.width<=region.x).toBe(true)
+  }
+  await page.locator('.cinematic-scene').evaluateAll(nodes=>nodes.forEach(node=>node.getAnimations({subtree:true}).forEach(anim=>{
+    anim.pause()
+    anim.currentTime=640
+  })))
+  await page.screenshot({path:info.outputPath('kira-neon-cataclysm.png')})
+  match.sides[1].active=3
+  publish([])
+  await expect(player).toHaveAttribute('data-featured','false')
+  await page.emulateMedia({reducedMotion:'reduce'})
+  await expect(bottom).toBeHidden()
+  match.sides[1].active=2
+  match.players[2].zone.remaining=60
+  play('zoneStart')
+  await expect(player.locator('.zone-badge')).toBeVisible()
+  await expect(player.locator('.cinematic-charge.cinematic-kinetic')).toBeHidden()
+  match.finished=true
+  match.winningTeam=1
+  match.players[0].dead=true
+  match.players[1].dead=true
+  play('blitzVictory')
+  const winner=page.locator('.blitz-result-winner img[alt="KIRA"]')
+  await expect(winner).toHaveAttribute('src',/master-.+\.png$/)
+  await expect.poll(()=>winner.evaluate((img:HTMLImageElement)=>img.naturalHeight)).toBe(1421)
+})
+
+test('KIRA mantiene la identificación y la matriz libres durante Surge en 2v2 tradicional',async ({page},info)=>{
+  await page.setViewportSize({width:1366,height:768})
+  const {teams,frame}=await playbackRoom(page,{attackVoices:false,subtitles:false},['volt','nix','kira','pix'],1,'teams')
+  teams!.now++
+  frame([0,1,2,3].map(slot=>({slot,event:{type:'zoneEnd',detail:'8'}})))
+  const scenes=page.locator('.cinematic-scene')
+  const scene=page.locator('.cinematic-scene.cinematic-kinetic')
+  await expect(scenes).toHaveCount(4)
+  await expect(scene).toHaveAttribute('data-layout','vs4')
+  await expect(scene).toHaveAttribute('data-delivery','false')
+  await expect(scene.locator('.cinematic-beam')).toBeHidden()
+  const bounds = await page.evaluate(()=>{
+    const rects=(selector:string)=>[...document.querySelectorAll(selector)].map(node=>node.getBoundingClientRect().toJSON())
+    return {effects:rects('.cinematic-scene'),critical:rects('.team-tag,.character-caption,.well,.rail,.zone-label,.combat-hud')}
+  })
+  for (const cinematic of bounds.effects) for (const node of bounds.critical) {
+    expect(cinematic.right<=node.left || node.right<=cinematic.left || cinematic.bottom<=node.top || node.bottom<=cinematic.top).toBe(true)
+  }
+  await scenes.evaluateAll(nodes=>nodes.forEach(node=>node.getAnimations({subtree:true}).forEach(animation=>{
+    animation.pause()
+    animation.currentTime=600
+  })))
+  await page.screenshot({path:info.outputPath('kira-traditional.png')})
+})
 
 test('ASTRA usa su maestra y confirma con su voz y subtítulo en el selector',async ({page},info)=>{
   await traceVoices(page)
@@ -556,9 +693,18 @@ test('VS4 muestra una cinemática independiente sobre cada tablero',async ({page
   await expect(page.locator('.arena-grid')).toBeVisible()
 })
 
-for (const last of ['astra','blaze','pengu'] as const) test(`VS4 muestra cuatro voces y tarjetas separadas con ${last}`,async ({page},info)=>{
+for (const last of ['astra','blaze','pengu','kira'] as const) test(`VS4 muestra cuatro voces y tarjetas separadas con ${last}`,async ({page},info)=>{
   const lineup = ['volt','nix','pix',last] as const
-  await page.addInitScript(characters=>localStorage.setItem('quad-blocks-v1',JSON.stringify({characters})),lineup)
+  await page.addInitScript(characters=>{
+    const pads=Array.from({length:3},(_,index)=>({
+      id:'Mando VS4 '+index,index,connected:true,mapping:'standard',axes:[0,0,0,0],
+      buttons:Array.from({length:17},()=>({pressed:false,value:0,touched:false})),
+    }))
+    Object.assign(window,{testPads:pads})
+    Object.defineProperty(navigator,'getGamepads',{value:()=>pads})
+    const slots=[{},...pads.map(({id,index})=>({deviceType:'pad',device:{id,index}}))]
+    localStorage.setItem('quad-blocks-v1',JSON.stringify({characters,slots}))
+  },lineup)
   await traceVoices(page)
   await page.emulateMedia({reducedMotion:'reduce'})
   await page.clock.install()
@@ -575,16 +721,19 @@ for (const last of ['astra','blaze','pengu'] as const) test(`VS4 muestra cuatro 
   await page.evaluate(()=>{
     const arena = document.querySelector('.arena-grid')!
     new MutationObserver(()=>{
-      const effects = arena.querySelectorAll(':is(.frost-portrait,.digital-portrait,.cosmic-portrait,.fire-portrait,.lunar-portrait)[data-effect="danger"]')
+      const effects = arena.querySelectorAll(':is(.frost-portrait,.digital-portrait,.cosmic-portrait,.fire-portrait,.lunar-portrait,.kinetic-portrait)[data-effect="danger"]')
       if (effects.length===3) (arena as HTMLElement).dataset.simultaneousPortraits = '3'
     }).observe(arena,{childList:true,subtree:true})
   })
   for (let round=0;round<14 && await players.first().getAttribute('data-danger')!=='2';round++) {
-    await page.evaluate(()=>{
-      for (const code of ['KeyW','KeyI','ArrowUp','Numpad8']) {
-        for (const type of ['keydown','keyup']) window.dispatchEvent(new KeyboardEvent(type,{code}))
-      }
-    })
+    const drop = (pressed:boolean)=>page.evaluate(on=>{
+      const pads=(window as unknown as {testPads:{buttons:{pressed:boolean;value:number;touched:boolean}[]}[]}).testPads
+      for (const {buttons} of pads) buttons[12]={pressed:on,value:on?1:0,touched:on}
+      window.dispatchEvent(new KeyboardEvent(on?'keydown':'keyup',{code:'KeyW'}))
+    },pressed)
+    await drop(true)
+    await page.clock.runFor(34)
+    await drop(false)
     await page.clock.runFor(34)
   }
   await expect(page.locator('.arena-grid')).toHaveAttribute('data-simultaneous-portraits','3')
@@ -811,7 +960,7 @@ test('PENGU muestra Starfall, Lunar Twist, Dream Ward y Midnight Reverie',async 
 
 test('BLAZE y ASTRA usan canales superiores e inferiores simultáneos en Blitz',async ({page},info)=>{
   await page.setViewportSize({width:1920,height:1080})
-  const {match,frame} = await playbackRoom(page,undefined,['astra','pix','blaze','volt'])
+  const {match,frame} = await playbackRoom(page,undefined,['astra','pix','blaze','volt'],1)
   match.sides[0].active=0
   match.sides[1].active=2
   frame([])
@@ -911,7 +1060,7 @@ test('eventos de combate y Blitz reproducen el personaje correcto en plazas huma
 })
 
 test('las preferencias ocultan voces, subtítulos y animaciones de ataque y conservan los avisos',async ({page})=>{
-  const {assets,match,frame} = await playbackRoom(page,{attackVoices:false,subtitles:false,attackAnimations:false})
+  const {assets,match,frame} = await playbackRoom(page,{attackVoices:false,subtitles:false,attackAnimations:false},undefined,1)
   match.sides[0].active = 0
   frame([{slot:0,event:{type:'quad'}},{slot:0,event:{type:'critical'}}])
   const danger = assets.find(file=>file.id==='volt' && file.event==='danger')!.url
