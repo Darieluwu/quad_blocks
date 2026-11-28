@@ -24,7 +24,7 @@ export const isAttackVoice = (event:VoiceEvent) => event==='tetris' || event==='
 export function cueFor(event:GameEvent) {
   if (event.type==='combo') {
     const count = Number(event.detail)
-    const voice = count===1 ? 'combo' : count===3 ? 'combo2' : count===5 ? 'combo3' : undefined
+    const voice = count===2 ? 'combo' : count===4 ? 'combo2' : count===6 ? 'combo3' : undefined
     return {portrait:'attack',...(voice ? {voice} : {}),attack:'combo',priority:2} satisfies Cue
   }
   if (event.type==='zoneEnd' && !Number(event.detail)) return {portrait:'zone',voice:'zoneFinish',priority:6} satisfies Cue
