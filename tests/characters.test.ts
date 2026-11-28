@@ -24,7 +24,7 @@ it('resuelve todas las voces de personaje a su archivo japonés exacto',()=>{
   }
 })
 
-it('registra los seis personajes, los nueve retratos y las catorce voces de cada uno',()=>{
+it('registra los seis personajes, los nueve retratos y las diecisiete voces de cada uno',()=>{
   expect(CHARACTER_IDS).toEqual(['volt','nix','pix','astra','blaze','pengu'])
   for (const id of CHARACTER_IDS) {
     const {assets} = CHARACTERS[id]
@@ -56,7 +56,13 @@ it('tolera recursos ausentes y separa las voces de ataque de los avisos crítico
   expect(findAsset({'ja/pengu/danger.mp3':'clip-url'},'ja/pengu/danger',['ogg','mp3'])).toBe('clip-url')
   expect(cueFor({type:'quad'})?.voice).toBe('tetris')
   expect(cueFor({type:'spinL'})?.voice).toBe('spin')
-  expect(cueFor({type:'combo',detail:'2'})).toBeUndefined()
+  expect(cueFor({type:'combo',detail:'1'})?.voice).toBe('combo')
+  expect(cueFor({type:'combo',detail:'2'})?.voice).toBeUndefined()
+  expect(cueFor({type:'combo',detail:'3'})?.voice).toBe('combo2')
+  expect(cueFor({type:'combo',detail:'4'})?.voice).toBeUndefined()
+  expect(cueFor({type:'combo',detail:'5'})?.voice).toBe('combo3')
+  expect(cueFor({type:'combo',detail:'6'})?.voice).toBeUndefined()
+  expect(isAttackVoice('tetris2')).toBe(true)
   expect(cueFor({type:'zoneEnd',detail:'0'})?.voice).toBe('zoneFinish')
   expect(cueFor({type:'critical'})?.voice).toBe('danger')
   expect(isAttackVoice('zoneFinish')).toBe(true)

@@ -2,7 +2,7 @@ export const CHARACTER_IDS = ['volt','nix','pix','astra','blaze','pengu'] as con
 export type CharacterId = typeof CHARACTER_IDS[number]
 export const PORTRAITS = ['neutral','blink','attack','danger','damage','victory','defeat','support','zone'] as const
 export type PortraitState = typeof PORTRAITS[number]
-export const VOICE_EVENTS = ['selection','simpleAttack1','simpleAttack2','tetris','spin','combo','zoneStart','zoneFinish','danger','victory','defeat',
+export const VOICE_EVENTS = ['selection','simpleAttack1','simpleAttack2','tetris','tetris2','spin','combo','combo2','combo3','zoneStart','zoneFinish','danger','victory','defeat',
   'teamDefense','teammateDown','teammateRevived'] as const
 export type VoiceEvent = typeof VOICE_EVENTS[number]
 export const VISUAL_ATTACKS = ['tetris','spin','combo','zoneFinish'] as const

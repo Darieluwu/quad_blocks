@@ -77,6 +77,9 @@ let pickerNotice = ''
 let selectionRequest = 0
 const simpleAttackVariant = new Map<number,0|1>()
 const simpleAttackLast = new Map<number,number>()
+const tetrisVariant = new Map<number,0|1>()
+let lastStandMusicLatched = false
+let standMusicPaused = false
 let onlineConnected = false
 let online: RoomClient|null = null
 let onlineLobby: LobbyState|null = null
@@ -242,7 +245,20 @@ function introMode(current:Match): BattleIntroMode|null {
 
 function startBattleMusic(current:Match) {
   const format = introMode(current)
-  if (format==='blitz' || format==='vs4') audio.setMusic(format)
+  if (format==='blitz' || format==='vs4' || format==='teams') audio.setMusic(format)
+}
+
+function syncLastStandMusic(current:Match) {
+  if (!current.teams || current instanceof BlitzMatch || phase!=='live' || current.finished) return
+  if (current.standPaused) {
+    if (!standMusicPaused) { audio.pauseMusic(); standMusicPaused=true }
+    return
+  }
+  if (current.stand?.active) lastStandMusicLatched=true
+  // If Revive restores the full team, go back to the regular 2v2 soundtrack.
+  if (current.players.every(player=>!player.dead)) lastStandMusicLatched=false
+  audio.setMusic(lastStandMusicLatched ? 'lastStand' : 'teams')
+  if (standMusicPaused) { standMusicPaused=false; audio.resumeMusic() }
 }
 
 function mountGame(current: Match, initialCountdown:number, presentation:number, rejoin = false) {
@@ -252,6 +268,9 @@ function mountGame(current: Match, initialCountdown:number, presentation:number,
   surgeReadySeen.clear()
   victoryPlayed=false
   blitzWarningSent=false
+  lastStandMusicLatched=false
+  standMusicPaused=false
+  tetrisVariant.clear()
   if (page==='game') audio.stopCharacterVoices()
   audio.stopMusic()
   const format = mode==='blitz' ? 'BLITZ' : current.teams ? '2v2' : roster.length===PLAYERS ? 'VS4' : roster.map(()=>1).join('v')
@@ -1396,8 +1415,16 @@ function presentCharacter(index:number,event:Match['players'][number]['events'][
   }
   if (!cue?.voice) return
   const seat = current.roster[index].slot
-  speak(matchCharacters[seat],cue.voice,seat,(text,timed,state)=>
-    view?.subtitle(index,text,timed,state==='ended',cue.voice==='zoneFinish'),cue.priority)
+  let voice:VoiceEvent = cue.voice
+  if (event.type==='quad') {
+    // Two variations, alternating after an initially random choice (no immediate repetition).
+    const previous = tetrisVariant.get(seat)
+    const variant:0|1 = previous===undefined ? (Math.random()<.5?0:1) : previous===0 ? 1 : 0
+    tetrisVariant.set(seat,variant)
+    voice = variant===0 ? 'tetris' : 'tetris2'
+  }
+  speak(matchCharacters[seat],voice,seat,(text,timed,state)=>
+    view?.subtitle(index,text,timed,state==='ended',voice==='zoneFinish'),cue.priority)
 }
 
 function playEvent(activeMatch: Match, i: number, event: Match['players'][number]['events'][number]) {
@@ -1566,6 +1593,7 @@ function frame(now: number) {
     const standElapsed = (match.stand?.elapsed ?? 0)+(online && phase==='live' ? Math.max(0,Math.min(50,now-lastStandSampledAt)) : 0)
     lastStandView?.draw(match,settings.reduced || reducedMotion.matches,standElapsed,
       phase==='live' && (!online || onlineConnected))
+    syncLastStandMusic(match)
     const time = formatTime(match.now)
     const elapsed = document.querySelector('#elapsed')
     if (elapsed && (time!==clockText || elapsed.textContent!==time)) elapsed.textContent = clockText = time

@@ -20,9 +20,13 @@ const cues: Record<string,Cue> = {
   teammateRevived:{portrait:'support',voice:'teammateRevived',priority:7},blitzRevived:{portrait:'support',priority:5},
   standRevived:{portrait:'support',priority:5},
 }
-export const isAttackVoice = (event:VoiceEvent) => event==='tetris' || event==='spin' || event==='combo' || event==='zoneFinish'
+export const isAttackVoice = (event:VoiceEvent) => event==='tetris' || event==='tetris2' || event==='spin' || event==='combo' || event==='combo2' || event==='combo3' || event==='zoneFinish'
 export function cueFor(event:GameEvent) {
-  if (event.type==='combo' && Number(event.detail)<3) return undefined
+  if (event.type==='combo') {
+    const count = Number(event.detail)
+    const voice = count===1 ? 'combo' : count===3 ? 'combo2' : count===5 ? 'combo3' : undefined
+    return {portrait:'attack',...(voice ? {voice} : {}),attack:'combo',priority:2} satisfies Cue
+  }
   if (event.type==='zoneEnd' && !Number(event.detail)) return {portrait:'zone',voice:'zoneFinish',priority:6} satisfies Cue
   if (event.type==='critical' && event.repeat) return cues.danger
   return cues[event.type]

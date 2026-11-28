@@ -2,10 +2,12 @@ import type { Mix } from './settings'
 import type { GameEvent } from './engine/player'
 import blitzTrack from './music/blitz.mp3?url'
 import vs4Track from './music/vs4.mp3?url'
-type Music = 'blitz'|'selection'|'menu'|'vs4'
+import teamsTrack from './music/2v2-battle.mp3?url'
+import lastStandTrack from './music/last-stand.mp3?url'
+type Music = 'blitz'|'selection'|'menu'|'vs4'|'teams'|'lastStand'
 const optionalTracks = import.meta.glob<string>('./music/selection.mp3',{eager:true,import:'default',query:'?url&no-inline'})
 const optionalMenu = import.meta.glob<string>('./music/menu.mp3',{eager:true,import:'default',query:'?url&no-inline'})
-const tracks:Record<Music,string|undefined> = {blitz:blitzTrack,selection:optionalTracks['./music/selection.mp3'],menu:optionalMenu['./music/menu.mp3'],vs4:vs4Track}
+const tracks:Record<Music,string|undefined> = {blitz:blitzTrack,selection:optionalTracks['./music/selection.mp3'],menu:optionalMenu['./music/menu.mp3'],vs4:vs4Track,teams:teamsTrack,lastStand:lastStandTrack}
 const optionalEffects = import.meta.glob<string>('./music/sfx/*.{mp3,ogg,wav}',{eager:true,import:'default',query:'?url&no-inline'})
 export type CinematicEffect =
   'battle-start'|'countdown-tick'|'battle-go'|'combo-rise'|'perfect-clear'|'danger-alert'|'surge-ready'|
