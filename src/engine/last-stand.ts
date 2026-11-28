@@ -6,7 +6,7 @@ export const LAST_STAND_PRIZES = ['secondWind','revive','doubleAttack','cursedFo
 export const DOUBLE_STAND_PRIZES = ['overcharge','aegisCore','timeFracture','precisionStrike','cleanSlate','surgeResonance'] as const
 export type Prize = typeof LAST_STAND_PRIZES[number] | typeof DOUBLE_STAND_PRIZES[number]
 export const STAND = {
-  window:3*HZ, presentation:2500, spinAt:400, revealAt:1900,
+  window:3*HZ, presentation:6350, bannerAt:150, spinAt:600, revealAt:3100, exitAt:6100,
   secondWind:{goal:100, tetris:25, tDouble:30, tTriple:40, perfect:50, combo:10, comboAt:3, duration:15*HZ, received:47},
   revive:{sent:8}, doubleAttack:{secondary:50},
   cursedFoundation:{rows:2,duration:60*HZ},

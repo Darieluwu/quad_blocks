@@ -6,7 +6,7 @@ import { Match, teamForSlot } from '../src/engine/match'
 import { emptyBoard, fits } from '../src/engine/pieces'
 import type { Player } from '../src/engine/player'
 import { DEFAULT_RULES, HEIGHT, HZ, WIDTH, ticks } from '../src/engine/rules'
-import { lastStandCopy } from '../src/last-stand-copy'
+import { lastStandCopy, standDescriptions } from '../src/last-stand-copy'
 import { LastStandView } from '../src/last-stand-view'
 import type { Sound } from '../src/audio'
 import { OnlineTeamsMatch, snapshot, type ClientMessage, type Frame, type ServerMessage } from '../src/online/protocol'
@@ -435,7 +435,7 @@ describe('pausa, partidas locales y online',()=>{
     for (let i=0;i<20;i++) match.tick([{held:new Set(['left']),pressed:['hold','hard','cw']}])
     expect(match.now).toBe(tick)
     expect(p.exportState()).toEqual(frozen)
-    match.advanceStand(2500)
+    match.advanceStand(STAND.presentation)
     match.tick()
     expect(match.now).toBe(tick+1)
     expect(p.stats.pieces).toBe(0)
@@ -553,4 +553,21 @@ it('localiza lobby, cinemáticas y los dos catálogos en ES/EN',()=>{
     expect(en[prize]).toBeTruthy()
     expect(es[prize]).not.toBe(en[prize])
   }
+})
+
+
+describe('Last Stand V2 presentation copy',()=>{
+  it('has matching localized descriptions for each reward',()=>{
+    for (const prize of [...LAST_STAND_PRIZES,...DOUBLE_STAND_PRIZES]) {
+      const key=standDescriptions[prize]
+      expect(lastStandCopy('es')[key].length).toBeGreaterThan(15)
+      expect(lastStandCopy('en')[key].length).toBeGreaterThan(15)
+    }
+  })
+  it('keeps a 3-second readable reveal inside the 6.35-second frozen presentation',()=>{
+    expect(STAND.presentation).toBe(6350)
+    expect(STAND.revealAt).toBe(3100)
+    expect(STAND.exitAt-STAND.revealAt).toBe(3000)
+    expect(STAND.presentation-STAND.exitAt).toBe(250)
+  })
 })

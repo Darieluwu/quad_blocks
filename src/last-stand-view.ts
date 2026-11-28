@@ -5,16 +5,18 @@ import { DOUBLE_STAND_PRIZES, LAST_STAND_PRIZES, STAND, type Prize } from './eng
 import type { Match } from './engine/match'
 import type { Player } from './engine/player'
 import { HZ } from './engine/rules'
-import { lastStandCopy, standIcons, standLanguage } from './last-stand-copy'
+import { lastStandCopy, standDescriptions, standIcons, standLanguage } from './last-stand-copy'
 import './last-stand.css'
 
 const wheelColors = ['#347b91','#864a79','#ac5d39','#634da0','#3f805e','#887234']
 const seconds = (ticks:number) => Math.max(0,Math.ceil(ticks/HZ))+' s'
-const soundStages: Record<'single'|'double',readonly CinematicEffect[]> = {
-  single:['last-stand-start','last-stand-spin','last-stand-reveal'],
-  double:['double-last-stand-start','last-stand-spin','double-last-stand-reveal'],
+const soundStages: Record<'single'|'double',Readonly<Partial<Record<number,CinematicEffect>>>> = {
+  single:{0:'last-stand-start',2:'last-stand-spin',3:'last-stand-reveal'},
+  double:{0:'double-last-stand-start',2:'last-stand-spin',3:'double-last-stand-reveal'},
 }
-export const standStage = (elapsed:number) => elapsed>=STAND.revealAt ? 2 : elapsed>=STAND.spinAt ? 1 : 0
+export const standStage = (elapsed:number) =>
+  elapsed>=STAND.exitAt ? 4 : elapsed>=STAND.revealAt ? 3 :
+  elapsed>=STAND.spinAt ? 2 : elapsed>=STAND.bannerAt ? 1 : 0
 
 export class LastStandView {
   private eventId = 0
@@ -28,7 +30,7 @@ export class LastStandView {
     const event = match.stand?.event
     this.root.hidden = !match.standPaused || !connected
     if (!event || !match.standPaused) {
-      if (event) { this.eventId = event.id; this.stage = 2 }
+      if (event) { this.eventId = event.id; this.stage = 4 }
       this.rejoin = false
       return
     }
@@ -42,15 +44,23 @@ export class LastStandView {
       this.stage = this.rejoin ? stage : stage-1
       this.rejoin = false
       this.root.lang = lang
-      this.root.innerHTML = `<h2 aria-live="polite">${copy[event.kind]}</h2>${event.kind==='double'? `<p>${copy.versus}</p>`:''}
+      this.root.dataset.kind = event.kind
+      this.root.innerHTML = `<div class="stand-energy" aria-hidden="true"></div>
+        <header class="stand-heading"><span class="stand-heading-rule"></span><h2 aria-live="polite">${copy[event.kind]}</h2>
+          <p>${event.kind==='double' ? copy.versus : copy.duel}</p></header>
         <div class="stand-awards">${event.awards.map(({index,prize})=>{
           const character = CHARACTERS[this.characters[this.roster[index].slot]]
           const portrait = artwork(character.assets.portraits.neutral) ?? artwork(character.assets.master)
           return `<section class="stand-award" style="--fighter:${character.colors[0]}">
-            <div class="stand-portrait">${portrait?`<img src="${portrait}" alt="">`:''}<strong>${character.name}</strong></div>
+            <div class="stand-portrait">${portrait?`<img src="${portrait}" alt="">`:''}<div><small>${copy.team} ${this.roster[index].team===0?'A':'B'}</small><strong>${character.name}</strong></div></div>
             <div class="stand-wheel-frame" aria-hidden="true"><div class="stand-wheel">
             ${prizes.map((entry,i)=>`<span style="--x:${50+36*Math.sin(Math.PI*i/3)}%;--y:${50-36*Math.cos(Math.PI*i/3)}%">${standIcons[entry]}</span>`).join('')}</div></div>
-            <strong class="stand-result" role="status" style="--prize-color:${wheelColors[prizes.indexOf(prize)]}">${standIcons[prize]} ${copy[prize]}</strong>
+            <div class="stand-result" role="status" style="--prize-color:${wheelColors[prizes.indexOf(prize)]}">
+              <div class="stand-result-symbol" aria-hidden="true">${standIcons[prize]}</div>
+              <div class="stand-result-body"><span class="stand-result-eyebrow">${copy.reward}</span>
+                <strong class="stand-result-title">${copy[prize]}</strong>
+                <span class="stand-result-description">${copy[standDescriptions[prize]]}</span></div>
+            </div>
           </section>`
         }).join('')}</div>`
       const gradient = wheelColors.map((color,i)=>`${color} ${i*60}deg ${(i+1)*60}deg`).join(',')
@@ -59,15 +69,16 @@ export class LastStandView {
     }
     if (stage>this.stage) {
       this.stage = stage
-      this.audio.playEffect(soundStages[event.kind][stage])
+      const effect = soundStages[event.kind][stage]
+      if (effect) this.audio.playEffect(effect)
     }
     this.root.dataset.stage = String(stage)
     this.root.dataset.reduced = String(reduced)
     const t = Math.min(1,Math.max(0,(elapsed-STAND.spinAt)/(STAND.revealAt-STAND.spinAt)))
-    const eased = t*t*(3-2*t)
+    const eased = 1-Math.pow(1-t,3)
     this.wheels.forEach((wheel,i)=>{
       const angle = 1440-prizes.indexOf(event.awards[i].prize)*60
-      wheel.style.transform = `rotate(${reduced ? stage===2 ? angle : 0 : angle*eased}deg)`
+      wheel.style.transform = `rotate(${reduced ? stage>=3 ? angle : 0 : angle*eased}deg)`
     })
   }
 }
